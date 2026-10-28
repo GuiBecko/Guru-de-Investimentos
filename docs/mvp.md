@@ -58,6 +58,7 @@ Escopo combinado durante a fase de protótipo. O protótipo das telas está em [
 | Cotações | Arquivo diário oficial da B3 (série histórica), com o preço de fechamento do último pregão. Sem preço em tempo real no MVP. |
 | Saudação | Escrita pelo app, sorteada de uma lista fixa de frases. Não usa a IA nem gasta tokens. |
 | Contexto da IA | Cada parte do contexto (instruções, perfil, carteira, mercado, metas) pode ser desligada ou editada. |
+| Classes | Renda fixa (inclui Tesouro), Ações (inclui ETFs), FIIs, Exterior (BDRs) e Outros (fundos, previdência e cripto). A classe Caixa do protótipo fica para quando houver um tipo para ela. |
 
 ## Em aberto
 

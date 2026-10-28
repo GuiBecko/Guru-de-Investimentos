@@ -50,3 +50,14 @@ dialog .acoes { display: flex; gap: 8px; justify-content: flex-end; }
 .faixa.ok { border-color: var(--up); color: var(--up); }
 .form .row { margin-top: 4px; }
 .form .row > .row { justify-content: flex-end; }
+
+/* Carteira: cards por classe e detalhe da classe. */
+.classes { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+a.card { color: inherit; text-decoration: none; }
+a.card:hover, a.card:focus-visible { border-color: var(--accent); }
+a.card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mid { font-size: 18px; font-weight: 500; }
+.total { display: grid; gap: 2px; }
+.total small { color: var(--muted); }
+.migalha { font-size: 12px; color: var(--muted); text-decoration: none; }
+.migalha:hover, .migalha:focus-visible { color: var(--accent); }

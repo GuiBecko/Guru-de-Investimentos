@@ -1,5 +1,117 @@
-import { emConstrucao } from "./_em-construcao.js";
+import { api } from "../api.js";
+import { formatarData, formatarPercentual, formatarReais } from "../formato.js";
+import { caixaTabela, cabecalho, el } from "./_tabela.js";
 
-export function render(el) {
-  emConstrucao(el, "Carteira");
+const COLUNAS = [
+  ["Investimento"],
+  ["Instituição"],
+  ["Rendimento"],
+  ["Aplicado", "r"],
+  ["Vencimento"],
+  ["Liquidez"],
+];
+
+function voltar() {
+  const a = el("a", "Carteira ›", "migalha");
+  a.href = "#/carteira";
+  return a;
+}
+
+function erro(elemento, titulo) {
+  const p = el("p", "Não foi possível carregar a carteira.");
+  p.setAttribute("role", "alert");
+  elemento.replaceChildren(el("h1", titulo), p);
+}
+
+function card(c, total) {
+  const a = el("a", undefined, "card click");
+  a.href = `#/carteira/${c.classe}`;
+  const n = c.quantidade === 1 ? "1 investimento" : `${c.quantidade} investimentos`;
+  const base = el("div", undefined, "row");
+  base.append(el("small", n), el("span", formatarPercentual(c.totalAplicadoCentavos, total), "mono"));
+  a.append(el("b", c.rotulo), el("span", formatarReais(c.totalAplicadoCentavos), "mid mono"), base);
+  return a;
+}
+
+async function painel(elemento, vigente) {
+  let resumo;
+  try {
+    resumo = await api.carteira.resumo();
+  } catch (e) {
+    if (!vigente()) return;
+    console.error("Falha ao carregar a carteira:", e);
+    erro(elemento, "Carteira");
+    return;
+  }
+  if (!vigente()) return;
+
+  const partes = [el("h1", "Carteira")];
+  if (resumo.classes.length === 0) {
+    const vazio = el("div", undefined, "vazio");
+    const novo = el("a", "Lançar o primeiro investimento", "btn");
+    novo.href = "#/investimentos/novo";
+    vazio.append(el("p", "Sua carteira está vazia."), novo);
+    partes.push(vazio);
+  } else {
+    const total = el("div", undefined, "total");
+    total.append(el("small", "Total aplicado"), el("div", formatarReais(resumo.totalAplicadoCentavos), "mid mono"));
+    const cards = el("div", undefined, "classes");
+    cards.append(...resumo.classes.map((c) => card(c, resumo.totalAplicadoCentavos)));
+    partes.push(total, cards);
+  }
+  partes.push(el("p", "Valores aplicados. Cotações e rentabilidade chegam numa próxima versão.", "hint"));
+  elemento.replaceChildren(...partes);
+}
+
+function linha(inv) {
+  const tr = el("tr");
+  const celulas = [
+    inv.nome,
+    inv.instituicao,
+    inv.rendimento ?? "—",
+    formatarReais(inv.valorAplicadoCentavos),
+    formatarData(inv.vencimento),
+    inv.liquidezRotulo ?? "—",
+  ];
+  celulas.forEach((texto, i) => tr.append(el("td", texto, i === 3 ? "r mono" : i === 4 ? "mono" : "")));
+  return tr;
+}
+
+async function detalhe(elemento, classe, vigente) {
+  let itens;
+  let resumo;
+  try {
+    [itens, resumo] = await Promise.all([api.investimentos.listar(), api.carteira.resumo()]);
+  } catch (e) {
+    if (!vigente()) return;
+    console.error("Falha ao carregar a classe:", e);
+    erro(elemento, "Carteira");
+    return;
+  }
+  if (!vigente()) return;
+
+  const doClasse = itens.filter((i) => i.classe === classe);
+  const info = resumo.classes.find((c) => c.classe === classe);
+  if (doClasse.length === 0 || !info) {
+    const vazio = el("div", undefined, "vazio");
+    vazio.append(el("p", "Nenhum investimento nesta classe."), voltar());
+    elemento.replaceChildren(vazio);
+    return;
+  }
+
+  const topo = el("div", undefined, "row");
+  const titulo = el("div");
+  titulo.append(voltar(), el("h1", info.rotulo));
+  const valor = el("div", undefined, "total");
+  valor.append(el("small", "Total da classe"), el("div", formatarReais(info.totalAplicadoCentavos), "mid mono"));
+  topo.append(titulo, valor);
+
+  const tbody = el("tbody");
+  tbody.append(...doClasse.map(linha));
+  elemento.replaceChildren(topo, caixaTabela(cabecalho(COLUNAS), tbody));
+}
+
+export function render(elemento, parametros = [], vigente = () => true) {
+  if (parametros.length > 0) return detalhe(elemento, parametros[0], vigente);
+  return painel(elemento, vigente);
 }

@@ -38,3 +38,13 @@ test("formatarData", () => {
   assert.equal(formatarData(""), "—");
   assert.equal(formatarData(undefined), "—");
 });
+
+test("formatarPercentual usa uma casa e vírgula, sem erro de ponto flutuante", async () => {
+  const { formatarPercentual } = await import("../../renderer/js/formato.js");
+  assert.equal(formatarPercentual(3800000, 4271300), "89,0%");
+  assert.equal(formatarPercentual(471300, 4271300), "11,0%");
+  assert.equal(formatarPercentual(1, 3), "33,3%");
+  assert.equal(formatarPercentual(1, 1), "100,0%");
+  assert.equal(formatarPercentual(5, 1000), "0,5%");
+  assert.equal(formatarPercentual(0, 0), "0,0%");
+});

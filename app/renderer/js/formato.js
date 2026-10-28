@@ -27,3 +27,9 @@ export function formatarData(iso) {
   const [a, m, d] = iso.split("-");
   return `${d}/${m}/${a}`;
 }
+
+// Percentual de parte sobre total com uma casa e vírgula, em aritmética inteira ("89,0%").
+export function formatarPercentual(parte, total) {
+  const decimos = total > 0 ? Math.round((parte * 1000) / total) : 0;
+  return `${Math.trunc(decimos / 10)},${decimos % 10}%`;
+}
