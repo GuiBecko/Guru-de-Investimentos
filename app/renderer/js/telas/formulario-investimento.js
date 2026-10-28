@@ -103,6 +103,7 @@ function montar(raiz, catalogo, vigente, { id, inicial }) {
     { codigo: OUTRA, rotulo: "Outra…" },
   ]);
   const instituicaoOutra = entrada("f-instituicao-outra", "text");
+  instituicaoOutra.setAttribute("aria-label", "Nome da instituição");
   const indexador = el("select");
   indexador.id = "f-indexador";
   const taxa = entrada("f-taxa", "number", { step: "0.0001", min: "0", className: "num" });
@@ -196,8 +197,13 @@ function montar(raiz, catalogo, vigente, { id, inicial }) {
     sel.value = lista.some((o) => o.codigo === atual) ? atual : lista[0].codigo;
   }
 
+  let anterior = null;
   function aoTrocarTipo() {
     const t = tipoAtual();
+    // Saindo de um valor forçado, volta ao padrão em vez de deixá-lo selecionado.
+    if (anterior?.indexadorForcado && !t.indexadorForcado) indexador.value = "pos";
+    if (anterior?.liquidezForcada && !t.liquidezForcada) liquidez.value = "vencimento";
+    anterior = t;
     // "Selic + taxa" só existe forçado no Tesouro Selic.
     const lista = t.indexadorForcado ? catalogo.indexadores : catalogo.indexadores.filter((o) => o.codigo !== "selic");
     ajustarOpcoes(indexador, lista, t.indexadorForcado ?? indexador.value);

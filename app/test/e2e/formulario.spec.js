@@ -251,3 +251,22 @@ test("os dados continuam depois de reabrir o app", async () => {
     await app.close();
   }
 });
+
+test("sair do Tesouro volta indexador e liquidez ao padrão e os libera", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await abrirNovo(page);
+    await page.getByLabel("Tipo").selectOption("td-ipca");
+    await page.getByLabel("Tipo").selectOption("rf-cdb");
+    const idx = page.getByLabel("Indexador");
+    const liq = page.getByLabel("Liquidez");
+    await expect(idx).toBeEnabled();
+    await expect(liq).toBeEnabled();
+    await expect(idx.locator("option:checked")).toHaveText("Pós-fixado");
+    await expect(liq.locator("option:checked")).toHaveText("No vencimento");
+    await expect(page.getByLabel("Nome da instituição")).toBeHidden();
+  } finally {
+    await app.close();
+  }
+});
