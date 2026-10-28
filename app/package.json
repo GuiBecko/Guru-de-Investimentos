@@ -6,7 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/unit/",
+    "test": "node --test \"test/unit/**/*.test.*js\"",
     "e2e": "playwright test"
   },
   "dependencies": {
