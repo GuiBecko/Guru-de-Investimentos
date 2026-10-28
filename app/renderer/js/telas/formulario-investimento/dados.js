@@ -1,6 +1,7 @@
 // Funções puras do formulário: texto da taxa ("Lê-se") e montagem do que vai ao núcleo.
-import { paraCentavos } from "../../formato.js";
+import { paraCentavos, paraTaxa } from "../../formato.js";
 
+export const MENSAGEM_TAXA = "Informe uma taxa válida.";
 export const MENSAGEM_VALOR = "Informe um valor em reais, por exemplo 1.234,56.";
 
 // "102.50" -> "102,5"; texto que não é decimal com ponto -> null.
@@ -26,7 +27,7 @@ export function legendaRendimento(indexador, taxa, rotuloBenchmark) {
 const vazio = (s) => s === undefined || s === null || String(s).trim() === "";
 
 // `tipo` vem do catálogo; `v` são os textos dos campos. Só entram os campos da forma do tipo.
-// Devolve { dados, erros } — `erros` só cobre o formato do valor em reais e da quantidade.
+// Devolve { dados, erros } — `erros` só cobre o formato do valor em reais, da taxa e da quantidade.
 export function montarDados(tipo, v) {
   const dados = { tipo: tipo.codigo, instituicao: v.instituicao };
   const erros = [];
@@ -63,7 +64,11 @@ export function montarDados(tipo, v) {
 
   if (tipo.forma === "renda_fixa") {
     dados.indexador = tipo.indexadorForcado ?? v.indexador;
-    texto("taxa", v.taxa);
+    if (!vazio(v.taxa)) {
+      const t = paraTaxa(v.taxa);
+      if (t === null) erros.push({ campo: "taxa", mensagem: MENSAGEM_TAXA });
+      else dados.taxa = t;
+    }
     if (dados.indexador === "pos") texto("benchmark", v.benchmark);
     dados.ir = tipo.irEditavel ? v.ir : (tipo.irPadrao ?? v.ir);
   }

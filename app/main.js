@@ -129,6 +129,8 @@ if (!app.requestSingleInstanceLock()) {
     if (janela.isMinimized()) janela.restore();
     janela.focus();
   });
+  // Idioma fixo: campos de data e números se comportam igual em qualquer máquina.
+  app.commandLine.appendSwitch("lang", "pt-BR");
   app.whenReady().then(criarJanela);
   app.on("window-all-closed", () => app.quit());
 }

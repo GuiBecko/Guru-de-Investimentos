@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatarReais, paraCentavos, formatarData } from "../../renderer/js/formato.js";
+import { formatarReais, paraCentavos, paraTaxa, formatarData } from "../../renderer/js/formato.js";
 
 test("formatarReais", () => {
   assert.equal(formatarReais(2000000), "R$ 20.000,00");
@@ -47,4 +47,19 @@ test("formatarPercentual usa uma casa e vírgula, sem erro de ponto flutuante", 
   assert.equal(formatarPercentual(1, 1), "100,0%");
   assert.equal(formatarPercentual(5, 1000), "0,5%");
   assert.equal(formatarPercentual(0, 0), "0,0%");
+});
+
+test("paraTaxa aceita vírgula ou ponto e devolve texto com ponto", () => {
+  assert.equal(paraTaxa("102"), "102");
+  assert.equal(paraTaxa("102,5"), "102.5");
+  assert.equal(paraTaxa("102.5"), "102.5");
+  assert.equal(paraTaxa("0,0905"), "0.0905");
+  assert.equal(paraTaxa("0.0905"), "0.0905");
+  assert.equal(paraTaxa("  12,5  "), "12.5");
+});
+
+test("paraTaxa recusa o que é ambíguo ou não é número", () => {
+  for (const t of [",5", "5,", ".5", "5.", "1.000,5", "1,2,3", "1.2.3", "-5", "+5", "1e3", "abc", "5%", "1 2", "", "  ", undefined]) {
+    assert.equal(paraTaxa(t), null, JSON.stringify(t));
+  }
 });

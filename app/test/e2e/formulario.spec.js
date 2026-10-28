@@ -164,13 +164,28 @@ test("taxa com casas decimais volta igual", async () => {
     const page = await app.firstWindow();
     await abrirNovo(page);
     await page.getByLabel("Tipo").selectOption("td-selic");
-    await page.getByLabel("Taxa acima da Selic").pressSequentially("0,0905");
+    await page.getByLabel("Taxa acima da Selic").fill("0,0905");
     await expect(page.locator("#f-taxa-dica")).toHaveText("Lê-se: Selic + 0,0905% ao ano");
     await page.getByLabel("Data da aplicação").fill("2025-03-15");
     await page.getByLabel("Vencimento").fill("2029-03-01");
     await page.getByLabel("Valor aplicado").fill("1000");
     await salvar(page);
     await expect(page.locator("main tbody tr").first()).toContainText("Selic + 0,0905% ao ano");
+  } finally {
+    await app.close();
+  }
+});
+
+test("taxa com ponto decimal é aceita e inválida não envia", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await abrirNovo(page);
+    await page.getByLabel("Rendimento", { exact: true }).fill("102.5");
+    await expect(page.locator("#f-taxa-dica")).toHaveText("Lê-se: 102,5% do CDI");
+    await page.getByLabel("Rendimento", { exact: true }).fill("1.000,5");
+    await salvar(page);
+    await expect(page.locator("#e-taxa")).toHaveText("Informe uma taxa válida.");
   } finally {
     await app.close();
   }

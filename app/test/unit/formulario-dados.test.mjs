@@ -89,3 +89,11 @@ test("campos vazios são omitidos para o núcleo reclamar", () => {
   assert.deepEqual(erros, []);
   for (const c of ["emissor", "valorAplicadoCentavos", "taxa"]) assert.equal(c in dados, false);
 });
+
+test("taxa com vírgula vai ao núcleo com ponto; taxa inválida vira erro do campo", () => {
+  const ok = montarDados(CDB, { ...base, taxa: "0,0905" });
+  assert.equal(ok.dados.taxa, "0.0905");
+  const ruim = montarDados(CDB, { ...base, taxa: "1.000,5" });
+  assert.equal("taxa" in ruim.dados, false);
+  assert.deepEqual(ruim.erros, [{ campo: "taxa", mensagem: "Informe uma taxa válida." }]);
+});

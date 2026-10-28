@@ -57,6 +57,8 @@ test("carteira vazia mostra o texto e o link para lançar", async () => {
   const app = await lancar();
   try {
     const page = await app.firstWindow();
+    // Sinal de app pronto (o mesmo das outras specs): se a partida for lenta, a falha diz onde parou.
+    await expect(page.getByTestId("core-version")).not.toBeEmpty({ timeout: 20000 });
     await page.getByRole("link", { name: "Carteira", exact: true }).click();
     const main = page.locator("main");
     await expect(main.getByRole("heading", { name: "Carteira" })).toBeVisible();

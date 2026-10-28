@@ -1,6 +1,6 @@
 // Formulário de novo e de editar investimento: os campos mudam conforme o tipo escolhido.
 import { api } from "../api.js";
-import { formatarData, formatarReais, paraCentavos } from "../formato.js";
+import { formatarData, formatarReais, paraCentavos, paraTaxa } from "../formato.js";
 import { legendaRendimento, montarDados } from "./formulario-investimento/dados.js";
 
 const OUTRA = "__outra";
@@ -105,7 +105,8 @@ function montar(raiz, catalogo, vigente, { id, inicial }) {
   instituicaoOutra.setAttribute("aria-label", "Nome da instituição");
   const indexador = el("select");
   indexador.id = "f-indexador";
-  const taxa = entrada("f-taxa", "number", { step: "0.0001", min: "0", className: "num" });
+  const taxa = entrada("f-taxa", "text", { className: "num" });
+  taxa.inputMode = "decimal";
   const sufixo = el("span");
   const benchmark = select("f-benchmark", catalogo.benchmarks);
   benchmark.setAttribute("aria-label", "Benchmark");
@@ -232,7 +233,7 @@ function montar(raiz, catalogo, vigente, { id, inicial }) {
     const [rot, suf] = ROTULO_TAXA[indexador.value] ?? ROTULO_TAXA.pos;
     campos.taxa.label.textContent = rot;
     sufixo.textContent = suf;
-    const legenda = legendaRendimento(indexador.value, taxa.value, rotulo(catalogo.benchmarks, benchmark.value));
+    const legenda = legendaRendimento(indexador.value, paraTaxa(taxa.value) ?? "", rotulo(catalogo.benchmarks, benchmark.value));
     dicaTaxa.textContent = legenda ? `Lê-se: ${legenda}` : "";
     resumo.textContent = textoResumo(c, legenda);
   }
@@ -353,7 +354,7 @@ function montar(raiz, catalogo, vigente, { id, inicial }) {
   if (d.indexador && !indexador.disabled) indexador.value = d.indexador;
   poe(emissor, d.emissor);
   poe(ticker, d.ticker);
-  poe(taxa, d.taxa);
+  poe(taxa, d.taxa === undefined || d.taxa === null ? d.taxa : String(d.taxa).replace(".", ","));
   poe(benchmark, d.benchmark);
   poe(data, d.dataAplicacao);
   poe(vencimento, d.vencimento);

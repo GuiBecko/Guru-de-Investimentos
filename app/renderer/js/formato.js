@@ -22,6 +22,16 @@ export function paraCentavos(texto) {
   return Number(centavos);
 }
 
+const TAXA = /^\d+([.,]\d+)?$/;
+
+// Taxa digitada (vírgula ou ponto como decimal) -> texto com ponto decimal para o núcleo,
+// sem passar por ponto flutuante. null se vazio ou fora do formato (milhar, sinal, letras).
+export function paraTaxa(texto) {
+  const t = String(texto ?? "").trim();
+  if (!TAXA.test(t)) return null;
+  return t.replace(",", ".");
+}
+
 export function formatarData(iso) {
   if (!iso) return "—";
   const [a, m, d] = iso.split("-");
