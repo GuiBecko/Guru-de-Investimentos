@@ -2,7 +2,7 @@
 
 Um app para computador que conhece a sua carteira, o seu perfil de investidor e o seu objetivo, e usa a IA que você escolher para responder a pergunta de todo mês: **onde coloco o próximo dinheiro?**
 
-> **Status:** em planejamento. O escopo do MVP e o protótipo das telas estão em [`docs/`](docs/).
+> **Status:** fase 0 (fundação) em desenvolvimento. A ordem das fases está em [`docs/roadmap.md`](docs/roadmap.md); o escopo do MVP e o protótipo das telas estão em [`docs/`](docs/).
 
 ## Ideia
 
@@ -47,6 +47,8 @@ cargo test --workspace                                         # núcleo em Rust
 ```
 
 No Linux sem tela, rode o E2E com `xvfb-run -a npx playwright test`.
+
+No Ubuntu 24.04, se o Electron falhar com erro de sandbox, libere os namespaces de usuário: `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`.
 
 ## Licença
 
