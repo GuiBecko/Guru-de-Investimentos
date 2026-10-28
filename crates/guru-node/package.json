@@ -1,0 +1,18 @@
+{
+  "name": "@guru/core-node",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": ["index.js", "index.d.ts", "*.node"],
+  "napi": {
+    "binaryName": "guru-core-node"
+  },
+  "scripts": {
+    "build": "napi build --platform --release --js index.js --dts index.d.ts",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.10.9"
+  }
+}
