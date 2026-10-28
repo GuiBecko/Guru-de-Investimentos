@@ -370,34 +370,93 @@ impl Db {
         for i in &lista {
             match classes.iter_mut().find(|c| c.classe == i.classe) {
                 Some(c) => {
-                    c.total_aplicado_centavos += i.valor_aplicado_centavos;
+                    c.total_aplicado_centavos = soma(c.total_aplicado_centavos, i)?;
                     c.quantidade += 1;
                 }
                 None => classes.push(ResumoClasse {
                     classe: i.classe,
-                    total_aplicado_centavos: i.valor_aplicado_centavos,
+                    total_aplicado_centavos: soma(0, i)?,
                     quantidade: 1,
                 }),
             }
         }
         classes.sort_by_key(|c| ordem_classe(c.classe));
+        let total = classes.iter().try_fold(0_i64, |acc, c| {
+            acc.checked_add(c.total_aplicado_centavos)
+                .ok_or_else(estouro)
+        })?;
         Ok(Resumo {
-            total_aplicado_centavos: classes.iter().map(|c| c.total_aplicado_centavos).sum(),
+            total_aplicado_centavos: total,
             classes,
         })
     }
 }
 
+fn estouro() -> CoreError {
+    CoreError::DbInvalid("a soma dos valores aplicados excede o limite suportado".to_string())
+}
+
+fn soma(total: i64, i: &Investimento) -> Result<i64, CoreError> {
+    total
+        .checked_add(i.valor_aplicado_centavos)
+        .ok_or_else(estouro)
+}
+
 fn ordem_classe(classe: Classe) -> usize {
-    const ORDEM: [Classe; 5] = [
-        Classe::Rf,
-        Classe::Acoes,
-        Classe::Fii,
-        Classe::Ext,
-        Classe::Outros,
-    ];
-    ORDEM
+    Classe::TODOS
         .iter()
         .position(|c| *c == classe)
-        .unwrap_or(ORDEM.len())
+        .unwrap_or(Classe::TODOS.len())
+}
+
+#[cfg(test)]
+mod testes {
+    use super::*;
+
+    fn inserir(db: &Db, tipo: &str, valor: i64) {
+        db.conn
+            .execute(
+                "INSERT INTO investimentos (tipo, instituicao, emissor, data_aplicacao, \
+                 valor_aplicado_centavos, liquidez, criado_em, atualizado_em) \
+                 VALUES (?1, 'X', 'Y', '2025-01-01', ?2, 'diaria', 'a', 'a')",
+                rusqlite::params![tipo, valor],
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn valor_aplicado_nulo_ou_zero_e_recusado_pelo_banco() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path()).unwrap();
+        for valor in ["NULL", "0"] {
+            let r = db.conn.execute(
+                &format!(
+                    "INSERT INTO investimentos (tipo, instituicao, data_aplicacao, \
+                     valor_aplicado_centavos, criado_em, atualizado_em) \
+                     VALUES ('fundo', 'X', '2025-01-01', {valor}, 'a', 'a')"
+                ),
+                [],
+            );
+            assert!(r.is_err(), "valor {valor} deveria ser recusado");
+        }
+    }
+
+    #[test]
+    fn resumo_com_estouro_da_soma_da_erro_claro() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path()).unwrap();
+        inserir(&db, "fundo", i64::MAX);
+        inserir(&db, "prev", i64::MAX);
+        let e = db.resumo_carteira().unwrap_err();
+        assert!(matches!(&e, CoreError::DbInvalid(m) if m.contains("excede")));
+    }
+
+    #[test]
+    fn resumo_com_estouro_entre_classes_da_erro_claro() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path()).unwrap();
+        inserir(&db, "fundo", i64::MAX);
+        inserir(&db, "rv-acao", 1);
+        assert!(matches!(db.resumo_carteira(), Err(CoreError::DbInvalid(_))));
+    }
 }

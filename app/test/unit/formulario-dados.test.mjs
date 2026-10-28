@@ -6,10 +6,10 @@ import {
   montarDados,
 } from "../../renderer/js/telas/formulario-investimento/dados.js";
 
-const CDB = { codigo: "rf-cdb", forma: "renda_fixa", irPadrao: "regressiva", irEditavel: false };
-const TESOURO = { codigo: "td-ipca", forma: "renda_fixa", indexadorForcado: "ipca", liquidezForcada: "d1", irPadrao: "regressiva", irEditavel: false };
+const CDB = { codigo: "rf-cdb", forma: "renda_fixa", exigeEmissor: true, irPadrao: "regressiva", irEditavel: false };
+const TESOURO = { codigo: "td-ipca", forma: "renda_fixa", exigeEmissor: false, indexadorForcado: "ipca", liquidezForcada: "d1", irPadrao: "regressiva", irEditavel: false };
 const ACAO = { codigo: "rv-acao", forma: "renda_variavel" };
-const FUNDO = { codigo: "fundo", forma: "valor" };
+const FUNDO = { codigo: "fundo", forma: "valor", exigeEmissor: true };
 
 test("formatarTaxa usa vírgula e tira zeros à direita", () => {
   assert.equal(formatarTaxa("102"), "102");
@@ -48,6 +48,11 @@ test("benchmark só vai com pós-fixado e carência só com liquidez carência",
   const { dados } = montarDados(CDB, { ...base, indexador: "pre", liquidez: "carencia" });
   assert.equal("benchmark" in dados, false);
   assert.equal(dados.dataCarencia, "2026-01-01");
+});
+
+test("o emissor segue exigeEmissor do catálogo, não a garantia nem o indexador", () => {
+  assert.equal("emissor" in montarDados({ ...CDB, exigeEmissor: false }, base).dados, false);
+  assert.equal("emissor" in montarDados({ ...TESOURO, exigeEmissor: true }, base).dados, true);
 });
 
 test("Tesouro manda os valores forçados e nenhum emissor", () => {

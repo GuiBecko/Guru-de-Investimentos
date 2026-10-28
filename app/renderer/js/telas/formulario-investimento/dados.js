@@ -54,7 +54,7 @@ export function montarDados(tipo, v) {
     return { dados, erros };
   }
 
-  if (!(tipo.forma === "renda_fixa" && tipo.indexadorForcado)) texto("emissor", v.emissor);
+  if (tipo.exigeEmissor) texto("emissor", v.emissor);
   texto("vencimento", v.vencimento);
   reais("valorAplicadoCentavos", v.valor);
   dados.liquidez = tipo.liquidezForcada ?? v.liquidez;

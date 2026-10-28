@@ -85,7 +85,6 @@ function montar(raiz, catalogo, vigente, { id, inicial }) {
 
   const rf = (c) => c.tipo.forma === "renda_fixa";
   const rv = (c) => c.tipo.forma === "renda_variavel";
-  const tesouro = (c) => rf(c) && !!c.tipo.indexadorForcado;
 
   // --- controles ---
   const tipo = el("select");
@@ -148,7 +147,7 @@ function montar(raiz, catalogo, vigente, { id, inicial }) {
   };
 
   registrar("tipo", "Tipo", tipo);
-  registrar("emissor", "Emissor", emissor, { classe: "span2", quando: (c) => !rv(c) && !tesouro(c) });
+  registrar("emissor", "Emissor", emissor, { classe: "span2", quando: (c) => c.tipo.exigeEmissor });
   registrar("ticker", "Ticker", ticker, { classe: "span2", quando: rv });
   registrar("instituicao", "Corretora ou banco", instituicao, { extra: [instituicaoOutra] });
   registrar("indexador", "Indexador", indexador, { quando: rf });
@@ -202,14 +201,14 @@ function montar(raiz, catalogo, vigente, { id, inicial }) {
     const t = tipoAtual();
     // Saindo de um valor forçado, volta ao padrão em vez de deixá-lo selecionado.
     if (anterior?.indexadorForcado && !t.indexadorForcado) indexador.value = "pos";
-    if (anterior?.liquidezForcada && !t.liquidezForcada) liquidez.value = "vencimento";
+    // Ao mudar para um tipo com outra liquidez padrão, ela vem do catálogo.
+    if (t.liquidezPadrao && anterior?.liquidezPadrao !== t.liquidezPadrao) liquidez.value = t.liquidezPadrao;
     anterior = t;
     // "Selic + taxa" só existe forçado no Tesouro Selic.
     const lista = t.indexadorForcado ? catalogo.indexadores : catalogo.indexadores.filter((o) => o.codigo !== "selic");
     ajustarOpcoes(indexador, lista, t.indexadorForcado ?? indexador.value);
     indexador.disabled = !!t.indexadorForcado;
     if (t.liquidezForcada) liquidez.value = t.liquidezForcada;
-    else if (!liquidez.value) liquidez.value = "vencimento";
     liquidez.disabled = !!t.liquidezForcada;
     if (t.irPadrao) ir.value = t.irPadrao;
     ir.disabled = t.forma === "renda_fixa" && !t.irEditavel;
@@ -240,7 +239,7 @@ function montar(raiz, catalogo, vigente, { id, inicial }) {
 
   function textoResumo(c, legenda) {
     const t = c.tipo;
-    const nome = t.forma === "renda_variavel" ? ticker.value.trim().toUpperCase() : tesouro(c) ? "" : emissor.value.trim();
+    const nome = t.forma === "renda_variavel" ? ticker.value.trim().toUpperCase() : c.tipo.exigeEmissor ? emissor.value.trim() : "";
     const partes = [[t.rotulo, nome].filter(Boolean).join(" ")];
     if (rf(c) && legenda) partes.push(legenda);
     if (!rv(c)) partes.push(vencimento.value ? `vence em ${formatarData(vencimento.value)}` : "sem vencimento");
@@ -311,7 +310,8 @@ function montar(raiz, catalogo, vigente, { id, inicial }) {
         montar(raiz, catalogo, vigente, {
           inicial: { dados: { tipo: dados.tipo, instituicao: dados.instituicao }, aviso: "Investimento salvo." },
         });
-        raiz.querySelector("#f-emissor:not([hidden]), #f-ticker:not([hidden])")?.focus();
+        // O que some é o contêiner do campo (`.field`), não o input.
+        raiz.querySelector(".field:not([hidden]) > #f-emissor, .field:not([hidden]) > #f-ticker")?.focus();
       } else {
         window.location.hash = "#/investimentos";
       }
@@ -346,7 +346,6 @@ function montar(raiz, catalogo, vigente, { id, inicial }) {
   const conhecida = catalogo.instituicoes.includes(d.instituicao);
   instituicao.value = d.instituicao === undefined || conhecida ? (d.instituicao ?? catalogo.instituicoes[0]) : OUTRA;
   if (!conhecida && d.instituicao !== undefined) instituicaoOutra.value = d.instituicao;
-  liquidez.value = "vencimento";
   aoTrocarTipo();
   const poe = (controle, v) => {
     if (v !== undefined && v !== null) controle.value = v;

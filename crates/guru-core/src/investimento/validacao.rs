@@ -30,10 +30,17 @@ fn data(valor: &Option<String>) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(&t, "%Y-%m-%d").ok()
 }
 
+/// Maior valor em centavos aceito (2^53 − 1): o limite em que o JS ainda é exato.
+pub const MAX_CENTAVOS: i64 = 9_007_199_254_740_991;
+
+/// `^[A-Z][A-Z0-9]{3}[0-9]{1,2}$`: cobre `ITUB4`, `B3SA3` e BDRs como `M1TA34`.
 fn ticker_valido(t: &str) -> bool {
     let b = t.as_bytes();
     (5..=6).contains(&b.len())
-        && b[..4].iter().all(u8::is_ascii_uppercase)
+        && b[0].is_ascii_uppercase()
+        && b[1..4]
+            .iter()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
         && b[4..].iter().all(u8::is_ascii_digit)
 }
 
@@ -80,12 +87,7 @@ fn validar_emissor(
     info: &TipoInfo,
     erros: &mut Vec<ErroCampo>,
 ) -> Option<String> {
-    let exige = match info.forma {
-        Forma::RendaFixa => !info.e_tesouro(),
-        Forma::Valor => true,
-        Forma::RendaVariavel => false,
-    };
-    if !exige {
+    if !info.exige_emissor {
         return None;
     }
     let emissor = texto(&novo.emissor);
@@ -235,12 +237,13 @@ fn validar_carencia(
 
 fn positivo(
     valor: Option<i64>,
+    maximo: i64,
     campo: &str,
     mensagem: &str,
     erros: &mut Vec<ErroCampo>,
 ) -> Option<i64> {
     match valor {
-        Some(v) if v > 0 => Some(v),
+        Some(v) if v > 0 && v <= maximo => Some(v),
         _ => {
             erro(erros, campo, mensagem);
             None
@@ -287,18 +290,20 @@ pub fn validar(
         ticker = t;
         quantidade = positivo(
             novo.quantidade,
+            i64::MAX,
             "quantidade",
             "Informe a quantidade.",
             &mut erros,
         );
         preco_medio = positivo(
             novo.preco_medio_centavos,
+            MAX_CENTAVOS,
             "precoMedioCentavos",
             "Informe o preço médio.",
             &mut erros,
         );
         if let (Some(q), Some(p)) = (quantidade, preco_medio)
-            && q.checked_mul(p).is_none()
+            && q.checked_mul(p).is_none_or(|t| t > MAX_CENTAVOS)
         {
             erro(&mut erros, "precoMedioCentavos", "Informe o preço médio.");
             preco_medio = None;
@@ -306,6 +311,7 @@ pub fn validar(
     } else {
         valor_aplicado = positivo(
             novo.valor_aplicado_centavos,
+            MAX_CENTAVOS,
             "valorAplicadoCentavos",
             "Informe o valor aplicado.",
             &mut erros,
@@ -544,6 +550,15 @@ mod testes {
             validar(&n, hoje()).unwrap().ticker.as_deref(),
             Some("ITUB4")
         );
+        n.ticker = s("b3sa3");
+        assert_eq!(
+            validar(&n, hoje()).unwrap().ticker.as_deref(),
+            Some("B3SA3")
+        );
+        n.ticker = s("M1TA34");
+        assert!(validar(&n, hoje()).is_ok());
+        n.ticker = s("1TUB4");
+        assert_eq!(campos(validar(&n, hoje())), vec!["ticker"]);
         n.ticker = s("PETR");
         assert_eq!(
             mensagem(validar(&n, hoje()), "ticker"),
@@ -580,6 +595,30 @@ mod testes {
         n.quantidade = Some(i64::MAX);
         n.preco_medio_centavos = Some(2);
         assert_eq!(campos(validar(&n, hoje())), vec!["precoMedioCentavos"]);
+    }
+
+    #[test]
+    fn valores_acima_do_teto_de_centavos_recusados() {
+        let mut n = cdb();
+        n.valor_aplicado_centavos = Some(MAX_CENTAVOS);
+        assert!(validar(&n, hoje()).is_ok());
+        n.valor_aplicado_centavos = Some(MAX_CENTAVOS + 1);
+        assert_eq!(
+            mensagem(validar(&n, hoje()), "valorAplicadoCentavos"),
+            "Informe o valor aplicado."
+        );
+        let mut a = acao();
+        a.quantidade = Some(1);
+        a.preco_medio_centavos = Some(MAX_CENTAVOS);
+        assert!(validar(&a, hoje()).is_ok());
+        a.quantidade = Some(2);
+        assert_eq!(
+            mensagem(validar(&a, hoje()), "precoMedioCentavos"),
+            "Informe o preço médio."
+        );
+        a.quantidade = Some(1);
+        a.preco_medio_centavos = Some(MAX_CENTAVOS + 1);
+        assert_eq!(campos(validar(&a, hoje())), vec!["precoMedioCentavos"]);
     }
 
     #[test]

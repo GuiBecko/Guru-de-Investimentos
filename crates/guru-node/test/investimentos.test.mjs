@@ -40,6 +40,12 @@ test("catálogo tem 17 tipos e a LCI isenta com FGC", () => {
   const td = c.tipos.find((t) => t.codigo === "td-selic");
   assert.equal(td.indexadorForcado, "selic");
   assert.equal(td.liquidezForcada, "d1");
+  assert.equal(td.exigeEmissor, false);
+  assert.equal(td.liquidezPadrao, "d1");
+  const cripto = c.tipos.find((t) => t.codigo === "cripto");
+  assert.equal(cripto.exigeEmissor, true);
+  assert.equal(cripto.liquidezPadrao, "diaria");
+  assert.equal(c.tipos.find((t) => t.codigo === "rv-acao").liquidezPadrao, undefined);
 });
 
 test("cria um CDB e lê de volta com rótulos", () => {

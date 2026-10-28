@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { origemPermitida } = require("./main/origem.js");
+const { normalizarErro } = require("./main/erro.js");
 
 // Variáveis de teste (GURU_*) só valem fora do app empacotado.
 if (process.env.GURU_DATA_DIR && !app.isPackaged) {
@@ -24,7 +25,9 @@ function tratar(handler) {
     try {
       return { ok: true, value: await handler(...args) };
     } catch (e) {
-      return { ok: false, code: e.code || "ERRO_DESCONHECIDO", message: e.message };
+      const { code, message, original } = normalizarErro(e);
+      if (original) console.error("Erro inesperado no processo principal:", e);
+      return { ok: false, code, message };
     }
   };
 }

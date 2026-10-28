@@ -66,7 +66,7 @@ Cada erro é `{ campo, mensagem }`, com `campo` no nome camelCase do campo de en
 | `tipo` | código do catálogo | Escolha um tipo da lista. |
 | `instituicao` | 1 a 60 caracteres após `trim` | Informe a corretora ou o banco. |
 | `emissor` | obrigatório em `renda_fixa` (menos Tesouro) e `valor`; 1 a 80 caracteres | Informe o emissor. (em `valor`: Informe o nome.) |
-| `ticker` | obrigatório em `renda_variavel`; após `trim` e maiúsculas, casa `^[A-Z]{4}[0-9]{1,2}$` | Use o código da B3, por exemplo ITUB4. |
+| `ticker` | obrigatório em `renda_variavel`; após `trim` e maiúsculas, casa `^[A-Z][A-Z0-9]{3}[0-9]{1,2}$` | Use o código da B3, por exemplo ITUB4. |
 | `indexador` | obrigatório em renda fixa; `pos`, `pre` ou `ipca`, ou o forçado do tipo | Escolha o indexador. |
 | `taxa` | obrigatória em renda fixa; decimal; `pos`: > 0 e ≤ 300; `pre`, `ipca`: > 0 e ≤ 100; `selic`: ≥ 0 e ≤ 10 | Informe uma taxa válida. |
 | `benchmark` | obrigatório se e só se `indexador = pos` | Escolha CDI ou Selic. |

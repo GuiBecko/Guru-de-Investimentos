@@ -270,3 +270,40 @@ test("sair do Tesouro volta indexador e liquidez ao padrão e os libera", async 
     await app.close();
   }
 });
+
+test("Criptoativo deixa a liquidez em Diária e salva sem vencimento", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await abrirNovo(page);
+    await page.getByLabel("Tipo").selectOption("cripto");
+    await expect(page.getByLabel("Liquidez").locator("option:checked")).toHaveText("Diária");
+    await page.getByLabel("Nome", { exact: true }).fill("Bitcoin");
+    await page.getByLabel("Data da aplicação").fill("2025-03-15");
+    await page.getByLabel("Valor aplicado").fill("1.000,00");
+    await salvar(page);
+    const linha = page.locator("main tbody tr").first();
+    await expect(linha).toContainText("Bitcoin");
+    await expect(linha).toContainText("R$ 1.000,00");
+  } finally {
+    await app.close();
+  }
+});
+
+test("salvar e adicionar outro com Ação deixa o foco no ticker", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await abrirNovo(page);
+    await page.getByLabel("Tipo").selectOption("rv-acao");
+    await page.getByLabel("Ticker").fill("B3SA3");
+    await page.getByLabel("Quantidade").fill("10");
+    await page.getByLabel("Preço médio").fill("12,50");
+    await page.getByLabel("Data da primeira compra").fill("2025-03-15");
+    await page.getByRole("button", { name: "Salvar e adicionar outro" }).click();
+    await expect(page.getByText("Investimento salvo.")).toBeVisible();
+    await expect(page.getByLabel("Ticker")).toBeFocused();
+  } finally {
+    await app.close();
+  }
+});

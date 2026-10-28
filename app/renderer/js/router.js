@@ -44,13 +44,17 @@ export function iniciar(raiz) {
     for (const a of menu.querySelectorAll("a")) {
       a.classList.toggle("on", a.getAttribute("href") === `#/${tela.id}`);
     }
-    try {
-      MODULOS[tela.id].render(conteudo, parametros, vigente);
-    } catch (e) {
+    const falhou = (e) => {
       console.error(`Falha ao abrir a tela ${tela.id}:`, e);
+      if (!vigente()) return;
       const p = document.createElement("p");
       p.textContent = "Não foi possível abrir esta tela.";
       conteudo.replaceChildren(p);
+    };
+    try {
+      Promise.resolve(MODULOS[tela.id].render(conteudo, parametros, vigente)).catch(falhou);
+    } catch (e) {
+      falhou(e);
     }
   }
 

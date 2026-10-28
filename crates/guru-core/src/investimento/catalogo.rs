@@ -8,6 +8,9 @@ macro_rules! enum_catalogo {
         }
 
         impl $nome {
+            /// Todos os valores, na ordem de declaração.
+            pub const TODOS: &'static [Self] = &[$(Self::$var),+];
+
             pub fn codigo(&self) -> &'static str {
                 match self {
                     $(Self::$var => $codigo),+
@@ -87,6 +90,8 @@ pub struct TipoInfo {
     pub ir_padrao: Option<Ir>,
     pub ir_editavel: bool,
     pub garantia: Option<Garantia>,
+    pub exige_emissor: bool,
+    pub liquidez_padrao: Option<Liquidez>,
 }
 
 impl TipoInfo {
@@ -114,6 +119,8 @@ const fn renda_fixa(
         ir_padrao: Some(ir),
         ir_editavel,
         garantia: Some(garantia),
+        exige_emissor: true,
+        liquidez_padrao: Some(Liquidez::Vencimento),
     }
 }
 
@@ -121,6 +128,8 @@ const fn tesouro(codigo: &'static str, rotulo: &'static str, indexador: Indexado
     TipoInfo {
         indexador_forcado: Some(indexador),
         liquidez_forcada: Some(Liquidez::D1),
+        exige_emissor: false,
+        liquidez_padrao: Some(Liquidez::D1),
         ..renda_fixa(codigo, rotulo, Ir::Regressiva, false, Garantia::Tesouro)
     }
 }
@@ -137,14 +146,18 @@ const fn renda_variavel(codigo: &'static str, rotulo: &'static str, classe: Clas
         ir_padrao: None,
         ir_editavel: false,
         garantia: None,
+        exige_emissor: false,
+        liquidez_padrao: None,
     }
 }
 
-const fn outro(codigo: &'static str, rotulo: &'static str) -> TipoInfo {
+const fn outro(codigo: &'static str, rotulo: &'static str, liquidez: Liquidez) -> TipoInfo {
     TipoInfo {
         grupo: "Outros",
         classe: Classe::Outros,
         forma: Forma::Valor,
+        exige_emissor: true,
+        liquidez_padrao: Some(liquidez),
         ..renda_variavel(codigo, rotulo, Classe::Outros)
     }
 }
@@ -170,9 +183,9 @@ static TIPOS: [TipoInfo; 17] = [
     renda_variavel("rv-fii", "Fundo imobiliário (FII)", Classe::Fii),
     renda_variavel("rv-etf", "ETF", Classe::Acoes),
     renda_variavel("rv-bdr", "BDR", Classe::Ext),
-    outro("fundo", "Fundo de investimento"),
-    outro("prev", "Previdência (PGBL/VGBL)"),
-    outro("cripto", "Criptoativo"),
+    outro("fundo", "Fundo de investimento", Liquidez::D30),
+    outro("prev", "Previdência (PGBL/VGBL)", Liquidez::D30),
+    outro("cripto", "Criptoativo", Liquidez::Diaria),
 ];
 
 pub const INSTITUICOES: &[&str] = &[
@@ -228,6 +241,28 @@ mod testes {
         let t = tipo("td-selic").unwrap();
         assert_eq!(t.indexador_forcado, Some(Indexador::Selic));
         assert_eq!(t.liquidez_forcada, Some(Liquidez::D1));
+    }
+
+    #[test]
+    fn exige_emissor_e_liquidez_padrao_vem_do_catalogo() {
+        let exige = |c: &str| tipo(c).unwrap().exige_emissor;
+        let padrao = |c: &str| tipo(c).unwrap().liquidez_padrao;
+        assert!(exige("rf-cdb") && exige("rf-deb") && exige("fundo") && exige("cripto"));
+        assert!(!exige("td-selic") && !exige("rv-acao") && !exige("rv-fii"));
+        assert_eq!(padrao("rf-cdb"), Some(Liquidez::Vencimento));
+        assert_eq!(padrao("td-ipca"), Some(Liquidez::D1));
+        assert_eq!(padrao("fundo"), Some(Liquidez::D30));
+        assert_eq!(padrao("prev"), Some(Liquidez::D30));
+        assert_eq!(padrao("cripto"), Some(Liquidez::Diaria));
+        assert_eq!(padrao("rv-etf"), None);
+    }
+
+    #[test]
+    fn todos_na_ordem_de_declaracao() {
+        assert_eq!(Classe::TODOS.len(), 5);
+        assert_eq!(Classe::TODOS[0], Classe::Rf);
+        assert_eq!(Classe::TODOS[4], Classe::Outros);
+        assert_eq!(Liquidez::TODOS.last(), Some(&Liquidez::Carencia));
     }
 
     #[test]

@@ -24,6 +24,8 @@ pub struct TipoCatalogo {
     pub ir_padrao: Option<String>,
     pub ir_editavel: bool,
     pub garantia: Option<String>,
+    pub exige_emissor: bool,
+    pub liquidez_padrao: Option<String>,
 }
 
 #[napi(object)]
@@ -115,12 +117,23 @@ pub struct ResumoJs {
     pub classes: Vec<ResumoClasseJs>,
 }
 
+fn opcoes<T: Copy>(
+    todos: &[T],
+    codigo: fn(&T) -> &'static str,
+    rotulo: fn(&T) -> &'static str,
+) -> Vec<Opcao> {
+    todos
+        .iter()
+        .map(|v| Opcao {
+            codigo: codigo(v).to_string(),
+            rotulo: rotulo(v).to_string(),
+        })
+        .collect()
+}
+
 macro_rules! opcoes {
-    ($($valor:expr),+ $(,)?) => {
-        vec![$(Opcao {
-            codigo: $valor.codigo().to_string(),
-            rotulo: $valor.rotulo().to_string(),
-        }),+]
+    ($tipo:ty) => {
+        opcoes(<$tipo>::TODOS, <$tipo>::codigo, <$tipo>::rotulo)
     };
 }
 
@@ -136,35 +149,20 @@ fn tipo_catalogo(t: &TipoInfo) -> TipoCatalogo {
         ir_padrao: t.ir_padrao.map(|v| v.codigo().to_string()),
         ir_editavel: t.ir_editavel,
         garantia: t.garantia.map(|v| v.codigo().to_string()),
+        exige_emissor: t.exige_emissor,
+        liquidez_padrao: t.liquidez_padrao.map(|v| v.codigo().to_string()),
     }
 }
 
 pub fn catalogo() -> Catalogo {
     Catalogo {
         tipos: tipos().iter().map(tipo_catalogo).collect(),
-        classes: opcoes![
-            Classe::Rf,
-            Classe::Acoes,
-            Classe::Fii,
-            Classe::Ext,
-            Classe::Outros
-        ],
-        indexadores: opcoes![
-            Indexador::Pos,
-            Indexador::Pre,
-            Indexador::Ipca,
-            Indexador::Selic
-        ],
-        benchmarks: opcoes![Benchmark::Cdi, Benchmark::Selic],
-        liquidezes: opcoes![
-            Liquidez::Diaria,
-            Liquidez::D1,
-            Liquidez::D30,
-            Liquidez::Vencimento,
-            Liquidez::Carencia
-        ],
-        irs: opcoes![Ir::Regressiva, Ir::Isento],
-        garantias: opcoes![Garantia::Fgc, Garantia::Tesouro, Garantia::Nenhuma],
+        classes: opcoes!(Classe),
+        indexadores: opcoes!(Indexador),
+        benchmarks: opcoes!(Benchmark),
+        liquidezes: opcoes!(Liquidez),
+        irs: opcoes!(Ir),
+        garantias: opcoes!(Garantia),
         instituicoes: INSTITUICOES.iter().map(|s| s.to_string()).collect(),
     }
 }
