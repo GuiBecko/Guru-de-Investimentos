@@ -12,7 +12,7 @@ function abrirNucleo() {
   try {
     Core = require(process.env.GURU_ADDON_PATH || "@guru/core-node").Core;
   } catch (e) {
-    const erro = new Error(e.message);
+    const erro = new Error(e.message, { cause: e });
     erro.code = "ADDON_INDISPONIVEL";
     throw erro;
   }
@@ -48,6 +48,7 @@ function criarJanela() {
   try {
     core = abrirNucleo();
   } catch (e) {
+    console.error("Falha ao abrir o núcleo:", e);
     codigo = e.code || "ADDON_INDISPONIVEL";
   }
 
