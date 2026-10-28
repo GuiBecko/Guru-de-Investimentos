@@ -16,3 +16,4 @@ Ordem de construção do MVP descrito em [`mvp.md`](mvp.md). Cada fase termina c
 Os planos detalhados:
 
 - Fase 0: [`superpowers/plans/2026-10-28-fase-0-fundacao.md`](superpowers/plans/2026-10-28-fase-0-fundacao.md)
+- Fase 1: [`superpowers/plans/2026-10-28-fase-1-carteira-manual.md`](superpowers/plans/2026-10-28-fase-1-carteira-manual.md)
