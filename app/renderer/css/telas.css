@@ -1,0 +1,23 @@
+/* Tabela, faixa de aviso, barra de ações e diálogo das telas (estilo do protótipo, cantos em pixel). */
+.row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.btn { display: inline-block; text-decoration: none; }
+.btn.sm { padding: 5px 9px; font-size: 10.5px; }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+
+.tabela { background: var(--app-card); border: 1px solid var(--line); clip-path: var(--pix); padding: 6px 12px; overflow-x: auto; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.tbl th { text-align: left; font: 500 10.5px var(--f-mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.tbl td { padding: 8px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; vertical-align: middle; }
+.tbl tbody tr:last-child td { border-bottom: 0; }
+.tbl td.r, .tbl th.r { text-align: right; }
+.tbl tfoot td { border-top: 1px solid var(--line-strong); border-bottom: 0; font-weight: 500; }
+.tbl .acoes { display: flex; gap: 6px; justify-content: flex-end; }
+
+.faixa { padding: 9px 13px; border: 1px solid var(--warn); color: var(--warn); background: var(--app-card); clip-path: var(--pix); }
+.vazio { display: grid; gap: 12px; justify-items: start; }
+
+dialog { border: 0; padding: 0; background: transparent; color: var(--ink); max-width: min(420px, 90vw); }
+dialog::backdrop { background: rgba(1, 23, 13, 0.55); }
+dialog .caixa { background: var(--app-card); border: 1px solid var(--line-strong); clip-path: var(--pix); padding: 18px 20px; display: grid; gap: 16px; }
+dialog h2 { font: 500 15px var(--f-body); }
+dialog .acoes { display: flex; gap: 8px; justify-content: flex-end; }
