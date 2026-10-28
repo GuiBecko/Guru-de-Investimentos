@@ -20,6 +20,8 @@ Um app para computador que conhece a sua carteira, o seu perfil de investidor e 
 ## Documentação
 
 - [`docs/mvp.md`](docs/mvp.md): telas, escopo do MVP e decisões tomadas.
+- [`docs/arquitetura.md`](docs/arquitetura.md): Electron, núcleo em Rust e como os dois conversam.
+- [`docs/roadmap.md`](docs/roadmap.md): ordem de construção, fase a fase.
 - [`docs/prototipo/index.html`](docs/prototipo/index.html): protótipo navegável das telas. Abra o arquivo no navegador. Os números são fictícios.
 
 ## Licença
