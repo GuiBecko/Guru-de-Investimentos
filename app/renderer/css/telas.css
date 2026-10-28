@@ -21,3 +21,32 @@ dialog::backdrop { background: rgba(1, 23, 13, 0.55); }
 dialog .caixa { background: var(--app-card); border: 1px solid var(--line-strong); clip-path: var(--pix); padding: 18px 20px; display: grid; gap: 16px; }
 dialog h2 { font: 500 15px var(--f-body); }
 dialog .acoes { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* Formulário de investimento (.formsec, .grid4, .field, .affix, .rate, .hint, .auto como no protótipo). */
+.form { gap: 12px; }
+.formsec { font: 500 10.5px var(--f-mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); padding-top: 4px; border-top: 1px solid var(--line); }
+.form > .faixa + .formsec, .form > .formsec:first-of-type { border-top: 0; padding-top: 0; }
+.grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.field { display: grid; gap: 4px; align-content: start; min-width: 0; }
+.field.span2 { grid-column: span 2; }
+.field.span3 { grid-column: span 3; }
+.field label { font: 500 10.5px var(--f-mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.field input, .field select, .field output.fixo { font: 400 13px var(--f-body); color: var(--ink); background: var(--app-card); border: 1px solid var(--line-strong); padding: 7px 9px; min-width: 0; width: 100%; min-height: 34px; }
+.field output.fixo { display: block; background: transparent; border-style: dashed; }
+.field input:focus-visible, .field select:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.field input:disabled, .field select:disabled { background: var(--accent-soft); color: var(--muted); }
+.field input[aria-invalid="true"], .field select[aria-invalid="true"] { border-color: var(--down); }
+.field input.num, .affix input { font-family: var(--f-mono); font-variant-numeric: tabular-nums; text-align: right; }
+.field input.caixa-alta { text-transform: uppercase; }
+.affix { display: flex; align-items: stretch; min-width: 0; }
+.affix > span { display: flex; align-items: center; padding: 0 8px; font: 400 11px var(--f-mono); color: var(--muted); background: var(--accent-soft); border: 1px solid var(--line-strong); white-space: nowrap; }
+.affix > span:first-child { border-right: 0; }
+.affix > input + span { border-left: 0; }
+.rate { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+.rate:has(> select[hidden]) { grid-template-columns: minmax(0, 1fr); }
+.hint { font-size: 12px; color: var(--muted); }
+.auto { font: 400 10.5px var(--f-mono); color: var(--accent); }
+.erro { font-size: 12px; color: var(--down); }
+.faixa.ok { border-color: var(--up); color: var(--up); }
+.form .row { margin-top: 4px; }
+.form .row > .row { justify-content: flex-end; }

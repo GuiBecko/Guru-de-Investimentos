@@ -1,0 +1,71 @@
+// Funções puras do formulário: texto da taxa ("Lê-se") e montagem do que vai ao núcleo.
+import { paraCentavos } from "../../formato.js";
+
+export const MENSAGEM_VALOR = "Informe um valor em reais, por exemplo 1.234,56.";
+
+// "102.50" -> "102,5"; texto que não é decimal com ponto -> null.
+export function formatarTaxa(texto) {
+  const t = String(texto ?? "").trim();
+  if (!/^\d+(\.\d+)?$/.test(t)) return null;
+  const [inteira, fracao = ""] = t.split(".");
+  const frac = fracao.replace(/0+$/, "");
+  return `${String(BigInt(inteira))}${frac ? `,${frac}` : ""}`;
+}
+
+// Mesmo texto que o núcleo devolve em `rendimento`. `rotuloBenchmark` é "CDI" ou "Selic".
+export function legendaRendimento(indexador, taxa, rotuloBenchmark) {
+  const t = formatarTaxa(taxa);
+  if (t === null) return "";
+  if (indexador === "pos") return `${t}% do ${rotuloBenchmark}`;
+  if (indexador === "pre") return `${t}% ao ano`;
+  if (indexador === "ipca") return `IPCA + ${t}% ao ano`;
+  if (indexador === "selic") return `Selic + ${t}% ao ano`;
+  return "";
+}
+
+const vazio = (s) => s === undefined || s === null || String(s).trim() === "";
+
+// `tipo` vem do catálogo; `v` são os textos dos campos. Só entram os campos da forma do tipo.
+// Devolve { dados, erros } — `erros` só cobre o formato do valor em reais e da quantidade.
+export function montarDados(tipo, v) {
+  const dados = { tipo: tipo.codigo, instituicao: v.instituicao };
+  const erros = [];
+  const texto = (campo, valor) => {
+    if (!vazio(valor)) dados[campo] = valor;
+  };
+  const reais = (campo, valor) => {
+    if (vazio(valor)) return;
+    const c = paraCentavos(valor);
+    if (c === null) erros.push({ campo, mensagem: MENSAGEM_VALOR });
+    else dados[campo] = c;
+  };
+
+  texto("dataAplicacao", v.dataAplicacao);
+  texto("observacao", v.observacao);
+
+  if (tipo.forma === "renda_variavel") {
+    texto("ticker", v.ticker);
+    if (!vazio(v.quantidade)) {
+      const q = Number(v.quantidade);
+      if (Number.isSafeInteger(q)) dados.quantidade = q;
+      else erros.push({ campo: "quantidade", mensagem: "Informe a quantidade." });
+    }
+    reais("precoMedioCentavos", v.preco);
+    return { dados, erros };
+  }
+
+  if (!(tipo.forma === "renda_fixa" && tipo.indexadorForcado)) texto("emissor", v.emissor);
+  texto("vencimento", v.vencimento);
+  reais("valorAplicadoCentavos", v.valor);
+  dados.liquidez = tipo.liquidezForcada ?? v.liquidez;
+  if (dados.liquidez === "carencia") texto("dataCarencia", v.dataCarencia);
+  if (dados.liquidez === "") delete dados.liquidez;
+
+  if (tipo.forma === "renda_fixa") {
+    dados.indexador = tipo.indexadorForcado ?? v.indexador;
+    texto("taxa", v.taxa);
+    if (dados.indexador === "pos") texto("benchmark", v.benchmark);
+    dados.ir = tipo.irEditavel ? v.ir : (tipo.irPadrao ?? v.ir);
+  }
+  return { dados, erros };
+}

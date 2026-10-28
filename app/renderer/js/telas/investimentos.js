@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { emConstrucao } from "./_em-construcao.js";
+import { render as formulario } from "./formulario-investimento.js";
 import { formatarData, formatarReais } from "../formato.js";
 
 const COLUNAS = [
@@ -161,8 +161,7 @@ async function lista(el_, vigente) {
 
 export function render(elemento, parametros = [], vigente = () => true) {
   if (parametros.length > 0) {
-    emConstrucao(elemento, "Investimentos");
-    return;
+    return formulario(elemento, parametros, vigente);
   }
   return lista(elemento, vigente);
 }
