@@ -24,6 +24,30 @@ Um app para computador que conhece a sua carteira, o seu perfil de investidor e 
 - [`docs/roadmap.md`](docs/roadmap.md): ordem de construção, fase a fase.
 - [`docs/prototipo/index.html`](docs/prototipo/index.html): protótipo navegável das telas. Abra o arquivo no navegador. Os números são fictícios.
 
+## Rodando localmente
+
+Pré-requisitos: [Rust estável](https://rustup.rs) (via `rustup`) e Node 24.
+
+```bash
+# 1. Construir o núcleo em Rust como addon do Node
+cd crates/guru-node && npm install && npm run build
+
+# 2. Rodar o app
+cd ../../app && npm install && npm start
+```
+
+Testes, a partir da raiz do repositório:
+
+```bash
+cargo fmt --check && cargo clippy --workspace -- -D warnings   # formatação e lint
+cargo test --workspace                                         # núcleo em Rust
+(cd crates/guru-node && npm test)                              # addon
+(cd app && npm test)                                           # unitários do app
+(cd app && npx playwright test)                                # E2E (abre o Electron)
+```
+
+No Linux sem tela, rode o E2E com `xvfb-run -a npx playwright test`.
+
 ## Licença
 
 [MIT](LICENSE) © 2026 Guilherme Becker
