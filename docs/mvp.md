@@ -50,16 +50,17 @@ Escopo combinado durante a fase de protótipo. O protótipo das telas está em [
 |------|---------|
 | Plataforma | Só computador. Nada mobile. |
 | Distribuição | Programa instalado. Carteira e chave da IA ficam no computador do usuário, sem servidor no MVP. |
+| Tecnologia | Electron com interface em HTML, CSS e JS puros, e núcleo em Rust. Detalhes em [`arquitetura.md`](arquitetura.md). |
 | Perfil | ANBIMA sem prévia do resultado, objetivo em texto livre e metas, tudo no MVP. |
 | Regulatório | A IA apresenta opções, prós e contras e fontes. A decisão é sempre do usuário. Revisão jurídica dos textos antes do lançamento. |
 | Dados de mercado | Indicadores buscados pelo próprio app nas fontes oficiais. Busca na web da IA só para notícias. |
 | Custo da IA | O usuário usa e paga a própria IA. O app só integra. |
+| Cotações | Arquivo diário oficial da B3 (série histórica), com o preço de fechamento do último pregão. Sem preço em tempo real no MVP. |
+| Saudação | Escrita pelo app, sorteada de uma lista fixa de frases. Não usa a IA nem gasta tokens. |
 | Contexto da IA | Cada parte do contexto (instruções, perfil, carteira, mercado, metas) pode ser desligada ou editada. |
 
 ## Em aberto
 
-- **Quem escreve a saudação?** Sugestão: o app, a partir de modelos preenchidos com os dados da carteira, para não gastar tokens do usuário a cada abertura.
-- **Tauri ou Electron** para o programa instalado.
 
 ## Identidade visual
 

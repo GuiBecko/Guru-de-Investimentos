@@ -1,0 +1,7 @@
+/target
+node_modules/
+*.node
+app/test-results/
+crates/guru-node/index.js
+crates/guru-node/index.d.ts
+app/playwright-report/

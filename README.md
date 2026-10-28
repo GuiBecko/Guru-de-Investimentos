@@ -2,7 +2,7 @@
 
 Um app para computador que conhece a sua carteira, o seu perfil de investidor e o seu objetivo, e usa a IA que você escolher para responder a pergunta de todo mês: **onde coloco o próximo dinheiro?**
 
-> **Status:** em planejamento. O escopo do MVP e o protótipo das telas estão em [`docs/`](docs/).
+> **Status:** fase 0 (fundação) em desenvolvimento. A ordem das fases está em [`docs/roadmap.md`](docs/roadmap.md); o escopo do MVP e o protótipo das telas estão em [`docs/`](docs/).
 
 ## Ideia
 
@@ -20,7 +20,35 @@ Um app para computador que conhece a sua carteira, o seu perfil de investidor e 
 ## Documentação
 
 - [`docs/mvp.md`](docs/mvp.md): telas, escopo do MVP e decisões tomadas.
+- [`docs/arquitetura.md`](docs/arquitetura.md): Electron, núcleo em Rust e como os dois conversam.
+- [`docs/roadmap.md`](docs/roadmap.md): ordem de construção, fase a fase.
 - [`docs/prototipo/index.html`](docs/prototipo/index.html): protótipo navegável das telas. Abra o arquivo no navegador. Os números são fictícios.
+
+## Rodando localmente
+
+Pré-requisitos: [Rust estável](https://rustup.rs) (via `rustup`) e Node 24.
+
+```bash
+# 1. Construir o núcleo em Rust como addon do Node
+cd crates/guru-node && npm install && npm run build
+
+# 2. Rodar o app
+cd ../../app && npm install && npm start
+```
+
+Testes, a partir da raiz do repositório:
+
+```bash
+cargo fmt --check && cargo clippy --workspace -- -D warnings   # formatação e lint
+cargo test --workspace                                         # núcleo em Rust
+(cd crates/guru-node && npm test)                              # addon
+(cd app && npm test)                                           # unitários do app
+(cd app && npx playwright test)                                # E2E (abre o Electron)
+```
+
+No Linux sem tela, rode o E2E com `xvfb-run -a npx playwright test`.
+
+No Ubuntu 24.04, se o Electron falhar com erro de sandbox, libere os namespaces de usuário: `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`.
 
 ## Licença
 

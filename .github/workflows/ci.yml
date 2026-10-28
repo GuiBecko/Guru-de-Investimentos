@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Rust (fmt, clippy, test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --workspace -- -D warnings
+      - run: cargo test --workspace
+
+  app:
+    name: App (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            crates/guru-node/package-lock.json
+            app/package-lock.json
+
+      # O addon é construído antes do app: o app depende dele via "file:".
+      - name: Instalar dependências do addon
+        working-directory: crates/guru-node
+        run: npm ci
+      - name: Construir o addon
+        working-directory: crates/guru-node
+        run: npm run build
+      - name: Testar o addon
+        working-directory: crates/guru-node
+        run: npm test
+
+      - name: Instalar dependências do app
+        working-directory: app
+        run: npm ci
+      - name: Testes unitários do app
+        working-directory: app
+        run: npm test
+
+      # O Electron em Ubuntu 24.04 não abre janelas com sandbox quando o
+      # AppArmor restringe namespaces de usuário sem perfil. Liberamos isso só
+      # no runner, mantendo `sandbox: true` no app.
+      - name: Liberar namespaces de usuário (Linux)
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Testes E2E (Linux, com display virtual)
+        if: runner.os == 'Linux'
+        working-directory: app
+        run: xvfb-run -a npx playwright test
+      - name: Testes E2E
+        if: runner.os != 'Linux'
+        working-directory: app
+        run: npx playwright test
+
+      - name: Anexar relatório do Playwright em caso de falha
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-${{ matrix.os }}
+          path: app/test-results/
+          if-no-files-found: ignore
