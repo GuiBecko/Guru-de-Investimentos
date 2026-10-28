@@ -1,0 +1,403 @@
+use chrono::{NaiveDate, SecondsFormat, Utc};
+use rusqlite::{Row, named_params};
+
+use super::catalogo::{Benchmark, Classe, Garantia, Indexador, Ir, Liquidez, TipoInfo, tipo};
+use super::modelo::{ErroCampo, InvestimentoValido, NovoInvestimento};
+use super::texto::{nome, rendimento};
+use super::validacao::validar;
+use crate::db::{Db, classifica};
+use crate::error::CoreError;
+
+/// Resultado de criar ou atualizar: gravou (com o id) ou devolveu os erros de validação.
+#[derive(Debug)]
+pub enum Gravacao {
+    Ok(i64),
+    Invalido(Vec<ErroCampo>),
+}
+
+#[derive(Debug, Clone)]
+pub struct Investimento {
+    pub id: i64,
+    pub tipo: String,
+    pub tipo_rotulo: String,
+    pub classe: Classe,
+    pub nome: String,
+    pub instituicao: String,
+    pub emissor: Option<String>,
+    pub ticker: Option<String>,
+    pub indexador: Option<Indexador>,
+    pub taxa: Option<String>,
+    pub benchmark: Option<Benchmark>,
+    pub rendimento: Option<String>,
+    pub data_aplicacao: String,
+    pub vencimento: Option<String>,
+    pub valor_aplicado_centavos: i64,
+    pub quantidade: Option<i64>,
+    pub preco_medio_centavos: Option<i64>,
+    pub liquidez: Option<Liquidez>,
+    pub data_carencia: Option<String>,
+    pub ir: Option<Ir>,
+    pub garantia: Option<Garantia>,
+    pub observacao: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResumoClasse {
+    pub classe: Classe,
+    pub total_aplicado_centavos: i64,
+    pub quantidade: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Resumo {
+    pub total_aplicado_centavos: i64,
+    pub classes: Vec<ResumoClasse>,
+}
+
+const COLUNAS: &str = "id, tipo, instituicao, emissor, ticker, indexador, taxa, benchmark, \
+    data_aplicacao, vencimento, valor_aplicado_centavos, quantidade, preco_medio_centavos, \
+    liquidez, data_carencia, ir, observacao";
+
+fn agora() -> String {
+    Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
+}
+
+fn corrompido(detalhe: &str) -> CoreError {
+    CoreError::DbInvalid(format!(
+        "investimento com dado inválido no banco ({detalhe})"
+    ))
+}
+
+fn codigo<T>(
+    valor: Option<String>,
+    campo: &str,
+    de_codigo: fn(&str) -> Option<T>,
+) -> Result<Option<T>, CoreError> {
+    valor
+        .map(|c| de_codigo(&c).ok_or_else(|| corrompido(campo)))
+        .transpose()
+}
+
+fn data_valida(valor: &Option<String>) -> Option<NaiveDate> {
+    valor
+        .as_deref()
+        .and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+}
+
+/// Linha crua da tabela, convertida em `Investimento` fora do callback do rusqlite.
+struct Linha {
+    id: i64,
+    tipo: String,
+    instituicao: String,
+    emissor: Option<String>,
+    ticker: Option<String>,
+    indexador: Option<String>,
+    taxa: Option<String>,
+    benchmark: Option<String>,
+    data_aplicacao: String,
+    vencimento: Option<String>,
+    valor_aplicado: i64,
+    quantidade: Option<i64>,
+    preco_medio: Option<i64>,
+    liquidez: Option<String>,
+    data_carencia: Option<String>,
+    ir: Option<String>,
+    observacao: Option<String>,
+}
+
+fn linha(r: &Row) -> rusqlite::Result<Linha> {
+    Ok(Linha {
+        id: r.get("id")?,
+        tipo: r.get("tipo")?,
+        instituicao: r.get("instituicao")?,
+        emissor: r.get("emissor")?,
+        ticker: r.get("ticker")?,
+        indexador: r.get("indexador")?,
+        taxa: r.get("taxa")?,
+        benchmark: r.get("benchmark")?,
+        data_aplicacao: r.get("data_aplicacao")?,
+        vencimento: r.get("vencimento")?,
+        valor_aplicado: r.get("valor_aplicado_centavos")?,
+        quantidade: r.get("quantidade")?,
+        preco_medio: r.get("preco_medio_centavos")?,
+        liquidez: r.get("liquidez")?,
+        data_carencia: r.get("data_carencia")?,
+        ir: r.get("ir")?,
+        observacao: r.get("observacao")?,
+    })
+}
+
+fn montar(l: Linha) -> Result<Investimento, CoreError> {
+    let info: &'static TipoInfo = tipo(&l.tipo).ok_or_else(|| corrompido("tipo"))?;
+    let indexador = codigo(l.indexador, "indexador", Indexador::de_codigo)?;
+    let benchmark = codigo(l.benchmark, "benchmark", Benchmark::de_codigo)?;
+    let liquidez = codigo(l.liquidez, "liquidez", Liquidez::de_codigo)?;
+    let ir = codigo(l.ir, "ir", Ir::de_codigo)?;
+    let taxa = l
+        .taxa
+        .map(|t| t.parse().map_err(|_| corrompido("taxa")))
+        .transpose()?;
+    let aplicacao =
+        data_valida(&Some(l.data_aplicacao.clone())).ok_or_else(|| corrompido("data"))?;
+
+    let valido = InvestimentoValido {
+        tipo: info,
+        instituicao: l.instituicao.clone(),
+        emissor: l.emissor.clone(),
+        ticker: l.ticker.clone(),
+        indexador,
+        taxa,
+        benchmark,
+        data_aplicacao: aplicacao,
+        vencimento: data_valida(&l.vencimento),
+        valor_aplicado_centavos: Some(l.valor_aplicado),
+        quantidade: l.quantidade,
+        preco_medio_centavos: l.preco_medio,
+        liquidez,
+        data_carencia: data_valida(&l.data_carencia),
+        ir,
+        observacao: l.observacao.clone(),
+    };
+
+    Ok(Investimento {
+        id: l.id,
+        tipo: info.codigo.to_string(),
+        tipo_rotulo: info.rotulo.to_string(),
+        classe: info.classe,
+        nome: nome(&valido),
+        instituicao: l.instituicao,
+        emissor: l.emissor,
+        ticker: l.ticker,
+        indexador,
+        taxa: taxa.map(|t: rust_decimal::Decimal| t.normalize().to_string()),
+        benchmark,
+        rendimento: rendimento(&valido),
+        data_aplicacao: l.data_aplicacao,
+        vencimento: l.vencimento,
+        valor_aplicado_centavos: l.valor_aplicado,
+        quantidade: l.quantidade,
+        preco_medio_centavos: l.preco_medio,
+        liquidez,
+        data_carencia: l.data_carencia,
+        ir,
+        garantia: info.garantia,
+        observacao: l.observacao,
+    })
+}
+
+fn iso(d: Option<NaiveDate>) -> Option<String> {
+    d.map(|d| d.to_string())
+}
+
+/// Valores de um `InvestimentoValido` já no formato de coluna.
+struct Colunas {
+    tipo: &'static str,
+    instituicao: String,
+    emissor: Option<String>,
+    ticker: Option<String>,
+    indexador: Option<&'static str>,
+    taxa: Option<String>,
+    benchmark: Option<&'static str>,
+    data_aplicacao: String,
+    vencimento: Option<String>,
+    valor: i64,
+    quantidade: Option<i64>,
+    preco_medio: Option<i64>,
+    liquidez: Option<&'static str>,
+    data_carencia: Option<String>,
+    ir: Option<&'static str>,
+    observacao: Option<String>,
+}
+
+impl Colunas {
+    fn de(v: InvestimentoValido) -> Colunas {
+        // Em renda variável o valor aplicado é quantidade × preço médio (sem estouro: a
+        // validação já recusou); nas demais formas é o valor informado.
+        let valor = match (v.quantidade, v.preco_medio_centavos) {
+            (Some(q), Some(p)) => q.saturating_mul(p),
+            _ => v.valor_aplicado_centavos.unwrap_or_default(),
+        };
+        Colunas {
+            tipo: v.tipo.codigo,
+            instituicao: v.instituicao,
+            emissor: v.emissor,
+            ticker: v.ticker,
+            indexador: v.indexador.map(|i| i.codigo()),
+            taxa: v.taxa.map(|t| t.normalize().to_string()),
+            benchmark: v.benchmark.map(|b| b.codigo()),
+            data_aplicacao: iso(Some(v.data_aplicacao)).unwrap_or_default(),
+            vencimento: iso(v.vencimento),
+            valor,
+            quantidade: v.quantidade,
+            preco_medio: v.preco_medio_centavos,
+            liquidez: v.liquidez.map(|l| l.codigo()),
+            data_carencia: iso(v.data_carencia),
+            ir: v.ir.map(|i| i.codigo()),
+            observacao: v.observacao,
+        }
+    }
+}
+
+/// Parâmetros nomeados de INSERT/UPDATE; `extra` acrescenta pares (ex.: `":id": id`).
+macro_rules! parametros {
+    ($c:expr, $agora:expr $(, $extra:tt : $valor:expr)*) => {
+        named_params! {
+            ":tipo": $c.tipo,
+            ":instituicao": $c.instituicao,
+            ":emissor": $c.emissor,
+            ":ticker": $c.ticker,
+            ":indexador": $c.indexador,
+            ":taxa": $c.taxa,
+            ":benchmark": $c.benchmark,
+            ":data_aplicacao": $c.data_aplicacao,
+            ":vencimento": $c.vencimento,
+            ":valor": $c.valor,
+            ":quantidade": $c.quantidade,
+            ":preco_medio": $c.preco_medio,
+            ":liquidez": $c.liquidez,
+            ":data_carencia": $c.data_carencia,
+            ":ir": $c.ir,
+            ":observacao": $c.observacao,
+            ":agora": $agora,
+            $($extra: $valor),*
+        }
+    };
+}
+
+impl Db {
+    pub fn criar_investimento(
+        &self,
+        novo: &NovoInvestimento,
+        hoje: NaiveDate,
+    ) -> Result<Gravacao, CoreError> {
+        let v = match validar(novo, hoje) {
+            Ok(v) => v,
+            Err(erros) => return Ok(Gravacao::Invalido(erros)),
+        };
+        let agora = agora();
+        let c = Colunas::de(v);
+        self.conn
+            .execute(
+                "INSERT INTO investimentos (tipo, instituicao, emissor, ticker, indexador, taxa, \
+                 benchmark, data_aplicacao, vencimento, valor_aplicado_centavos, quantidade, \
+                 preco_medio_centavos, liquidez, data_carencia, ir, observacao, criado_em, \
+                 atualizado_em) VALUES (:tipo, :instituicao, :emissor, :ticker, :indexador, :taxa, \
+                 :benchmark, :data_aplicacao, :vencimento, :valor, :quantidade, :preco_medio, \
+                 :liquidez, :data_carencia, :ir, :observacao, :agora, :agora)",
+                parametros!(c, agora),
+            )
+            .map_err(classifica)?;
+        Ok(Gravacao::Ok(self.conn.last_insert_rowid()))
+    }
+
+    pub fn atualizar_investimento(
+        &self,
+        id: i64,
+        novo: &NovoInvestimento,
+        hoje: NaiveDate,
+    ) -> Result<Gravacao, CoreError> {
+        let v = match validar(novo, hoje) {
+            Ok(v) => v,
+            Err(erros) => return Ok(Gravacao::Invalido(erros)),
+        };
+        let agora = agora();
+        let c = Colunas::de(v);
+        let n = self
+            .conn
+            .execute(
+                "UPDATE investimentos SET tipo = :tipo, instituicao = :instituicao, \
+                 emissor = :emissor, ticker = :ticker, indexador = :indexador, taxa = :taxa, \
+                 benchmark = :benchmark, data_aplicacao = :data_aplicacao, \
+                 vencimento = :vencimento, valor_aplicado_centavos = :valor, \
+                 quantidade = :quantidade, preco_medio_centavos = :preco_medio, \
+                 liquidez = :liquidez, data_carencia = :data_carencia, ir = :ir, \
+                 observacao = :observacao, atualizado_em = :agora WHERE id = :id",
+                parametros!(c, agora, ":id": id),
+            )
+            .map_err(classifica)?;
+        if n == 0 {
+            return Err(CoreError::NaoEncontrado(id));
+        }
+        Ok(Gravacao::Ok(id))
+    }
+
+    pub fn apagar_investimento(&self, id: i64) -> Result<(), CoreError> {
+        let n = self
+            .conn
+            .execute(
+                "DELETE FROM investimentos WHERE id = :id",
+                named_params! {":id": id},
+            )
+            .map_err(classifica)?;
+        if n == 0 {
+            return Err(CoreError::NaoEncontrado(id));
+        }
+        Ok(())
+    }
+
+    pub fn investimento(&self, id: i64) -> Result<Investimento, CoreError> {
+        let sql = format!("SELECT {COLUNAS} FROM investimentos WHERE id = :id");
+        let l = self
+            .conn
+            .query_row(&sql, named_params! {":id": id}, linha)
+            .map_err(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => CoreError::NaoEncontrado(id),
+                outro => classifica(outro),
+            })?;
+        montar(l)
+    }
+
+    /// Ordenada pela classe (ordem do catálogo) e depois pelo nome, sem diferenciar maiúsculas.
+    pub fn listar_investimentos(&self) -> Result<Vec<Investimento>, CoreError> {
+        let sql = format!("SELECT {COLUNAS} FROM investimentos");
+        let mut stmt = self.conn.prepare(&sql).map_err(classifica)?;
+        let linhas = stmt
+            .query_map([], linha)
+            .map_err(classifica)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(classifica)?;
+        let mut lista = linhas
+            .into_iter()
+            .map(montar)
+            .collect::<Result<Vec<_>, _>>()?;
+        lista.sort_by_cached_key(|i| (ordem_classe(i.classe), i.nome.to_lowercase(), i.id));
+        Ok(lista)
+    }
+
+    pub fn resumo_carteira(&self) -> Result<Resumo, CoreError> {
+        let lista = self.listar_investimentos()?;
+        let mut classes: Vec<ResumoClasse> = Vec::new();
+        for i in &lista {
+            match classes.iter_mut().find(|c| c.classe == i.classe) {
+                Some(c) => {
+                    c.total_aplicado_centavos += i.valor_aplicado_centavos;
+                    c.quantidade += 1;
+                }
+                None => classes.push(ResumoClasse {
+                    classe: i.classe,
+                    total_aplicado_centavos: i.valor_aplicado_centavos,
+                    quantidade: 1,
+                }),
+            }
+        }
+        classes.sort_by_key(|c| ordem_classe(c.classe));
+        Ok(Resumo {
+            total_aplicado_centavos: classes.iter().map(|c| c.total_aplicado_centavos).sum(),
+            classes,
+        })
+    }
+}
+
+fn ordem_classe(classe: Classe) -> usize {
+    const ORDEM: [Classe; 5] = [
+        Classe::Rf,
+        Classe::Acoes,
+        Classe::Fii,
+        Classe::Ext,
+        Classe::Outros,
+    ];
+    ORDEM
+        .iter()
+        .position(|c| *c == classe)
+        .unwrap_or(ORDEM.len())
+}

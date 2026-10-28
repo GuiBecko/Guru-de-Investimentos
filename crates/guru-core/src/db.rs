@@ -5,13 +5,16 @@ use rusqlite_migration::{M, Migrations};
 
 use crate::error::CoreError;
 
-const MIGRATIONS_SQL: &[&str] = &[include_str!("migrations/0001_inicial.sql")];
+const MIGRATIONS_SQL: &[&str] = &[
+    include_str!("migrations/0001_inicial.sql"),
+    include_str!("migrations/0002_investimentos.sql"),
+];
 
 /// Versão do esquema: número de migrações conhecidas por este app.
 pub const SCHEMA_VERSION: u32 = MIGRATIONS_SQL.len() as u32;
 
 pub struct Db {
-    conn: Connection,
+    pub(crate) conn: Connection,
     path: PathBuf,
 }
 
@@ -59,7 +62,7 @@ fn user_version(conn: &Connection) -> Result<u32, CoreError> {
 }
 
 /// Arquivo que não é SQLite ou está corrompido vira `DbInvalid`; o resto fica como `Sqlite`.
-fn classifica(e: rusqlite::Error) -> CoreError {
+pub(crate) fn classifica(e: rusqlite::Error) -> CoreError {
     match e.sqlite_error_code() {
         Some(ErrorCode::NotADatabase | ErrorCode::DatabaseCorrupt) => CoreError::DbInvalid(
             "o arquivo guru.db não é um banco SQLite válido (pode estar corrompido)".to_string(),

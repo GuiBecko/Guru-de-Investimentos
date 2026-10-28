@@ -12,6 +12,8 @@ pub enum CoreError {
     Io(#[from] std::io::Error),
     #[error("Erro no banco de dados: {0}")]
     Sqlite(#[from] rusqlite::Error),
+    #[error("Este investimento não existe mais. Atualize a lista.")]
+    NaoEncontrado(i64),
 }
 
 impl CoreError {
@@ -21,6 +23,7 @@ impl CoreError {
             CoreError::DbInvalid(_) => "DB_INVALID",
             CoreError::Io(_) => "IO",
             CoreError::Sqlite(_) => "SQLITE",
+            CoreError::NaoEncontrado(_) => "NAO_ENCONTRADO",
         }
     }
 }
