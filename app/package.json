@@ -1,0 +1,19 @@
+{
+  "name": "guru-de-investimentos",
+  "version": "0.1.0",
+  "private": true,
+  "main": "main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/unit/",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@guru/core-node": "file:../crates/guru-node"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "electron": "^45.1.0"
+  }
+}
