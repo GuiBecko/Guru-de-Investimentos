@@ -11,4 +11,13 @@ export async function desembrulhar(promessa) {
 
 export const api = {
   app: { info: () => desembrulhar(window.guru.app.info()) },
+  investimentos: {
+    catalogo: () => desembrulhar(window.guru.investimentos.catalogo()),
+    listar: () => desembrulhar(window.guru.investimentos.listar()),
+    ler: (id) => desembrulhar(window.guru.investimentos.ler(id)),
+    criar: (dados) => desembrulhar(window.guru.investimentos.criar(dados)),
+    atualizar: (id, dados) => desembrulhar(window.guru.investimentos.atualizar(id, dados)),
+    apagar: (id) => desembrulhar(window.guru.investimentos.apagar(id)),
+  },
+  carteira: { resumo: () => desembrulhar(window.guru.carteira.resumo()) },
 };

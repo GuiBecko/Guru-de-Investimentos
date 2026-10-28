@@ -44,12 +44,25 @@ test("a interface não tem acesso ao Node", async () => {
   }
 });
 
-test("a ponte expõe só app.info e nada do Electron ou do Node", async () => {
+test("a ponte expõe só os canais do app e nada do Electron ou do Node", async () => {
   const app = await lancar(novoDataDir());
   try {
     const page = await app.firstWindow();
-    expect(await page.evaluate(() => Object.keys(window.guru))).toEqual(["app"]);
+    expect(await page.evaluate(() => Object.keys(window.guru))).toEqual([
+      "app",
+      "investimentos",
+      "carteira",
+    ]);
     expect(await page.evaluate(() => Object.keys(window.guru.app))).toEqual(["info"]);
+    expect(await page.evaluate(() => Object.keys(window.guru.investimentos))).toEqual([
+      "catalogo",
+      "listar",
+      "ler",
+      "criar",
+      "atualizar",
+      "apagar",
+    ]);
+    expect(await page.evaluate(() => Object.keys(window.guru.carteira))).toEqual(["resumo"]);
     expect(await page.evaluate(() => typeof window.ipcRenderer)).toBe("undefined");
     expect(await page.evaluate(() => typeof window.require)).toBe("undefined");
     expect(await page.evaluate(() => typeof window.__guruBruto)).toBe("undefined");
@@ -72,6 +85,28 @@ test("o code do erro chega ao renderer", async () => {
       ),
     );
     expect(erro).toEqual({ ehError: true, code: "SQLITE", message: expect.any(String) });
+  } finally {
+    await app.close();
+  }
+});
+
+test("investimentos pelo api: catálogo e NAO_ENCONTRADO", async () => {
+  const app = await lancar(novoDataDir());
+  try {
+    const page = await app.firstWindow();
+    const catalogo = await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) => api.investimentos.catalogo()),
+    );
+    expect(catalogo.tipos).toHaveLength(17);
+    const erro = await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) =>
+        api.investimentos.apagar(999).then(
+          () => null,
+          (e) => ({ code: e.code, message: e.message }),
+        ),
+      ),
+    );
+    expect(erro).toEqual({ code: "NAO_ENCONTRADO", message: expect.any(String) });
   } finally {
     await app.close();
   }
