@@ -8,6 +8,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 guru-core = { path = "../guru-core" }
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 napi = "3.15"
 napi-derive = "3.6"
 
