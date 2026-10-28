@@ -55,3 +55,17 @@ test("nenhum erro de CSP no console", async () => {
     await app.close();
   }
 });
+
+test("o painel de conteúdo tem cantos em pixel nos dois temas", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    const clip = () => page.locator("main").evaluate((el) => getComputedStyle(el).clipPath);
+    await expect(page.locator("main h1")).toBeVisible();
+    expect(await clip()).not.toBe("none");
+    await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
+    expect(await clip()).not.toBe("none");
+  } finally {
+    await app.close();
+  }
+});

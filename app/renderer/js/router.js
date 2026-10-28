@@ -39,7 +39,14 @@ export function iniciar(raiz) {
     for (const a of menu.querySelectorAll("a")) {
       a.classList.toggle("on", a.getAttribute("href") === `#/${tela.id}`);
     }
-    MODULOS[tela.id].render(conteudo);
+    try {
+      MODULOS[tela.id].render(conteudo);
+    } catch (e) {
+      console.error(`Falha ao abrir a tela ${tela.id}:`, e);
+      const p = document.createElement("p");
+      p.textContent = "Não foi possível abrir esta tela.";
+      conteudo.replaceChildren(p);
+    }
   }
 
   window.addEventListener("hashchange", mostrar);

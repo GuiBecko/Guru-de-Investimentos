@@ -26,6 +26,7 @@
   --app-side: #ebf1ed;
   --frame: #1b2430;
   --f-display: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --pix: polygon(0 3px, 3px 3px, 3px 0, calc(100% - 3px) 0, calc(100% - 3px) 3px, 100% 3px, 100% calc(100% - 3px), calc(100% - 3px) calc(100% - 3px), calc(100% - 3px) 100%, 3px 100%, 3px calc(100% - 3px), 0 calc(100% - 3px));;
   --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 }
@@ -46,4 +47,4 @@
   --app-bg: #111a16; --app-card: #18231e; --app-side: #1c2923; --frame: #05080b;
   --brand-hi: #083f29; --brand-lo: #000d07; --gridline: rgba(220, 240, 228, 0.04); --line-strong: #4a5d52;
   color-scheme: dark;
-:root { --pix: polygon(0 3px, 3px 3px, 3px 0, calc(100% - 3px) 0, calc(100% - 3px) 3px, 100% 3px, 100% calc(100% - 3px), calc(100% - 3px) calc(100% - 3px), calc(100% - 3px) 100%, 3px 100%, 3px calc(100% - 3px), 0 calc(100% - 3px)); }
+}

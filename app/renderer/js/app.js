@@ -1,8 +1,20 @@
 import { iniciar } from "./router.js";
 
-iniciar(document.querySelector(".app"));
+function mostrarVersoes(core, esquema) {
+  document.querySelector('[data-testid="core-version"]').textContent = core;
+  document.querySelector('[data-testid="schema-version"]').textContent = esquema;
+}
 
-window.guru.app.info().then((info) => {
-  document.querySelector('[data-testid="core-version"]').textContent = info.coreVersion;
-  document.querySelector('[data-testid="schema-version"]').textContent = String(info.schemaVersion);
-});
+try {
+  iniciar(document.querySelector(".app"));
+} catch (e) {
+  console.error("Falha ao iniciar o roteador:", e);
+}
+
+window.guru.app
+  .info()
+  .then((info) => mostrarVersoes(info.coreVersion, String(info.schemaVersion)))
+  .catch((e) => {
+    console.error("Falha ao ler as versões:", e);
+    mostrarVersoes("—", "—");
+  });
