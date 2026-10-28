@@ -1,3 +1,4 @@
+import { api } from "./api.js";
 import { iniciar } from "./router.js";
 
 function mostrarVersoes(core, esquema) {
@@ -11,7 +12,7 @@ try {
   console.error("Falha ao iniciar o roteador:", e);
 }
 
-window.guru.app
+api.app
   .info()
   .then((info) => mostrarVersoes(info.coreVersion, String(info.schemaVersion)))
   .catch((e) => {

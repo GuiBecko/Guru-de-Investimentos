@@ -52,6 +52,7 @@ test("a ponte expõe só app.info e nada do Electron ou do Node", async () => {
     expect(await page.evaluate(() => Object.keys(window.guru.app))).toEqual(["info"]);
     expect(await page.evaluate(() => typeof window.ipcRenderer)).toBe("undefined");
     expect(await page.evaluate(() => typeof window.require)).toBe("undefined");
+    expect(await page.evaluate(() => typeof window.__guruBruto)).toBe("undefined");
   } finally {
     await app.close();
   }
@@ -63,9 +64,11 @@ test("o code do erro chega ao renderer", async () => {
   try {
     const page = await app.firstWindow();
     const erro = await page.evaluate(() =>
-      window.guru.app.info().then(
-        () => null,
-        (e) => ({ ehError: e instanceof Error, code: e.code, message: e.message }),
+      import("./js/api.js").then(({ api }) =>
+        api.app.info().then(
+          () => null,
+          (e) => ({ ehError: e instanceof Error, code: e.code, message: e.message }),
+        ),
       ),
     );
     expect(erro).toEqual({ ehError: true, code: "SQLITE", message: expect.any(String) });

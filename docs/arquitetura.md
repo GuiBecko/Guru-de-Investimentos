@@ -36,8 +36,8 @@ Como o Guru de Investimentos é montado por dentro. O que o app faz está em [`m
 - **`guru-core`** guarda toda regra de negócio e todo acesso a disco e rede. Não sabe que existe Electron e é testado só com `cargo test`.
 - **`guru-node`** é fino. Converte tipos JS ↔ Rust, transforma erros em `Error` do JS com um `code` e roda o trabalho pesado fora da thread principal (funções `async` do napi-rs).
 - **`main.js`** cria a janela, registra um handler de IPC por função exposta e repassa a chamada ao addon. Não tem regra de negócio.
-- **`preload.js`** expõe `window.guru` com `contextBridge`. Cada função chama um canal fixo. A interface nunca recebe `ipcRenderer` nem nada do Node.
-- **`renderer/`** desenha as telas e chama `window.guru.*`. Não faz requisição de rede.
+- **`preload.js`** expõe `window.guru` com `contextBridge`. Cada função chama um canal fixo. A interface nunca recebe `ipcRenderer` nem nada do Node. O `main.js` responde sempre com um envelope, `{ ok: true, value }` ou `{ ok: false, code, message }`, e o preload o devolve como está, porque o Electron só deixa passar a mensagem de um erro.
+- **`renderer/`** desenha as telas. Chama sempre por `renderer/js/api.js`, que transforma a falha do envelope em `Error` com `code`. Não faz requisição de rede.
 
 ### Por que addon nativo e não um processo separado
 
