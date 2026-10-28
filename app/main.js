@@ -6,6 +6,38 @@ if (process.env.GURU_DATA_DIR) {
 }
 
 let janela = null;
+let core = null;
+
+// Embrulha um handler IPC: devolve `{ ok: true, value }` ou
+// `{ ok: false, code, message }`, para o `code` atravessar a ponte (ver preload.js).
+function tratar(handler) {
+  return async (...args) => {
+    try {
+      return { ok: true, value: await handler(...args) };
+    } catch (e) {
+      return { ok: false, code: e.code || "ERRO_DESCONHECIDO", message: e.message };
+    }
+  };
+}
+
+ipcMain.handle(
+  "app:info",
+  tratar(() => {
+    // Só para teste (e2e): força um erro com esse code. Nunca vale no app empacotado.
+    const forcado = process.env.GURU_TESTE_ERRO_INFO;
+    if (forcado && !app.isPackaged) {
+      const erro = new Error("Erro forçado pelo teste.");
+      erro.code = forcado;
+      throw erro;
+    }
+    if (!core) {
+      const erro = new Error("O núcleo não está disponível.");
+      erro.code = "ADDON_INDISPONIVEL";
+      throw erro;
+    }
+    return core.info();
+  }),
+);
 
 function abrirNucleo() {
   let Core;
@@ -43,7 +75,6 @@ function criarJanela() {
     return { action: "deny" };
   });
 
-  let core = null;
   let codigo = null;
   try {
     core = abrirNucleo();
@@ -53,7 +84,6 @@ function criarJanela() {
   }
 
   if (core) {
-    ipcMain.handle("app:info", () => core.info());
     janela.loadFile(path.join(__dirname, "renderer", "index.html"));
   } else {
     janela.loadFile(path.join(__dirname, "renderer", "erro.html"), {

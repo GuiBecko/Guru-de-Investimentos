@@ -44,6 +44,57 @@ test("a interface não tem acesso ao Node", async () => {
   }
 });
 
+test("a ponte expõe só app.info e nada do Electron ou do Node", async () => {
+  const app = await lancar(novoDataDir());
+  try {
+    const page = await app.firstWindow();
+    expect(await page.evaluate(() => Object.keys(window.guru))).toEqual(["app"]);
+    expect(await page.evaluate(() => Object.keys(window.guru.app))).toEqual(["info"]);
+    expect(await page.evaluate(() => typeof window.ipcRenderer)).toBe("undefined");
+    expect(await page.evaluate(() => typeof window.require)).toBe("undefined");
+  } finally {
+    await app.close();
+  }
+});
+
+test("o code do erro chega ao renderer", async () => {
+  // GURU_TESTE_ERRO_INFO só vale fora do app empacotado (ver app/main.js).
+  const app = await lancar(novoDataDir(), { GURU_TESTE_ERRO_INFO: "SQLITE" });
+  try {
+    const page = await app.firstWindow();
+    const erro = await page.evaluate(() =>
+      window.guru.app.info().then(
+        () => null,
+        (e) => ({ ehError: e instanceof Error, code: e.code, message: e.message }),
+      ),
+    );
+    expect(erro).toEqual({ ehError: true, code: "SQLITE", message: expect.any(String) });
+  } finally {
+    await app.close();
+  }
+});
+
+test("sem GURU_DATA_DIR a pasta de dados usa o nome do produto", async () => {
+  // Redireciona a pasta de configuração do sistema para não tocar nos dados reais.
+  const config = novoDataDir();
+  const app = await _electron.launch({
+    args: ["."],
+    cwd: appDir,
+    env: {
+      ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== "GURU_DATA_DIR")),
+      XDG_CONFIG_HOME: config,
+      APPDATA: config,
+    },
+  });
+  try {
+    expect(await app.evaluate(({ app }) => app.getName())).toBe("Guru de Investimentos");
+    const dados = await app.evaluate(({ app }) => app.getPath("userData"));
+    expect(path.basename(dados)).toBe("Guru de Investimentos");
+  } finally {
+    await app.close();
+  }
+});
+
 test("banco de versão mais nova mostra a tela de erro", async () => {
   const dataDir = novoDataDir();
   const db = new DatabaseSync(path.join(dataDir, "guru.db"));
