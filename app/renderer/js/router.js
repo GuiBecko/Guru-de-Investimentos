@@ -17,7 +17,7 @@ export const TELAS = [
 const MODULOS = { carteira, aporte, assistente, investimentos, perfil, ia };
 
 export function resolver(hash) {
-  const [id, ...parametros] = String(hash).replace(/^#\/?/, "").split("/");
+  const [id, ...parametros] = String(hash).replace(/^#\/?/, "").split("/").filter(Boolean);
   const tela = TELAS.find((t) => t.id === id);
   return tela ? { tela, parametros } : { tela: TELAS[0], parametros: [] };
 }
@@ -35,13 +35,17 @@ export function iniciar(raiz) {
     }),
   );
 
+  let token = 0;
+
   function mostrar() {
+    const meu = ++token;
+    const vigente = () => meu === token;
     const { tela, parametros } = resolver(window.location.hash);
     for (const a of menu.querySelectorAll("a")) {
       a.classList.toggle("on", a.getAttribute("href") === `#/${tela.id}`);
     }
     try {
-      MODULOS[tela.id].render(conteudo, parametros);
+      MODULOS[tela.id].render(conteudo, parametros, vigente);
     } catch (e) {
       console.error(`Falha ao abrir a tela ${tela.id}:`, e);
       const p = document.createElement("p");

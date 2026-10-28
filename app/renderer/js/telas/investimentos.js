@@ -108,12 +108,13 @@ function tabela(lista, apagar) {
   return caixa;
 }
 
-async function lista(el_) {
+async function lista(el_, vigente) {
   async function desenhar(aviso) {
     let itens;
     try {
       itens = await api.investimentos.listar();
     } catch (e) {
+      if (!vigente()) return;
       console.error("Falha ao listar investimentos:", e);
       const p = el("p", "Não foi possível carregar os investimentos.");
       p.setAttribute("role", "alert");
@@ -121,14 +122,20 @@ async function lista(el_) {
       return;
     }
 
+    if (!vigente()) return;
+
     async function apagar(inv) {
-      if (!(await confirmarApagar(inv))) return;
+      if (!(await confirmarApagar(inv)) || !vigente()) return;
       try {
         await api.investimentos.apagar(inv.id);
         await desenhar();
       } catch (e) {
-        if (e.code !== "NAO_ENCONTRADO") console.error("Falha ao apagar:", e);
-        await desenhar(e.message);
+        if (e.code === "NAO_ENCONTRADO") {
+          await desenhar(e.message);
+        } else {
+          console.error("Falha ao apagar:", e);
+          await desenhar("Não foi possível apagar o investimento.");
+        }
       }
     }
 
@@ -152,10 +159,10 @@ async function lista(el_) {
   await desenhar();
 }
 
-export function render(elemento, parametros = []) {
+export function render(elemento, parametros = [], vigente = () => true) {
   if (parametros.length > 0) {
     emConstrucao(elemento, "Investimentos");
     return;
   }
-  return lista(elemento);
+  return lista(elemento, vigente);
 }

@@ -119,3 +119,25 @@ test("apagar um investimento que já não existe mostra a mensagem e redesenha",
     await app.close();
   }
 });
+
+test("uma lista que chega atrasada não sobrescreve a tela seguinte", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await criar(page, CDB);
+    await page.evaluate(() => {
+      // hashchange síncrono: a lista sai a buscar e a tela seguinte abre antes da resposta.
+      window.location.hash = "#/investimentos";
+      window.dispatchEvent(new Event("hashchange"));
+      window.location.hash = "#/assistente";
+      window.dispatchEvent(new Event("hashchange"));
+    });
+    const conteudo = page.locator("main");
+    await expect(conteudo.getByRole("heading", { name: "Assistente" })).toBeVisible();
+    await page.waitForTimeout(300);
+    await expect(conteudo.getByRole("heading", { name: "Assistente" })).toBeVisible();
+    await expect(conteudo.getByRole("heading", { name: "Investimentos" })).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});

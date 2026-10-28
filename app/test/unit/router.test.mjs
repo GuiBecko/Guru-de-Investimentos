@@ -17,6 +17,11 @@ test("segmentos depois da tela viram parâmetros", () => {
   assert.deepEqual(rf.parametros, ["rf"]);
 });
 
+test("barra final e segmentos vazios não viram parâmetros", () => {
+  assert.deepEqual(resolver("#/investimentos/").parametros, []);
+  assert.deepEqual(resolver("#/carteira//rf").parametros, ["rf"]);
+});
+
 test("hash vazio ou desconhecido cai na carteira sem parâmetros", () => {
   for (const h of ["", "#", "#/", "#/nao-existe", "#/nao-existe/x"]) {
     const r = resolver(h);
