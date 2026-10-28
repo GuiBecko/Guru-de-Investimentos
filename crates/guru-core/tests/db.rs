@@ -65,3 +65,21 @@ fn recusa_arquivo_que_nao_e_sqlite_sem_apagar() {
         "isto não é um banco"
     );
 }
+
+#[test]
+fn banco_com_cabecalho_valido_e_paginas_corrompidas_e_db_invalid() {
+    let dir = tempfile::tempdir().unwrap();
+    drop(Db::open(dir.path()).unwrap());
+    let arquivo = dir.path().join("guru.db");
+    let mut bytes = std::fs::read(&arquivo).unwrap();
+    // Mantém o cabeçalho de 100 bytes e estraga o resto da primeira página.
+    for b in bytes[100..4096].iter_mut() {
+        *b = 0xFF;
+    }
+    std::fs::write(&arquivo, &bytes).unwrap();
+    let _ = std::fs::remove_file(dir.path().join("guru.db-wal"));
+    let _ = std::fs::remove_file(dir.path().join("guru.db-shm"));
+
+    let erro = Db::open(dir.path()).err().expect("deveria recusar");
+    assert_eq!(erro.code(), "DB_INVALID", "erro: {erro}");
+}
