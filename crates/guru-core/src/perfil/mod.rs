@@ -2,11 +2,13 @@
 
 mod calculo;
 mod questionario;
+mod repositorio;
 
 use crate::investimento::enum_catalogo;
 
 pub use calculo::{ResultadoPerfil, alocacao_sugerida, calcular};
 pub use questionario::{AVISO_FIXO, Opcao, Pergunta, perguntas};
+pub use repositorio::PerfilGravado;
 
 enum_catalogo!(Perfil {
     Conservador => ("conservador", "Conservador"),

@@ -12,7 +12,8 @@ pub use investimento::{
 };
 
 pub use perfil::{
-    AVISO_FIXO, Opcao, Perfil, Pergunta, ResultadoPerfil, alocacao_sugerida, calcular, perguntas,
+    AVISO_FIXO, Opcao, Perfil, PerfilGravado, Pergunta, ResultadoPerfil, alocacao_sugerida,
+    calcular, perguntas,
 };
 
 pub const CORE_VERSION: &str = env!("CARGO_PKG_VERSION");
