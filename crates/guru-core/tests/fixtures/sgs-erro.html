@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="pt-br">
+
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <link href="https://www.bcb.gov.br/svr_css/bootstrap.min.css" rel="stylesheet">
+
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css?family=Cormorant+Garamond:300,300i,400,400i,500,500i,600,600i,700,700i&display=swap">
+<link rel="stylesheet"
+        href="https://fonts.googleapis.com/css?family=Ubuntu:300,300i,400,400i,500,500i,700,700i&display=swap">
+
+    <link rel="stylesheet" href="https://www.bcb.gov.br/svr_css/theme.css">
+
+    <title>Banco Central do Brasil</title>
+</head>
+
+<body>
+<header>
+<h1 class="logo">Banco Central do Brasil</h1>
+</header>
+<div id="menu"></div>
+<section class="content">
+<div class="container">
+<h2 class="cormorant">Requisição inválida</h2>
+
+            <p>Seu "browser" (ou o servidor proxy) enviou uma requisição inválida ao servidor.</p>
+
+
+            <div class="mb-4 text-danger">
+<p>A sua requisição foi rejeitada.
+
+ Código de erro: <span class="azure-ref">Carregando...</span>
+
+<br> Data e hora do erro:
+<span class="error-date-time"></span>
+</p>
+<p>Caso necessite de ajuda entre em contato com a Central de Atendimento do Banco Central: +55 61
+                    3414-2156.
+</p>
+</div>
+
+            <div class="fst-italic">
+<h3 class="h2 cormorant">Bad request</h3>
+
+                <p class="">Your browser (or proxy) sent a request that this server could not understand.</p>
+
+                <div class="text-danger">
+<p>Your request was rejected.
+
+ Error code: <span class="azure-ref">Carregando...</span>
+
+<br> Error date and time: <span class="error-date-time"></span></p>
+<p>If you need help, contact the Central Bank Call Center: +55 61 3414-2156.</p>
+</div>
+</div>
+</div>
+</section>
+<footer role="contentinfo">
+<a name="inicioRodape" id="inicioRodape"></a>
+<div class="container">
+<span class="line">
+<!-- chanfro -->
+</span>
+<div class="content d-sm-flex justify-content-sm-between pr-sm-5">
+<div class="missao mb-2 mb-sm-0">
+                    Assegurar a estabilidade do poder de compra da moeda e um sistema financeiro sólido e eficiente
+</div>
+<div class="infos">
+<ul class="list-inline text-sm-right">
+<li class="list-inline-item">Atendimento: 145 (custo de ligação local)</li>
+<li class="list-inline-item"><a bcblink
+                                href="https://www.bcb.gov.br/acessoinformacao/faleconosco">Fale conosco</a>
+</li>
+</ul>
+<ul class="list-inline text-sm-right mb-0">
+<li class="list-inline-item"><a bcblink
+                                href="https://www.bcb.gov.br/acessoinformacao/politicaprivacidade">Política de
+                                privacidade</a></li>
+<li class="list-inline-item sem-separador"><a bcblink
+                                href="https://www.bcb.gov.br/acessoinformacao/politica_acessibilidade">Política de
+                                acessibilidade</a></li>
+<li class="list-inline-item">© Banco Central do Brasil - <a bcblink
+                                href="https://www.bcb.gov.br/acessoinformacao/direitosautorais">Todos os direitos
+                                reservados</a></li>
+</ul>
+</div>
+</div>
+</div>
+</footer>
+
+    <script src="https://www.bcb.gov.br/svr_js/bootstrap.bundle.min.js"></script>
+    <script>
+  // Atualiza a data/hora atual em todos os elementos com a classe 'error-date-time'
+  console.log('Atualizando data/hora nos elementos com a classe .error-date-time');
+  document.querySelectorAll('.error-date-time').forEach(element => {
+    const currentDateTime = new Date().toLocaleString('pt-BR');
+    console.log(`Definindo data/hora: ${currentDateTime}`);
+    element.textContent = currentDateTime;
+  });
+
+  // Obtém os cabeçalhos 'x-appgw-trace-id' e 'x-azure-ref' da requisição atual
+  console.log('Tentando obter os cabeçalhos x-appgw-trace-id e x-azure-ref');
+  fetch(window.location.href, { method: 'HEAD' })
+    .then(response => {
+      const traceId = response.headers.get('x-appgw-trace-id') || 'N/A';
+      const azureRef = response.headers.get('x-azure-ref') || 'N/A';
+      console.log(`Cabeçalho x-appgw-trace-id obtido: ${traceId}`);
+      console.log(`Cabeçalho x-azure-ref obtido: ${azureRef}`);
+      document.querySelectorAll('.transaction-id').forEach(element => {
+        element.textContent = traceId;
+      });
+      document.querySelectorAll('.azure-ref').forEach(element => {
+        element.textContent = azureRef;
+      });
+    })
+    .catch(error => {
+      console.error('Erro ao obter os cabeçalhos x-appgw-trace-id e x-azure-ref:', error);
+      document.querySelectorAll('.transaction-id').forEach(element => {
+        element.textContent = 'Indisponível';
+      });
+      document.querySelectorAll('.azure-ref').forEach(element => {
+        element.textContent = 'Indisponível';
+      });
+    });
+</script>
+
+</body>
+</html>
