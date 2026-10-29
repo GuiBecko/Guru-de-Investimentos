@@ -39,11 +39,25 @@ test("não mostra pontuação nem perfil durante o teste", async () => {
     await abrirTeste(page);
     for (let n = 1; n <= 12; n++) {
       await expect(main(page)).toContainText(`pergunta ${n} de 12`);
-      const texto = await main(page).innerText();
-      for (const proibido of ["Conservador", "Moderado", "Arrojado", "pontos"]) {
+      // O aviso fixo do card lateral ("Seu perfil e a alocação sugerida aparecem depois...") fica de fora.
+      const texto = (
+        await main(page).evaluate((m) => {
+          const c = m.cloneNode(true);
+          c.querySelectorAll(".legal").forEach((x) => x.remove());
+          return c.textContent;
+        })
+      ).toLowerCase();
+      for (const proibido of ["conservador", "moderado", "arrojado", "seu perfil", "alocação sugerida", "pontos"]) {
         expect(texto).not.toContain(proibido);
       }
-      expect(await main(page).locator("aside").innerText()).not.toContain("%");
+      await expect(page.getByRole("list", { name: "Alocação sugerida" })).toHaveCount(0);
+      // Sem as opções, o título da pergunta e a linha "pergunta N de 12", não sobra nenhum dígito.
+      const restante = await main(page).evaluate((m) => {
+        const c = m.cloneNode(true);
+        c.querySelectorAll("[role=radio], h2").forEach((x) => x.remove());
+        return c.innerText ?? c.textContent;
+      });
+      expect(restante.replace(/pergunta \d+ de 12/, "")).not.toMatch(/\d/);
       await responder(page, n, 2);
     }
     await expect(main(page)).toContainText("Seu perfil:");
@@ -136,7 +150,13 @@ test("usar esta alocação salva e volta ao perfil", async () => {
     await page.getByRole("button", { name: "Usar esta alocação" }).click();
     await expect(page).toHaveURL(/#\/perfil$/);
     const salva = await page.evaluate(() => import("./js/api.js").then(({ api }) => api.alocacao.ler()));
-    expect(JSON.stringify(salva)).toContain("85");
+    expect(salva.map((x) => [x.classe, x.percentual])).toEqual([
+      ["rf", 85],
+      ["acoes", 5],
+      ["fii", 5],
+      ["ext", 5],
+      ["outros", 0],
+    ]);
   } finally {
     await app.close();
   }
