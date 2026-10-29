@@ -38,8 +38,24 @@ export function formatarData(iso) {
   return `${d}/${m}/${a}`;
 }
 
-// Percentual de parte sobre total com uma casa e vírgula, em aritmética inteira ("89,0%").
-export function formatarPercentual(parte, total) {
-  const decimos = total > 0 ? Math.round((parte * 1000) / total) : 0;
+// Décimos de ponto percentual (inteiro do núcleo) -> "89,0%". Sem ponto flutuante.
+export function formatarDecimos(decimos) {
   return `${Math.trunc(decimos / 10)},${decimos % 10}%`;
+}
+
+// Diferença entre o percentual atual (décimos) e o alvo (pontos inteiros): "+7,0 p.p.", "−8,0 p.p."
+// ou "no alvo" quando a distância é menor que meio ponto.
+export function formatarDiferenca(decimos, alvoPercentual) {
+  const dif = decimos - alvoPercentual * 10;
+  if (Math.abs(dif) < 5) return "no alvo";
+  const abs = Math.abs(dif);
+  return `${dif > 0 ? "+" : "\u2212"}${Math.trunc(abs / 10)},${abs % 10} p.p.`;
+}
+
+const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+
+// "2030-12" -> "dez/2030".
+export function formatarPrazo(aaaamm) {
+  const [a, m] = String(aaaamm).split("-");
+  return `${MESES[Number(m) - 1] ?? m}/${a}`;
 }

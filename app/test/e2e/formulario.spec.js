@@ -322,3 +322,26 @@ test("salvar e adicionar outro com Ação deixa o foco no ticker", async () => {
     await app.close();
   }
 });
+
+test("Vincular a uma meta começa em Nenhuma, lista as metas e não grava metaId sem escolha", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) =>
+        api.metas.criar({ nome: "Reserva", valorAlvoCentavos: 3000000, prazo: "2031-01" }),
+      ),
+    );
+    await abrirNovo(page);
+    const campo = page.getByLabel("Vincular a uma meta");
+    await expect(campo.locator("option")).toHaveText(["Nenhuma", "Reserva"]);
+    await expect(campo).toHaveValue("");
+    await preencherCdb(page);
+    await salvar(page);
+    await expect(page.locator("main tbody tr").first()).toContainText("CDB Banco Inter");
+    const inv = await page.evaluate(() => import("./js/api.js").then(({ api }) => api.investimentos.listar()));
+    expect(inv[0].metaId ?? null).toBeNull();
+  } finally {
+    await app.close();
+  }
+});

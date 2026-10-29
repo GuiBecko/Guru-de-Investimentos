@@ -3,6 +3,7 @@ import { formatarData } from "../../formato.js";
 import { el } from "../_tabela.js";
 import { alerta, rodapeLegal } from "./_comum.js";
 import { leitura, editor } from "./alocacao.js";
+import { coluna as colunaMetas } from "./metas.js";
 
 const MAX = 2000;
 // Texto digitado e ainda não salvo: sobrevive à ida e volta ao editor de alocação.
@@ -104,9 +105,14 @@ function cardObjetivo(inicial, vigente) {
 }
 
 export async function render(raiz, editando, vigente) {
-  let perfil, alocacao, objetivo;
+  let perfil, alocacao, objetivo, metas;
   try {
-    [perfil, alocacao, objetivo] = await Promise.all([api.perfil.atual(), api.alocacao.ler(), api.objetivo.ler()]);
+    [perfil, alocacao, objetivo, metas] = await Promise.all([
+      api.perfil.atual(),
+      api.alocacao.ler(),
+      api.objetivo.ler(),
+      api.metas.listar(),
+    ]);
   } catch (e) {
     console.error("Falha ao carregar o perfil e o objetivo:", e);
     if (vigente()) falha(raiz, "Não foi possível carregar esta tela.");
@@ -129,11 +135,11 @@ export async function render(raiz, editando, vigente) {
   const topo = el("div", undefined, "row");
   topo.append(el("h1", "Perfil e objetivo"));
   if (perfil) {
-    const direita = el("div", undefined, "row");
+    const direitaTopo = el("div", undefined, "row");
     const refazer = el("a", "Refazer o teste", "migalha");
     refazer.href = "#/perfil/teste";
-    direita.append(el("span", `Perfil ${perfil.perfilRotulo} · feito em ${formatarData(perfil.feitoEm)}`, "pill"), refazer);
-    topo.append(direita);
+    direitaTopo.append(el("span", `Perfil ${perfil.perfilRotulo} · feito em ${formatarData(perfil.feitoEm)}`, "pill"), refazer);
+    topo.append(direitaTopo);
   }
   const partes = [topo];
   if (!perfil) partes.push(convite());
@@ -141,10 +147,7 @@ export async function render(raiz, editando, vigente) {
 
   const esquerda = el("div", undefined, "coluna");
   esquerda.append(cardObjetivo(objetivo, vigente), alvo);
-  const metas = el("div", undefined, "card");
-  metas.append(el("b", "Metas"));
-  const direita = el("div", undefined, "coluna");
-  direita.append(metas);
+  const direita = colunaMetas(metas);
   const grade = el("div", undefined, "grid2");
   grade.append(esquerda, direita);
   partes.push(grade, rodapeLegal());

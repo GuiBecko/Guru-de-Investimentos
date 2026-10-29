@@ -108,3 +108,34 @@ textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
 .soma { font-weight: 500; }
 .soma.alerta { color: var(--warn); }
 .card .btn.ghost { justify-self: start; }
+
+/* Metas: card, barra de progresso em passos de 5% e card tracejado. */
+.main .up { color: var(--up); }
+.main .down { color: var(--down); }
+.main .muted { color: var(--muted); }
+a.card .row { flex-wrap: wrap; }
+a.card .row .mono { white-space: nowrap; }
+.dashed { display: block; text-align: center; padding: 12px; border: 1px dashed var(--line-strong); color: var(--muted); text-decoration: none; font-size: 13px; }
+.dashed:hover, .dashed:focus-visible { border-color: var(--accent); color: var(--accent); }
+.dashed:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bar.p5-0 > i { width: 0.00%; }
+.bar.p5-1 > i { width: 5.00%; }
+.bar.p5-2 > i { width: 10.00%; }
+.bar.p5-3 > i { width: 15.00%; }
+.bar.p5-4 > i { width: 20.00%; }
+.bar.p5-5 > i { width: 25.00%; }
+.bar.p5-6 > i { width: 30.00%; }
+.bar.p5-7 > i { width: 35.00%; }
+.bar.p5-8 > i { width: 40.00%; }
+.bar.p5-9 > i { width: 45.00%; }
+.bar.p5-10 > i { width: 50.00%; }
+.bar.p5-11 > i { width: 55.00%; }
+.bar.p5-12 > i { width: 60.00%; }
+.bar.p5-13 > i { width: 65.00%; }
+.bar.p5-14 > i { width: 70.00%; }
+.bar.p5-15 > i { width: 75.00%; }
+.bar.p5-16 > i { width: 80.00%; }
+.bar.p5-17 > i { width: 85.00%; }
+.bar.p5-18 > i { width: 90.00%; }
+.bar.p5-19 > i { width: 95.00%; }
+.bar.p5-20 > i { width: 100.00%; }

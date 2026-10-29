@@ -51,7 +51,7 @@ Escopo combinado durante a fase de protótipo. O protótipo das telas está em [
 | Plataforma | Só computador. Nada mobile. |
 | Distribuição | Programa instalado. Carteira e chave da IA ficam no computador do usuário, sem servidor no MVP. |
 | Tecnologia | Electron com interface em HTML, CSS e JS puros, e núcleo em Rust. Detalhes em [`arquitetura.md`](arquitetura.md). |
-| Perfil | ANBIMA sem prévia do resultado, objetivo em texto livre e metas, tudo no MVP. |
+| Perfil | Questionário próprio de 12 perguntas nas dimensões da ANBIMA (objetivos, situação financeira, conhecimento), sem prévia do resultado, com travas por prazo e reserva e avisos de inconsistência. Três perfis: Conservador, Moderado e Arrojado. |
 | Regulatório | A IA apresenta opções, prós e contras e fontes. A decisão é sempre do usuário. Revisão jurídica dos textos antes do lançamento. |
 | Dados de mercado | Indicadores buscados pelo próprio app nas fontes oficiais. Busca na web da IA só para notícias. |
 | Custo da IA | O usuário usa e paga a própria IA. O app só integra. |

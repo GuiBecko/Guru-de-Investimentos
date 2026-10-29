@@ -41,7 +41,7 @@ function entrada(id, tipo, extra = {}) {
 
 const semPrefixo = (centavos) => formatarReais(centavos).replace(/^R\$ /, "");
 
-function montar(raiz, catalogo, vigente, { id, inicial }) {
+function montar(raiz, catalogo, vigente, { id, inicial, metas }) {
   const edicao = id !== undefined;
   const tipos = new Map(catalogo.tipos.map((t) => [t.codigo, t]));
   const rotulo = (lista, codigo) => lista.find((o) => o.codigo === codigo)?.rotulo ?? codigo;
@@ -126,6 +126,9 @@ function montar(raiz, catalogo, vigente, { id, inicial }) {
   const garantia = el("output", undefined, "fixo");
   garantia.id = "f-garantia";
   const observacao = entrada("f-observacao", "text");
+  const meta = el("select");
+  meta.id = "f-meta";
+  meta.append(opcao("", "Nenhuma"), ...metas.map((m) => opcao(String(m.id), m.nome)));
 
   const marca = (id) => {
     const m = el("span", "preenchido pelo tipo", "auto");
@@ -162,6 +165,7 @@ function montar(raiz, catalogo, vigente, { id, inicial }) {
   registrar("dataCarencia", "Data da carência", carencia, { quando: (c) => !rv(c) && c.liquidez === "carencia" });
   registrar("ir", "Imposto de renda", ir, { quando: rf, extra: [marcaIr] });
   registrar("garantia", "Garantia", garantia, { quando: rf, extra: [marcaGarantia] });
+  registrar("metaId", "Vincular a uma meta", meta, { classe: "span2" });
   registrar("observacao", "Observação (opcional)", observacao, { classe: "span3" });
   // O benchmark não tem campo próprio: o erro dele aparece junto da taxa.
   campos.benchmark = { ...campos.taxa, controle: () => benchmark, base: [] };
@@ -184,7 +188,7 @@ function montar(raiz, catalogo, vigente, { id, inicial }) {
     ...secao("Identificação", () => true, "tipo", "emissor", "ticker", "instituicao"),
     ...secao("Rentabilidade e prazo", rf, "indexador", "taxa"),
     ...secao("Posição", rv, "quantidade", "precoMedioCentavos"),
-    ...secao("Valores e condições", () => true, "dataAplicacao", "vencimento", "valorAplicadoCentavos", "liquidez", "dataCarencia", "ir", "garantia", "observacao"),
+    ...secao("Valores e condições", () => true, "dataAplicacao", "vencimento", "valorAplicadoCentavos", "liquidez", "dataCarencia", "ir", "garantia", "metaId", "observacao"),
     rodape,
   );
 
@@ -290,7 +294,7 @@ function montar(raiz, catalogo, vigente, { id, inicial }) {
       emissor: emissor.value, ticker: ticker.value, indexador: indexador.value, taxa: taxa.value,
       benchmark: benchmark.value, dataAplicacao: data.value, vencimento: vencimento.value,
       valor: valor.value, quantidade: quantidade.value, preco: preco.value, liquidez: liquidez.value,
-      dataCarencia: carencia.value, ir: ir.value, observacao: observacao.value,
+      dataCarencia: carencia.value, ir: ir.value, observacao: observacao.value, metaId: meta.value,
     };
   }
 
@@ -309,7 +313,8 @@ function montar(raiz, catalogo, vigente, { id, inicial }) {
       if (erros.length) return marcarErros(erros);
       if (outro) {
         montar(raiz, catalogo, vigente, {
-          inicial: { dados: { tipo: dados.tipo, instituicao: dados.instituicao }, aviso: "Investimento salvo." },
+          inicial: { dados: { tipo: dados.tipo, instituicao: dados.instituicao, metaId: dados.metaId }, aviso: "Investimento salvo." },
+          metas,
         });
         // O que some é o contêiner do campo (`.field`), não o input.
         raiz.querySelector(".field:not([hidden]) > #f-emissor, .field:not([hidden]) > #f-ticker")?.focus();
@@ -361,6 +366,7 @@ function montar(raiz, catalogo, vigente, { id, inicial }) {
   poe(quantidade, d.quantidade);
   poe(carencia, d.dataCarencia);
   poe(observacao, d.observacao);
+  if (d.metaId != null && metas.some((m) => m.id === d.metaId)) meta.value = String(d.metaId);
   if (d.valorAplicadoCentavos != null) valor.value = semPrefixo(d.valorAplicadoCentavos);
   if (d.precoMedioCentavos != null) preco.value = semPrefixo(d.precoMedioCentavos);
   if (d.liquidez && !liquidez.disabled) liquidez.value = d.liquidez;
@@ -387,13 +393,14 @@ export async function render(raiz, parametros, vigente) {
     return naoEncontrado(raiz, "Este investimento não existe mais. Atualize a lista.");
   }
   try {
-    const [catalogo, atual] = await Promise.all([
+    const [catalogo, metas, atual] = await Promise.all([
       api.investimentos.catalogo(),
+      api.metas.listar(),
       id === undefined ? undefined : api.investimentos.ler(id).catch((e) => (e.code === "NAO_ENCONTRADO" ? null : Promise.reject(e))),
     ]);
     if (!vigente()) return;
     if (atual === null) return naoEncontrado(raiz, "Este investimento não existe mais. Atualize a lista.");
-    montar(raiz, catalogo, vigente, { id, inicial: { dados: atual } });
+    montar(raiz, catalogo, vigente, { id, inicial: { dados: atual }, metas });
   } catch (e) {
     if (!vigente()) return;
     console.error("Falha ao abrir o formulário:", e);

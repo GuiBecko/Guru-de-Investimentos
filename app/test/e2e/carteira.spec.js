@@ -136,3 +136,114 @@ test("classe desconhecida ou vazia mostra o aviso e o link de volta", async () =
     await app.close();
   }
 });
+
+test("com alocação-alvo cada card mostra o alvo e a diferença em pontos", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await criar(page, CDB);
+    await criar(page, SELIC);
+    await criar(page, ITUB4);
+    await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) =>
+        api.alocacao.salvar([
+          { classe: "rf", percentual: 45 },
+          { classe: "acoes", percentual: 30 },
+          { classe: "fii", percentual: 15 },
+          { classe: "ext", percentual: 10 },
+          { classe: "outros", percentual: 0 },
+        ]),
+      ),
+    );
+    await page.evaluate(() => {
+      window.location.hash = "#/carteira";
+    });
+    const main = page.locator("main");
+    const rf = main.getByRole("link", { name: /Renda fixa/ });
+    await expect(rf).toContainText("alvo 45%");
+    await expect(rf).toContainText("+44,0 p.p.");
+    const acoes = main.getByRole("link", { name: /Ações/ });
+    await expect(acoes).toContainText("alvo 30%");
+    await expect(acoes).toContainText("\u221219,0 p.p.");
+    // Classe com alvo e sem investimento aparece zerada.
+    const fii = main.getByRole("link", { name: /FIIs/ });
+    await expect(fii).toContainText("R$ 0,00");
+    await expect(fii).toContainText("alvo 15%");
+    await expect(fii).toContainText("\u221215,0 p.p.");
+    // Alvo 0 e sem investimento não aparece.
+    await expect(main.getByRole("link", { name: /Outros/ })).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test("diferença menor que meio ponto aparece como no alvo", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await criar(page, CDB);
+    await criar(page, SELIC);
+    await criar(page, ITUB4);
+    await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) =>
+        api.alocacao.salvar([
+          { classe: "rf", percentual: 89 },
+          { classe: "acoes", percentual: 11 },
+          { classe: "fii", percentual: 0 },
+          { classe: "ext", percentual: 0 },
+          { classe: "outros", percentual: 0 },
+        ]),
+      ),
+    );
+    await page.evaluate(() => {
+      window.location.hash = "#/carteira";
+    });
+    const rf = page.locator("main").getByRole("link", { name: /Renda fixa/ });
+    await expect(rf).toContainText("alvo 89%");
+    await expect(rf).toContainText("no alvo");
+  } finally {
+    await app.close();
+  }
+});
+
+test("sem alocação-alvo os cards não mostram alvo", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await criar(page, CDB);
+    await page.evaluate(() => {
+      window.location.hash = "#/carteira";
+    });
+    const rf = page.locator("main").getByRole("link", { name: /Renda fixa/ });
+    await expect(rf).toContainText("100,0%");
+    await expect(rf).not.toContainText("alvo");
+  } finally {
+    await app.close();
+  }
+});
+
+test("só com alvo e sem investimentos a carteira continua vazia", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) =>
+        api.alocacao.salvar([
+          { classe: "rf", percentual: 100 },
+          { classe: "acoes", percentual: 0 },
+          { classe: "fii", percentual: 0 },
+          { classe: "ext", percentual: 0 },
+          { classe: "outros", percentual: 0 },
+        ]),
+      ),
+    );
+    await page.evaluate(() => {
+      window.location.hash = "#/carteira";
+    });
+    const main = page.locator("main");
+    await expect(main).toContainText("Sua carteira está vazia.");
+    await expect(main.getByRole("link", { name: "Lançar o primeiro investimento" })).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
