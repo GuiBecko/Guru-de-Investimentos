@@ -17,3 +17,4 @@ Os planos detalhados:
 
 - Fase 0: [`superpowers/plans/2026-10-28-fase-0-fundacao.md`](superpowers/plans/2026-10-28-fase-0-fundacao.md)
 - Fase 1: [`superpowers/plans/2026-10-28-fase-1-carteira-manual.md`](superpowers/plans/2026-10-28-fase-1-carteira-manual.md)
+- Fase 2: [`superpowers/plans/2026-10-29-fase-2-perfil-objetivo.md`](superpowers/plans/2026-10-29-fase-2-perfil-objetivo.md)
