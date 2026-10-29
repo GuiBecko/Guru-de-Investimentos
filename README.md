@@ -46,6 +46,8 @@ cargo test --workspace                                         # núcleo em Rust
 (cd app && npx playwright test)                                # E2E (abre o Electron)
 ```
 
+O E2E roda com as janelas escondidas (`GURU_JANELA_OCULTA=1`, definido em `app/playwright.config.js`; só vale fora do app empacotado), então nada aparece na sua tela.
+
 No Linux sem tela, rode o E2E com `xvfb-run -a npx playwright test`.
 
 No Ubuntu 24.04, se o Electron falhar com erro de sandbox, libere os namespaces de usuário: `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`.

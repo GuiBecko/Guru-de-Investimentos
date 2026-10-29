@@ -45,11 +45,13 @@ test("com perfil mostra a pílula com a data de hoje e o rodapé", async () => {
   const app = await lancar();
   try {
     const page = await app.firstWindow();
+    const antes = new Date();
     await comPerfil(page);
     await ir(page, "#/perfil");
-    const d = new Date();
-    const hoje = [d.getDate(), d.getMonth() + 1].map((n) => String(n).padStart(2, "0")).join("/") + `/${d.getFullYear()}`;
-    await expect(main(page)).toContainText(`Perfil Conservador · feito em ${hoje}`);
+    // Mesma data local do núcleo; aceita a data de antes ou de depois do registro (virada do dia).
+    const fmt = (d) => [d.getDate(), d.getMonth() + 1].map((n) => String(n).padStart(2, "0")).join("/") + `/${d.getFullYear()}`;
+    const datas = [antes, new Date()].map(fmt);
+    await expect(main(page)).toContainText(new RegExp(`Perfil Conservador · feito em (${[...new Set(datas)].join("|")})`));
     await expect(main(page).getByRole("link", { name: "Refazer o teste" })).toHaveAttribute("href", "#/perfil/teste");
     await expect(main(page)).toContainText("Não é recomendação de investimento.");
     await expect(main(page)).toContainText("Metas");
@@ -81,6 +83,24 @@ test("objetivo: digitar, salvar, reabrir o app e o texto está lá", async () =>
   }
 });
 
+test("rascunho do objetivo sobrevive à ida e volta ao editor de alocação", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await ir(page, "#/perfil");
+    const texto = main(page).getByRole("textbox", { name: /Por que você está investindo/ });
+    await texto.fill("Rascunho ainda não salvo");
+    await main(page).getByRole("button", { name: "Definir" }).click();
+    await expect(page).toHaveURL(/#\/perfil\/alocacao$/);
+    await expect(texto).toHaveValue("Rascunho ainda não salvo");
+    await main(page).getByRole("button", { name: "Cancelar" }).click();
+    await expect(page).toHaveURL(/#\/perfil$/);
+    await expect(texto).toHaveValue("Rascunho ainda não salvo");
+  } finally {
+    await app.close();
+  }
+});
+
 test("exemplo clicado entra no texto", async () => {
   const app = await lancar();
   try {
@@ -89,6 +109,11 @@ test("exemplo clicado entra no texto", async () => {
     await main(page).getByRole("button", { name: "Quero viver de renda a partir dos 55" }).click();
     await expect(main(page).getByRole("textbox", { name: /Por que você está investindo/ })).toHaveValue(
       "Quero viver de renda a partir dos 55",
+    );
+    // Com texto, o exemplo é acrescentado depois de uma linha em branco.
+    await main(page).getByRole("button", { name: "Quero manter o patrimônio que já tenho" }).click();
+    await expect(main(page).getByRole("textbox", { name: /Por que você está investindo/ })).toHaveValue(
+      "Quero viver de renda a partir dos 55\n\nQuero manter o patrimônio que já tenho",
     );
   } finally {
     await app.close();
@@ -146,6 +171,10 @@ test("decimal, negativo e vazio são recusados no campo sem enviar", async () =>
       await expect(campos(page).nth(1)).toHaveAttribute("aria-invalid", "true");
       await expect(page).toHaveURL(/#\/perfil\/alocacao$/);
     }
+    // Digitar no campo limpa o erro dele.
+    await campos(page).nth(1).fill("0");
+    await expect(campos(page).nth(1)).not.toHaveAttribute("aria-invalid", "true");
+    await expect(main(page)).not.toContainText("Use um número inteiro de 0 a 100.");
     // O campo inválido não entra na soma ao vivo.
     await expect(main(page)).toContainText("Soma: 100%");
     expect(await chamar(page, "(api) => api.alocacao.ler()")).toBeNull();

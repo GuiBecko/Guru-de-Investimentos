@@ -72,7 +72,10 @@ export async function editor(alocacao, perfil, vigente) {
     const erro = el("span", undefined, "erro");
     erro.id = `a-${c.codigo}-erro`;
     erro.hidden = true;
-    entrada.addEventListener("input", atualizarSoma);
+    entrada.addEventListener("input", () => {
+      limparCampo(c.codigo);
+      atualizarSoma();
+    });
     entradas.set(c.codigo, entrada);
     erros.set(c.codigo, erro);
     campo.append(rotulo, entrada, erro);
@@ -97,6 +100,13 @@ export async function editor(alocacao, perfil, vigente) {
     }
     soma.textContent = `Soma: ${total}%`;
     soma.classList.toggle("alerta", total !== 100);
+  }
+
+  function limparCampo(codigo) {
+    entradas.get(codigo).removeAttribute("aria-invalid");
+    entradas.get(codigo).removeAttribute("aria-describedby");
+    erros.get(codigo).hidden = true;
+    erros.get(codigo).textContent = "";
   }
 
   function limpar() {

@@ -5,6 +5,8 @@ import { alerta, rodapeLegal } from "./_comum.js";
 import { leitura, editor } from "./alocacao.js";
 
 const MAX = 2000;
+// Texto digitado e ainda não salvo: sobrevive à ida e volta ao editor de alocação.
+let rascunho = null;
 const EXEMPLOS = [
   "Quero construir um patrimônio de R$ 50.000 investido",
   "Quero manter o patrimônio que já tenho",
@@ -39,7 +41,7 @@ function cardObjetivo(inicial, vigente) {
   texto.id = "objetivo-txt";
   texto.rows = 5;
   texto.maxLength = MAX;
-  texto.value = inicial ?? "";
+  texto.value = rascunho ?? inicial ?? "";
   texto.setAttribute("aria-describedby", dica.id);
   const contador = el("small", undefined, "mono contador");
   const atualizar = () => {
@@ -52,6 +54,7 @@ function cardObjetivo(inicial, vigente) {
   erro.setAttribute("role", "alert");
   erro.hidden = true;
   texto.addEventListener("input", () => {
+    rascunho = texto.value;
     atualizar();
     status.textContent = "";
   });
@@ -61,7 +64,8 @@ function cardObjetivo(inicial, vigente) {
     const b = el("button", ex, "chip");
     b.type = "button";
     b.addEventListener("click", () => {
-      texto.value = ex;
+      texto.value = texto.value.trim() === "" ? ex : `${texto.value}\n\n${ex}`;
+      rascunho = texto.value;
       atualizar();
       status.textContent = "";
       texto.focus();
@@ -82,6 +86,7 @@ function cardObjetivo(inicial, vigente) {
         erro.textContent = erros.map((x) => x.mensagem).join(" ");
         erro.hidden = false;
       } else {
+        rascunho = null;
         status.textContent = "Objetivo salvo.";
       }
     } catch (e) {
