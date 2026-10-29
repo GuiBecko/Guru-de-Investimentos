@@ -1,16 +1,11 @@
 import { api } from "../../api.js";
 import { el } from "../_tabela.js";
+import { alerta, rodapeLegal } from "./_comum.js";
 
 function falha(raiz, mensagem) {
   const p = el("p", mensagem);
   p.setAttribute("role", "alert");
   raiz.replaceChildren(el("h1", "Seu perfil"), p);
-}
-
-function alerta(texto) {
-  const f = el("div", texto, "faixa");
-  f.setAttribute("role", "alert");
-  return f;
 }
 
 export async function render(raiz, vigente) {
@@ -82,13 +77,7 @@ export async function render(raiz, vigente) {
   acoes.append(ajustar, usar);
   partes.push(erro, acoes);
 
-  partes.push(
-    el(
-      "div",
-      "Questionário baseado nas dimensões das regras de suitability da ANBIMA: objetivos, situação financeira e conhecimento. Não é recomendação de investimento.",
-      "legal",
-    ),
-  );
+  partes.push(rodapeLegal());
   raiz.replaceChildren(...partes);
   raiz.querySelector("h1").tabIndex = -1;
   raiz.querySelector("h1").focus();
