@@ -1,6 +1,7 @@
 import { api } from "../../api.js";
 import { formatarPrazo, formatarReais, paraCentavos } from "../../formato.js";
 import { el } from "../_tabela.js";
+import { MENSAGEM_VALOR } from "../formulario-investimento/dados.js";
 
 const TEXTO_VAZIO = "Metas ajudam a acompanhar objetivos com valor e prazo, como a entrada de um imóvel.";
 const TONS = { no_caminho: "up", concluida: "up", atrasada: "down", vencida: "down", sem_aportes: "muted" };
@@ -17,17 +18,14 @@ function cartao(m) {
   a.href = `#/perfil/metas/${m.id}`;
   const titulo = el("div", undefined, "row");
   titulo.append(el("b", m.nome), el("small", formatarPrazo(m.prazo)));
-  const valores = el("div", undefined, "row");
-  const aporte = m.aporteNecessarioCentavos ? `aporte necessário ${formatarReais(m.aporteNecessarioCentavos)}/mês` : "";
-  valores.append(
-    el("small", aporte),
-    el("span", `${formatarReais(m.acumuladoCentavos)} / ${formatarReais(m.valorAlvoCentavos)}`, "mono"),
-  );
+  const partes = [titulo];
+  if (m.aporteNecessarioCentavos) partes.push(el("small", `aporte necessário ${formatarReais(m.aporteNecessarioCentavos)}/mês`));
+  partes.push(el("span", `${formatarReais(m.acumuladoCentavos)} / ${formatarReais(m.valorAlvoCentavos)}`, "mono"));
   // Largura em passos de 5%: a CSP não aceita style=, então a barra usa uma classe por passo.
   const passo = Math.min(20, Math.floor(m.percentualDecimos / 50));
   const barra = el("div", undefined, `bar p5-${passo}`);
   barra.append(el("i"));
-  a.append(titulo, valores, barra, el("small", m.mensagem, TONS[m.situacao] ?? "muted"));
+  a.append(...partes, barra, el("small", m.mensagem, TONS[m.situacao] ?? "muted"));
   return a;
 }
 
@@ -178,10 +176,16 @@ export async function formulario(raiz, alvo, vigente) {
     e.preventDefault();
     if (ocupado) return;
     limpar();
-    // Valor ilegível vai como 0: o núcleo responde com a mesma mensagem de valor vazio.
+    const textoValor = campos.valorAlvoCentavos.input.value;
+    const centavos = paraCentavos(textoValor);
+    if (centavos === null && textoValor.trim() !== "") {
+      marcar([{ campo: "valorAlvoCentavos", mensagem: MENSAGEM_VALOR }]);
+      return;
+    }
+    // Valor vazio vai como 0: o núcleo responde "Informe o valor da meta." junto dos demais erros.
     const dados = {
       nome: campos.nome.input.value,
-      valorAlvoCentavos: paraCentavos(campos.valorAlvoCentavos.input.value) ?? 0,
+      valorAlvoCentavos: centavos ?? 0,
       prazo: campos.prazo.input.value,
     };
     ocupado = salvar.disabled = true;

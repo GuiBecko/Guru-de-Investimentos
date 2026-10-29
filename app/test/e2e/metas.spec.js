@@ -173,3 +173,36 @@ test("ao editar o investimento mostra a meta vinculada", async () => {
     await app.close();
   }
 });
+
+test("valor ilegível mostra a mensagem do formulário de investimento e não grava", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await novaMeta(page, { nome: "Casa", valor: "abc", prazo: "2030-12" });
+    await expect(page.locator("#e-valorAlvoCentavos")).toHaveText("Informe um valor em reais, por exemplo 1.234,56.");
+    await expect(page.locator("#e-nome")).toBeHidden();
+    await expect(page).toHaveURL(/#\/perfil\/metas\/nova$/);
+    expect(await chamar(page, "(api) => api.metas.listar()")).toHaveLength(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test("escolher Nenhuma ao editar desvincula o investimento e zera o acumulado", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    const { id } = await chamar(page, "(api) => api.metas.criar({ nome: 'Entrada', valorAlvoCentavos: 15000000, prazo: '2030-12' })");
+    const inv = await chamar(page, "(api, d) => api.investimentos.criar(d)", { ...CDB, metaId: id });
+    await ir(page, `#/investimentos/${inv.id}`);
+    await page.getByLabel("Vincular a uma meta").selectOption({ label: "Nenhuma" });
+    await page.getByRole("button", { name: "Salvar", exact: true }).click();
+    await expect(page).toHaveURL(/#\/investimentos$/);
+    const lido = await chamar(page, "(api, i) => api.investimentos.ler(i)", inv.id);
+    expect(lido.metaId ?? null).toBeNull();
+    await ir(page, "#/perfil");
+    await expect(main(page).getByRole("link", { name: /Entrada/ })).toContainText("R$ 0,00 / R$ 150.000,00");
+  } finally {
+    await app.close();
+  }
+});
