@@ -24,8 +24,10 @@ function erro(elemento, titulo) {
 }
 
 function card(c) {
-  const a = el("a", undefined, "card click");
-  a.href = `#/carteira/${c.classe}`;
+  // Classe sem investimento não tem tela de detalhe: o card não é link.
+  const temDetalhe = c.quantidade > 0;
+  const a = temDetalhe ? el("a", undefined, "card click") : el("div", undefined, "card");
+  if (temDetalhe) a.href = `#/carteira/${c.classe}`;
   const n = c.quantidade === 1 ? "1 investimento" : `${c.quantidade} investimentos`;
   const base = el("div", undefined, "row");
   base.append(el("small", n), el("span", formatarDecimos(c.percentualDecimos), "mono"));

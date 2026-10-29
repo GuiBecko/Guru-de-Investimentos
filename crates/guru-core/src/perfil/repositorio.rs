@@ -184,11 +184,12 @@ impl Db {
         }
         let mut alvo = Vec::new();
         for classe in Classe::TODOS {
-            let (_, pct) = linhas
+            // Classe sem linha (por exemplo, criada depois) vale 0.
+            let pct = linhas
                 .iter()
                 .find(|(c, _)| c == classe.codigo())
-                .ok_or_else(|| corrompido("alocação"))?;
-            alvo.push((*classe, *pct));
+                .map_or(0, |(_, pct)| *pct);
+            alvo.push((*classe, pct));
         }
         Ok(Some(alvo))
     }
@@ -296,6 +297,30 @@ mod tests {
         let avisos = vec!["Ela disse \"não\" \\ ok".to_string(), "Segundo".to_string()];
         assert_eq!(avisos_de_json(&avisos_em_json(&avisos)), Some(avisos));
         assert_eq!(avisos_de_json("[]"), Some(vec![]));
+    }
+
+    #[test]
+    fn alocacao_alvo_com_classe_ausente_vale_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path()).unwrap();
+        let valores: Vec<(String, i64)> = [
+            ("rf", 50),
+            ("acoes", 25),
+            ("fii", 10),
+            ("ext", 10),
+            ("outros", 5),
+        ]
+        .iter()
+        .map(|(c, v)| (c.to_string(), *v))
+        .collect();
+        assert!(db.salvar_alocacao_alvo(&valores).unwrap().is_empty());
+        db.conn
+            .execute("DELETE FROM alocacao_alvo WHERE classe = 'outros'", [])
+            .unwrap();
+        let alvo = db.alocacao_alvo().unwrap().unwrap();
+        assert_eq!(alvo.len(), 5);
+        assert_eq!(alvo[4], (Classe::Outros, 0));
+        assert_eq!(alvo[0], (Classe::Rf, 50));
     }
 
     #[test]

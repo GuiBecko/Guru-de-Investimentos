@@ -3,6 +3,13 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
+// Datas futuras derivadas do ano atual, para os testes não vencerem com o tempo.
+const ANO = new Date().getFullYear();
+const VENC_CDB = `${ANO + 3}-03-15`;
+const VENC_CDB_BR = `15/03/${ANO + 3}`;
+const VENC_SELIC = `${ANO + 4}-03-01`;
+const PRAZO = `${ANO + 4}-12`;
+
 const appDir = path.resolve(__dirname, "../..");
 
 function lancar() {
@@ -21,7 +28,7 @@ const CDB = {
   taxa: "102",
   benchmark: "cdi",
   dataAplicacao: "2025-03-15",
-  vencimento: "2028-03-15",
+  vencimento: VENC_CDB,
   valorAplicadoCentavos: 2000000,
   liquidez: "vencimento",
   ir: "regressiva",
@@ -65,7 +72,7 @@ test("a linha mostra os dados do CDB e o total", async () => {
     await expect(linha).toContainText("CDB Banco Inter");
     await expect(linha).toContainText("102% do CDI");
     await expect(linha).toContainText("R$ 20.000,00");
-    await expect(linha).toContainText("15/03/2028");
+    await expect(linha).toContainText(VENC_CDB_BR);
     await expect(linha.getByRole("link", { name: "Editar" })).toHaveAttribute("href", `#/investimentos/${id}`);
     await expect(page.locator("main")).toContainText("Total aplicado");
   } finally {

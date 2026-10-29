@@ -93,10 +93,10 @@ mod testes {
         r[1] = 1;
         r[5] = 1;
         let mut falta = soma - 2;
-        for i in 0..11 {
-            let cabe = 3 - r[i];
+        for v in r.iter_mut().take(11) {
+            let cabe = 3 - *v;
             let dar = cabe.min(falta);
-            r[i] += dar;
+            *v += dar;
             falta -= dar;
         }
         assert_eq!(falta, 0);
