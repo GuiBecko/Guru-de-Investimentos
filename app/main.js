@@ -63,6 +63,18 @@ const canais = {
   "investimentos:atualizar": (id, dados) => nucleo().atualizarInvestimento(id, dados),
   "investimentos:apagar": (id) => nucleo().apagarInvestimento(id),
   "carteira:resumo": () => nucleo().resumoCarteira(),
+  "perfil:questionario": () => nucleo().questionario(),
+  "perfil:registrar": (respostas) => nucleo().registrarPerfil(respostas),
+  "perfil:atual": () => nucleo().perfilAtual(),
+  "alocacao:ler": () => nucleo().alocacaoAlvo(),
+  "alocacao:salvar": (valores) => nucleo().salvarAlocacaoAlvo(valores),
+  "objetivo:ler": () => nucleo().objetivo(),
+  "objetivo:salvar": (texto) => nucleo().salvarObjetivo(texto),
+  "metas:listar": () => nucleo().listarMetas(),
+  "metas:ler": (id) => nucleo().meta(id),
+  "metas:criar": (dados) => nucleo().criarMeta(dados),
+  "metas:atualizar": (id, dados) => nucleo().atualizarMeta(id, dados),
+  "metas:apagar": (id) => nucleo().apagarMeta(id),
 };
 for (const [canal, handler] of Object.entries(canais)) {
   ipcMain.handle(canal, tratar(handler));

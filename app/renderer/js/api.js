@@ -20,4 +20,24 @@ export const api = {
     apagar: (id) => desembrulhar(window.guru.investimentos.apagar(id)),
   },
   carteira: { resumo: () => desembrulhar(window.guru.carteira.resumo()) },
+  perfil: {
+    questionario: () => desembrulhar(window.guru.perfil.questionario()),
+    registrar: (respostas) => desembrulhar(window.guru.perfil.registrar(respostas)),
+    atual: () => desembrulhar(window.guru.perfil.atual()),
+  },
+  alocacao: {
+    ler: () => desembrulhar(window.guru.alocacao.ler()),
+    salvar: (valores) => desembrulhar(window.guru.alocacao.salvar(valores)),
+  },
+  objetivo: {
+    ler: () => desembrulhar(window.guru.objetivo.ler()),
+    salvar: (texto) => desembrulhar(window.guru.objetivo.salvar(texto)),
+  },
+  metas: {
+    listar: () => desembrulhar(window.guru.metas.listar()),
+    ler: (id) => desembrulhar(window.guru.metas.ler(id)),
+    criar: (dados) => desembrulhar(window.guru.metas.criar(dados)),
+    atualizar: (id, dados) => desembrulhar(window.guru.metas.atualizar(id, dados)),
+    apagar: (id) => desembrulhar(window.guru.metas.apagar(id)),
+  },
 };

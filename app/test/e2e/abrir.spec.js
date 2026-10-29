@@ -52,6 +52,10 @@ test("a ponte expõe só os canais do app e nada do Electron ou do Node", async 
       "app",
       "investimentos",
       "carteira",
+      "perfil",
+      "alocacao",
+      "objetivo",
+      "metas",
     ]);
     expect(await page.evaluate(() => Object.keys(window.guru.app))).toEqual(["info"]);
     expect(await page.evaluate(() => Object.keys(window.guru.investimentos))).toEqual([
@@ -63,6 +67,20 @@ test("a ponte expõe só os canais do app e nada do Electron ou do Node", async 
       "apagar",
     ]);
     expect(await page.evaluate(() => Object.keys(window.guru.carteira))).toEqual(["resumo"]);
+    expect(await page.evaluate(() => Object.keys(window.guru.perfil))).toEqual([
+      "questionario",
+      "registrar",
+      "atual",
+    ]);
+    expect(await page.evaluate(() => Object.keys(window.guru.alocacao))).toEqual(["ler", "salvar"]);
+    expect(await page.evaluate(() => Object.keys(window.guru.objetivo))).toEqual(["ler", "salvar"]);
+    expect(await page.evaluate(() => Object.keys(window.guru.metas))).toEqual([
+      "listar",
+      "ler",
+      "criar",
+      "atualizar",
+      "apagar",
+    ]);
     expect(await page.evaluate(() => typeof window.ipcRenderer)).toBe("undefined");
     expect(await page.evaluate(() => typeof window.require)).toBe("undefined");
     expect(await page.evaluate(() => typeof window.__guruBruto)).toBe("undefined");
@@ -107,6 +125,29 @@ test("investimentos pelo api: catálogo e NAO_ENCONTRADO", async () => {
       ),
     );
     expect(erro).toEqual({ code: "NAO_ENCONTRADO", message: expect.any(String) });
+  } finally {
+    await app.close();
+  }
+});
+
+test("metas e perfil pelo api: NAO_ENCONTRADO e questionário sem pontos", async () => {
+  const app = await lancar(novoDataDir());
+  try {
+    const page = await app.firstWindow();
+    const erro = await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) =>
+        api.metas.apagar(999).then(
+          () => null,
+          (e) => ({ code: e.code, message: e.message }),
+        ),
+      ),
+    );
+    expect(erro).toEqual({ code: "NAO_ENCONTRADO", message: expect.any(String) });
+    const q = await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) => api.perfil.questionario()),
+    );
+    expect(q.perguntas).toHaveLength(12);
+    expect(typeof q.perguntas[0].opcoes[0]).toBe("string");
   } finally {
     await app.close();
   }
