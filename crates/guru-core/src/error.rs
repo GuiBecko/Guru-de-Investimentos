@@ -14,6 +14,8 @@ pub enum CoreError {
     Sqlite(#[from] rusqlite::Error),
     #[error("Este investimento não existe mais. Atualize a lista.")]
     NaoEncontrado(i64),
+    #[error("Esta meta não existe mais. Atualize a lista.")]
+    MetaNaoEncontrada(i64),
 }
 
 impl CoreError {
@@ -23,7 +25,7 @@ impl CoreError {
             CoreError::DbInvalid(_) => "DB_INVALID",
             CoreError::Io(_) => "IO",
             CoreError::Sqlite(_) => "SQLITE",
-            CoreError::NaoEncontrado(_) => "NAO_ENCONTRADO",
+            CoreError::NaoEncontrado(_) | CoreError::MetaNaoEncontrada(_) => "NAO_ENCONTRADO",
         }
     }
 }

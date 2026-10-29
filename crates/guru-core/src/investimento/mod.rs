@@ -12,4 +12,4 @@ pub use catalogo::{
 pub use modelo::{ErroCampo, InvestimentoValido, NovoInvestimento};
 pub use repositorio::{Gravacao, Investimento, Resumo, ResumoClasse};
 pub use texto::{nome, rendimento};
-pub use validacao::validar;
+pub use validacao::{MAX_CENTAVOS, validar};

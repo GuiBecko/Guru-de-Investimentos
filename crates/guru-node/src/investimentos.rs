@@ -185,6 +185,8 @@ pub fn entrada(j: NovoInvestimentoJs) -> NovoInvestimento {
         data_carencia: j.data_carencia,
         ir: j.ir,
         observacao: j.observacao,
+        // Tarefa 4 expõe o vínculo com a meta pela interface.
+        meta_id: None,
     }
 }
 
