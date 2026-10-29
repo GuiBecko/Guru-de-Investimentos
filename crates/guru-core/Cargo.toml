@@ -4,8 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["alloc", "now"] }
 rusqlite = { version = "0.40", features = ["bundled"] }
 rusqlite_migration = "2.6"
+rust_decimal = { version = "1.43.0", default-features = false }
 thiserror = "2"
 
 [dev-dependencies]

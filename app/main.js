@@ -1,21 +1,33 @@
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
+const { origemPermitida } = require("./main/origem.js");
+const { normalizarErro } = require("./main/erro.js");
 
-if (process.env.GURU_DATA_DIR) {
+// Variáveis de teste (GURU_*) só valem fora do app empacotado.
+if (process.env.GURU_DATA_DIR && !app.isPackaged) {
   app.setPath("userData", process.env.GURU_DATA_DIR);
 }
 
 let janela = null;
 let core = null;
 
+const URL_ESPERADA = pathToFileURL(path.join(__dirname, "renderer", "index.html")).href;
+
 // Embrulha um handler IPC: devolve `{ ok: true, value }` ou
 // `{ ok: false, code, message }`, para o `code` atravessar a ponte (ver preload.js).
 function tratar(handler) {
-  return async (...args) => {
+  return async (event, ...args) => {
+    const url = event && event.senderFrame ? event.senderFrame.url : "";
+    if (!origemPermitida(url, URL_ESPERADA)) {
+      return { ok: false, code: "ORIGEM_RECUSADA", message: "Chamada recusada: origem desconhecida." };
+    }
     try {
       return { ok: true, value: await handler(...args) };
     } catch (e) {
-      return { ok: false, code: e.code || "ERRO_DESCONHECIDO", message: e.message };
+      const { code, message, original } = normalizarErro(e);
+      if (original) console.error("Erro inesperado no processo principal:", e);
+      return { ok: false, code, message };
     }
   };
 }
@@ -30,19 +42,36 @@ ipcMain.handle(
       erro.code = forcado;
       throw erro;
     }
-    if (!core) {
-      const erro = new Error("O núcleo não está disponível.");
-      erro.code = "ADDON_INDISPONIVEL";
-      throw erro;
-    }
-    return core.info();
+    return nucleo().info();
   }),
 );
+
+function nucleo() {
+  if (!core) {
+    const erro = new Error("O núcleo não está disponível.");
+    erro.code = "ADDON_INDISPONIVEL";
+    throw erro;
+  }
+  return core;
+}
+
+const canais = {
+  "investimentos:catalogo": () => nucleo().catalogo(),
+  "investimentos:listar": () => nucleo().listarInvestimentos(),
+  "investimentos:ler": (id) => nucleo().investimento(id),
+  "investimentos:criar": (dados) => nucleo().criarInvestimento(dados),
+  "investimentos:atualizar": (id, dados) => nucleo().atualizarInvestimento(id, dados),
+  "investimentos:apagar": (id) => nucleo().apagarInvestimento(id),
+  "carteira:resumo": () => nucleo().resumoCarteira(),
+};
+for (const [canal, handler] of Object.entries(canais)) {
+  ipcMain.handle(canal, tratar(handler));
+}
 
 function abrirNucleo() {
   let Core;
   try {
-    Core = require(process.env.GURU_ADDON_PATH || "@guru/core-node").Core;
+    Core = require((!app.isPackaged && process.env.GURU_ADDON_PATH) || "@guru/core-node").Core;
   } catch (e) {
     const erro = new Error(e.message, { cause: e });
     erro.code = "ADDON_INDISPONIVEL";
@@ -100,6 +129,8 @@ if (!app.requestSingleInstanceLock()) {
     if (janela.isMinimized()) janela.restore();
     janela.focus();
   });
+  // Idioma fixo: campos de data e números se comportam igual em qualquer máquina.
+  app.commandLine.appendSwitch("lang", "pt-BR");
   app.whenReady().then(criarJanela);
   app.on("window-all-closed", () => app.quit());
 }
