@@ -22,6 +22,7 @@ pub struct NovoInvestimento {
     pub data_carencia: Option<String>,
     pub ir: Option<String>,
     pub observacao: Option<String>,
+    pub meta_id: Option<i64>,
 }
 
 /// `campo` é o nome camelCase do campo de entrada, para a interface marcá-lo.

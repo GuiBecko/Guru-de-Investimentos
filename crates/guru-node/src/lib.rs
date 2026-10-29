@@ -5,9 +5,14 @@ use guru_core::{CORE_VERSION, CoreError, Db, Gravacao};
 use napi_derive::napi;
 
 mod investimentos;
+mod metas;
+mod perfil;
 use investimentos::{
-    Catalogo, InvestimentoJs, NovoInvestimentoJs, ResultadoGravacao, ResumoJs, entrada, erros,
+    Catalogo, ErroCampoJs, InvestimentoJs, NovoInvestimentoJs, ResultadoGravacao, ResumoJs,
+    entrada, erros,
 };
+use metas::{MetaJs, NovaMetaJs};
+use perfil::{AlocacaoClasseJs, PercentualClasseJs, PerfilJs, QuestionarioJs, ResultadoPerfilJs};
 
 #[napi(object)]
 pub struct AppInfo {
@@ -104,10 +109,126 @@ impl Core {
         let r = self.db()?.resumo_carteira().map_err(to_js)?;
         Ok(investimentos::resumo(r))
     }
+
+    #[napi]
+    pub fn questionario(&self) -> QuestionarioJs {
+        perfil::questionario()
+    }
+
+    #[napi]
+    pub fn registrar_perfil(&self, respostas: Vec<u32>) -> napi::Result<ResultadoPerfilJs, String> {
+        // Valor fora de 0..=255 vira 255, que o núcleo recusa como resposta inválida.
+        let respostas: Vec<u8> = respostas
+            .into_iter()
+            .map(|r| u8::try_from(r).unwrap_or(u8::MAX))
+            .collect();
+        let r = self
+            .db()?
+            .registrar_perfil(&respostas, hoje())
+            .map_err(to_js)?;
+        Ok(match r {
+            Ok(g) => ResultadoPerfilJs {
+                perfil: Some(perfil::perfil(g)),
+                erros: Vec::new(),
+            },
+            Err(e) => ResultadoPerfilJs {
+                perfil: None,
+                erros: erros(vec![e]),
+            },
+        })
+    }
+
+    #[napi]
+    pub fn perfil_atual(&self) -> napi::Result<Option<PerfilJs>, String> {
+        let p = self.db()?.perfil_atual(hoje()).map_err(to_js)?;
+        Ok(p.map(perfil::perfil))
+    }
+
+    #[napi]
+    pub fn alocacao_alvo(&self) -> napi::Result<Option<Vec<AlocacaoClasseJs>>, String> {
+        let a = self.db()?.alocacao_alvo().map_err(to_js)?;
+        Ok(a.map(perfil::alocacao))
+    }
+
+    #[napi]
+    pub fn salvar_alocacao_alvo(
+        &self,
+        valores: Vec<PercentualClasseJs>,
+    ) -> napi::Result<Vec<ErroCampoJs>, String> {
+        let valores: Vec<(String, i64)> = valores
+            .into_iter()
+            .map(|v| (v.classe, v.percentual))
+            .collect();
+        let e = self.db()?.salvar_alocacao_alvo(&valores).map_err(to_js)?;
+        Ok(erros(e))
+    }
+
+    #[napi]
+    pub fn objetivo(&self) -> napi::Result<Option<String>, String> {
+        self.db()?.objetivo().map_err(to_js)
+    }
+
+    #[napi]
+    pub fn salvar_objetivo(&self, texto: String) -> napi::Result<Vec<ErroCampoJs>, String> {
+        let e = self.db()?.salvar_objetivo(&texto).map_err(to_js)?;
+        Ok(erros(e))
+    }
+
+    #[napi]
+    pub fn listar_metas(&self) -> napi::Result<Vec<MetaJs>, String> {
+        let l = self.db()?.listar_metas(hoje()).map_err(to_js)?;
+        Ok(l.into_iter().map(metas::meta).collect())
+    }
+
+    #[napi]
+    pub fn meta(&self, id: i64) -> napi::Result<MetaJs, String> {
+        let m = self.db()?.meta(id, hoje()).map_err(to_js)?;
+        Ok(metas::meta(m))
+    }
+
+    #[napi]
+    pub fn criar_meta(&self, dados: NovaMetaJs) -> napi::Result<ResultadoGravacao, String> {
+        let r = self
+            .db()?
+            .criar_meta(&metas::entrada(dados), hoje())
+            .map_err(to_js)?;
+        Ok(resultado_meta(r))
+    }
+
+    #[napi]
+    pub fn atualizar_meta(
+        &self,
+        id: i64,
+        dados: NovaMetaJs,
+    ) -> napi::Result<ResultadoGravacao, String> {
+        let r = self
+            .db()?
+            .atualizar_meta(id, &metas::entrada(dados), hoje())
+            .map_err(to_js)?;
+        Ok(resultado_meta(r))
+    }
+
+    #[napi]
+    pub fn apagar_meta(&self, id: i64) -> napi::Result<(), String> {
+        self.db()?.apagar_meta(id).map_err(to_js)
+    }
 }
 
 fn hoje() -> chrono::NaiveDate {
     chrono::Local::now().date_naive()
+}
+
+fn resultado_meta(r: Result<i64, Vec<guru_core::ErroCampo>>) -> ResultadoGravacao {
+    match r {
+        Ok(id) => ResultadoGravacao {
+            id: Some(id),
+            erros: Vec::new(),
+        },
+        Err(lista) => ResultadoGravacao {
+            id: None,
+            erros: erros(lista),
+        },
+    }
 }
 
 fn resultado(g: Gravacao) -> ResultadoGravacao {

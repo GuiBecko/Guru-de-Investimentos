@@ -58,6 +58,7 @@ pub struct NovoInvestimentoJs {
     pub data_carencia: Option<String>,
     pub ir: Option<String>,
     pub observacao: Option<String>,
+    pub meta_id: Option<i64>,
 }
 
 #[napi(object)]
@@ -101,6 +102,8 @@ pub struct InvestimentoJs {
     pub garantia: Option<String>,
     pub garantia_rotulo: Option<String>,
     pub observacao: Option<String>,
+    pub meta_id: Option<i64>,
+    pub meta_nome: Option<String>,
 }
 
 #[napi(object)]
@@ -109,6 +112,8 @@ pub struct ResumoClasseJs {
     pub rotulo: String,
     pub total_aplicado_centavos: i64,
     pub quantidade: i64,
+    pub percentual_decimos: i64,
+    pub alvo_percentual: Option<i64>,
 }
 
 #[napi(object)]
@@ -185,6 +190,7 @@ pub fn entrada(j: NovoInvestimentoJs) -> NovoInvestimento {
         data_carencia: j.data_carencia,
         ir: j.ir,
         observacao: j.observacao,
+        meta_id: j.meta_id,
     }
 }
 
@@ -227,6 +233,8 @@ pub fn investimento(i: Investimento) -> InvestimentoJs {
         garantia: i.garantia.map(|v| v.codigo().to_string()),
         garantia_rotulo: i.garantia.map(|v| v.rotulo().to_string()),
         observacao: i.observacao,
+        meta_id: i.meta_id,
+        meta_nome: i.meta_nome,
     }
 }
 
@@ -241,6 +249,8 @@ pub fn resumo(r: Resumo) -> ResumoJs {
                 rotulo: c.classe.rotulo().to_string(),
                 total_aplicado_centavos: c.total_aplicado_centavos,
                 quantidade: c.quantidade,
+                percentual_decimos: c.percentual_decimos,
+                alvo_percentual: c.alvo_percentual,
             })
             .collect(),
     }

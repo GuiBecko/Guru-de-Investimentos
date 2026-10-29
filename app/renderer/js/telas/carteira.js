@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { formatarData, formatarPercentual, formatarReais } from "../formato.js";
+import { formatarData, formatarDecimos, formatarDiferenca, formatarReais } from "../formato.js";
 import { caixaTabela, cabecalho, el } from "./_tabela.js";
 
 const COLUNAS = [
@@ -23,13 +23,20 @@ function erro(elemento, titulo) {
   elemento.replaceChildren(el("h1", titulo), p);
 }
 
-function card(c, total) {
-  const a = el("a", undefined, "card click");
-  a.href = `#/carteira/${c.classe}`;
+function card(c) {
+  // Classe sem investimento não tem tela de detalhe: o card não é link.
+  const temDetalhe = c.quantidade > 0;
+  const a = temDetalhe ? el("a", undefined, "card click") : el("div", undefined, "card");
+  if (temDetalhe) a.href = `#/carteira/${c.classe}`;
   const n = c.quantidade === 1 ? "1 investimento" : `${c.quantidade} investimentos`;
   const base = el("div", undefined, "row");
-  base.append(el("small", n), el("span", formatarPercentual(c.totalAplicadoCentavos, total), "mono"));
+  base.append(el("small", n), el("span", formatarDecimos(c.percentualDecimos), "mono"));
   a.append(el("b", c.rotulo), el("span", formatarReais(c.totalAplicadoCentavos), "mid mono"), base);
+  if (c.alvoPercentual !== null && c.alvoPercentual !== undefined) {
+    const alvo = el("div", undefined, "row");
+    alvo.append(el("small", `alvo ${c.alvoPercentual}%`), el("span", formatarDiferenca(c.percentualDecimos, c.alvoPercentual), "mono"));
+    a.append(alvo);
+  }
   return a;
 }
 
@@ -46,7 +53,7 @@ async function painel(elemento, vigente) {
   if (!vigente()) return;
 
   const partes = [el("h1", "Carteira")];
-  if (resumo.classes.length === 0) {
+  if (resumo.totalAplicadoCentavos === 0) {
     const vazio = el("div", undefined, "vazio");
     const novo = el("a", "Lançar o primeiro investimento", "btn");
     novo.href = "#/investimentos/novo";
@@ -56,7 +63,7 @@ async function painel(elemento, vigente) {
     const total = el("div", undefined, "total");
     total.append(el("small", "Total aplicado"), el("div", formatarReais(resumo.totalAplicadoCentavos), "mid mono"));
     const cards = el("div", undefined, "classes");
-    cards.append(...resumo.classes.map((c) => card(c, resumo.totalAplicadoCentavos)));
+    cards.append(...resumo.classes.map(card));
     partes.push(total, cards);
   }
   partes.push(el("p", "Valores aplicados. Cotações e rentabilidade chegam numa próxima versão.", "hint"));

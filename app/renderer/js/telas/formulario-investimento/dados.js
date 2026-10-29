@@ -43,6 +43,7 @@ export function montarDados(tipo, v) {
 
   texto("dataAplicacao", v.dataAplicacao);
   texto("observacao", v.observacao);
+  if (!vazio(v.metaId)) dados.metaId = Number(v.metaId);
 
   if (tipo.forma === "renda_variavel") {
     texto("ticker", v.ticker);

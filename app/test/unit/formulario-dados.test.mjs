@@ -97,3 +97,10 @@ test("taxa com vírgula vai ao núcleo com ponto; taxa inválida vira erro do ca
   assert.equal("taxa" in ruim.dados, false);
   assert.deepEqual(ruim.erros, [{ campo: "taxa", mensagem: "Informe uma taxa válida." }]);
 });
+
+test("metaId só vai quando uma meta foi escolhida, em qualquer forma de tipo", () => {
+  assert.equal("metaId" in montarDados(CDB, { ...base, metaId: "" }).dados, false);
+  assert.equal("metaId" in montarDados(CDB, base).dados, false);
+  assert.equal(montarDados(CDB, { ...base, metaId: "7" }).dados.metaId, 7);
+  assert.equal(montarDados(ACAO, { ...base, metaId: "7" }).dados.metaId, 7);
+});

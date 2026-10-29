@@ -13,4 +13,24 @@ contextBridge.exposeInMainWorld("guru", {
     apagar: (id) => ipcRenderer.invoke("investimentos:apagar", id),
   },
   carteira: { resumo: () => ipcRenderer.invoke("carteira:resumo") },
+  perfil: {
+    questionario: () => ipcRenderer.invoke("perfil:questionario"),
+    registrar: (respostas) => ipcRenderer.invoke("perfil:registrar", respostas),
+    atual: () => ipcRenderer.invoke("perfil:atual"),
+  },
+  alocacao: {
+    ler: () => ipcRenderer.invoke("alocacao:ler"),
+    salvar: (valores) => ipcRenderer.invoke("alocacao:salvar", valores),
+  },
+  objetivo: {
+    ler: () => ipcRenderer.invoke("objetivo:ler"),
+    salvar: (texto) => ipcRenderer.invoke("objetivo:salvar", texto),
+  },
+  metas: {
+    listar: () => ipcRenderer.invoke("metas:listar"),
+    ler: (id) => ipcRenderer.invoke("metas:ler", id),
+    criar: (dados) => ipcRenderer.invoke("metas:criar", dados),
+    atualizar: (id, dados) => ipcRenderer.invoke("metas:atualizar", id, dados),
+    apagar: (id) => ipcRenderer.invoke("metas:apagar", id),
+  },
 });

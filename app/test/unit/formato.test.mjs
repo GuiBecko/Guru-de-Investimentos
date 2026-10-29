@@ -39,14 +39,30 @@ test("formatarData", () => {
   assert.equal(formatarData(undefined), "—");
 });
 
-test("formatarPercentual usa uma casa e vírgula, sem erro de ponto flutuante", async () => {
-  const { formatarPercentual } = await import("../../renderer/js/formato.js");
-  assert.equal(formatarPercentual(3800000, 4271300), "89,0%");
-  assert.equal(formatarPercentual(471300, 4271300), "11,0%");
-  assert.equal(formatarPercentual(1, 3), "33,3%");
-  assert.equal(formatarPercentual(1, 1), "100,0%");
-  assert.equal(formatarPercentual(5, 1000), "0,5%");
-  assert.equal(formatarPercentual(0, 0), "0,0%");
+test("formatarDecimos usa uma casa e vírgula a partir de inteiros", async () => {
+  const { formatarDecimos } = await import("../../renderer/js/formato.js");
+  assert.equal(formatarDecimos(890), "89,0%");
+  assert.equal(formatarDecimos(333), "33,3%");
+  assert.equal(formatarDecimos(1000), "100,0%");
+  assert.equal(formatarDecimos(5), "0,5%");
+  assert.equal(formatarDecimos(0), "0,0%");
+});
+
+test("formatarDiferenca dá o sinal, uma casa e 'no alvo' abaixo de meio ponto", async () => {
+  const { formatarDiferenca } = await import("../../renderer/js/formato.js");
+  assert.equal(formatarDiferenca(520, 45), "+7,0 p.p.");
+  assert.equal(formatarDiferenca(370, 45), "\u22128,0 p.p.");
+  assert.equal(formatarDiferenca(0, 15), "\u221215,0 p.p.");
+  assert.equal(formatarDiferenca(452, 45), "no alvo");
+  assert.equal(formatarDiferenca(446, 45), "no alvo");
+  assert.equal(formatarDiferenca(455, 45), "+0,5 p.p.");
+  assert.equal(formatarDiferenca(445, 45), "\u22120,5 p.p.");
+});
+
+test("formatarPrazo usa mês abreviado em minúsculas", async () => {
+  const { formatarPrazo } = await import("../../renderer/js/formato.js");
+  assert.equal(formatarPrazo("2030-12"), "dez/2030");
+  assert.equal(formatarPrazo("2031-01"), "jan/2031");
 });
 
 test("paraTaxa aceita vírgula ou ponto e devolve texto com ponto", () => {

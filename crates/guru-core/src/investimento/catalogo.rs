@@ -33,6 +33,8 @@ macro_rules! enum_catalogo {
     };
 }
 
+pub(crate) use enum_catalogo;
+
 enum_catalogo!(Classe {
     Rf => ("rf", "Renda fixa"),
     Acoes => ("acoes", "Ações"),

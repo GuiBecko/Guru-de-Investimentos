@@ -3,6 +3,13 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
+// Datas futuras derivadas do ano atual, para os testes não vencerem com o tempo.
+const ANO = new Date().getFullYear();
+const VENC_CDB = `${ANO + 3}-03-15`;
+const VENC_CDB_BR = `15/03/${ANO + 3}`;
+const VENC_SELIC = `${ANO + 4}-03-01`;
+const PRAZO = `${ANO + 4}-12`;
+
 const appDir = path.resolve(__dirname, "../..");
 
 function lancar(dir = fs.mkdtempSync(path.join(os.tmpdir(), "guru-e2e-"))) {
@@ -20,7 +27,7 @@ async function preencherCdb(page) {
   await page.getByLabel("Emissor").fill("Banco Inter");
   await page.getByLabel("Rendimento", { exact: true }).fill("102");
   await page.getByLabel("Data da aplicação").fill("2025-03-15");
-  await page.getByLabel("Vencimento").fill("2028-03-15");
+  await page.getByLabel("Vencimento").fill(VENC_CDB);
   await page.getByLabel("Valor aplicado").fill("20.000,00");
 }
 
@@ -167,7 +174,7 @@ test("taxa com casas decimais volta igual", async () => {
     await page.getByLabel("Taxa acima da Selic").fill("0,0905");
     await expect(page.locator("#f-taxa-dica")).toHaveText("Lê-se: Selic + 0,0905% ao ano");
     await page.getByLabel("Data da aplicação").fill("2025-03-15");
-    await page.getByLabel("Vencimento").fill("2029-03-01");
+    await page.getByLabel("Vencimento").fill(VENC_SELIC);
     await page.getByLabel("Valor aplicado").fill("1000");
     await salvar(page);
     await expect(page.locator("main tbody tr").first()).toContainText("Selic + 0,0905% ao ano");
@@ -318,6 +325,29 @@ test("salvar e adicionar outro com Ação deixa o foco no ticker", async () => {
     await page.getByRole("button", { name: "Salvar e adicionar outro" }).click();
     await expect(page.getByText("Investimento salvo.")).toBeVisible();
     await expect(page.getByLabel("Ticker")).toBeFocused();
+  } finally {
+    await app.close();
+  }
+});
+
+test("Vincular a uma meta começa em Nenhuma, lista as metas e não grava metaId sem escolha", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await page.evaluate(
+      (prazo) =>
+        import("./js/api.js").then(({ api }) => api.metas.criar({ nome: "Reserva", valorAlvoCentavos: 3000000, prazo })),
+      `${ANO + 5}-01`,
+    );
+    await abrirNovo(page);
+    const campo = page.getByLabel("Vincular a uma meta");
+    await expect(campo.locator("option")).toHaveText(["Nenhuma", "Reserva"]);
+    await expect(campo).toHaveValue("");
+    await preencherCdb(page);
+    await salvar(page);
+    await expect(page.locator("main tbody tr").first()).toContainText("CDB Banco Inter");
+    const inv = await page.evaluate(() => import("./js/api.js").then(({ api }) => api.investimentos.listar()));
+    expect(inv[0].metaId ?? null).toBeNull();
   } finally {
     await app.close();
   }

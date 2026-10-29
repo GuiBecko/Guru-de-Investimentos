@@ -39,6 +39,8 @@ pub struct Investimento {
     pub ir: Option<Ir>,
     pub garantia: Option<Garantia>,
     pub observacao: Option<String>,
+    pub meta_id: Option<i64>,
+    pub meta_nome: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,6 +48,10 @@ pub struct ResumoClasse {
     pub classe: Classe,
     pub total_aplicado_centavos: i64,
     pub quantidade: i64,
+    /// Parte do total em décimos de ponto percentual (`round(parte × 1000 / total)`).
+    pub percentual_decimos: i64,
+    /// Alvo da alocação em pontos percentuais; `None` se nunca foi definida.
+    pub alvo_percentual: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,9 +60,11 @@ pub struct Resumo {
     pub classes: Vec<ResumoClasse>,
 }
 
-const COLUNAS: &str = "id, tipo, instituicao, emissor, ticker, indexador, taxa, benchmark, \
-    data_aplicacao, vencimento, valor_aplicado_centavos, quantidade, preco_medio_centavos, \
-    liquidez, data_carencia, ir, observacao";
+const SELECT: &str = "SELECT i.id, i.tipo, i.instituicao, i.emissor, i.ticker, i.indexador, \
+    i.taxa, i.benchmark, i.data_aplicacao, i.vencimento, i.valor_aplicado_centavos, \
+    i.quantidade, i.preco_medio_centavos, i.liquidez, i.data_carencia, i.ir, i.observacao, \
+    i.meta_id, m.nome AS meta_nome \
+    FROM investimentos i LEFT JOIN metas m ON m.id = i.meta_id";
 
 fn agora() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
@@ -103,6 +111,8 @@ struct Linha {
     data_carencia: Option<String>,
     ir: Option<String>,
     observacao: Option<String>,
+    meta_id: Option<i64>,
+    meta_nome: Option<String>,
 }
 
 fn linha(r: &Row) -> rusqlite::Result<Linha> {
@@ -124,6 +134,8 @@ fn linha(r: &Row) -> rusqlite::Result<Linha> {
         data_carencia: r.get("data_carencia")?,
         ir: r.get("ir")?,
         observacao: r.get("observacao")?,
+        meta_id: r.get("meta_id")?,
+        meta_nome: r.get("meta_nome")?,
     })
 }
 
@@ -182,6 +194,8 @@ fn montar(l: Linha) -> Result<Investimento, CoreError> {
         ir,
         garantia: info.garantia,
         observacao: l.observacao,
+        meta_id: l.meta_id,
+        meta_nome: l.meta_nome,
     })
 }
 
@@ -207,10 +221,11 @@ struct Colunas {
     data_carencia: Option<String>,
     ir: Option<&'static str>,
     observacao: Option<String>,
+    meta_id: Option<i64>,
 }
 
 impl Colunas {
-    fn de(v: InvestimentoValido) -> Colunas {
+    fn de(v: InvestimentoValido, meta_id: Option<i64>) -> Colunas {
         // Em renda variável o valor aplicado é quantidade × preço médio (sem estouro: a
         // validação já recusou); nas demais formas é o valor informado.
         let valor = match (v.quantidade, v.preco_medio_centavos) {
@@ -234,6 +249,7 @@ impl Colunas {
             data_carencia: iso(v.data_carencia),
             ir: v.ir.map(|i| i.codigo()),
             observacao: v.observacao,
+            meta_id,
         }
     }
 }
@@ -258,6 +274,7 @@ macro_rules! parametros {
             ":data_carencia": $c.data_carencia,
             ":ir": $c.ir,
             ":observacao": $c.observacao,
+            ":meta_id": $c.meta_id,
             ":agora": $agora,
             $($extra: $valor),*
         }
@@ -265,25 +282,54 @@ macro_rules! parametros {
 }
 
 impl Db {
+    /// `validar` mais a checagem de `meta_id`, que precisa do banco; os erros vêm juntos.
+    fn validar_com_meta(
+        &self,
+        novo: &NovoInvestimento,
+        hoje: NaiveDate,
+    ) -> Result<Result<InvestimentoValido, Vec<ErroCampo>>, CoreError> {
+        let validado = validar(novo, hoje);
+        let meta_existe = match novo.meta_id {
+            None => true,
+            Some(id) => self
+                .conn
+                .query_row(
+                    "SELECT EXISTS (SELECT 1 FROM metas WHERE id = :id)",
+                    named_params! {":id": id},
+                    |r| r.get(0),
+                )
+                .map_err(classifica)?,
+        };
+        if meta_existe {
+            return Ok(validado);
+        }
+        let mut erros = validado.err().unwrap_or_default();
+        erros.push(ErroCampo {
+            campo: "metaId".to_string(),
+            mensagem: "Escolha uma meta da lista.".to_string(),
+        });
+        Ok(Err(erros))
+    }
+
     pub fn criar_investimento(
         &self,
         novo: &NovoInvestimento,
         hoje: NaiveDate,
     ) -> Result<Gravacao, CoreError> {
-        let v = match validar(novo, hoje) {
+        let v = match self.validar_com_meta(novo, hoje)? {
             Ok(v) => v,
             Err(erros) => return Ok(Gravacao::Invalido(erros)),
         };
         let agora = agora();
-        let c = Colunas::de(v);
+        let c = Colunas::de(v, novo.meta_id);
         self.conn
             .execute(
                 "INSERT INTO investimentos (tipo, instituicao, emissor, ticker, indexador, taxa, \
                  benchmark, data_aplicacao, vencimento, valor_aplicado_centavos, quantidade, \
-                 preco_medio_centavos, liquidez, data_carencia, ir, observacao, criado_em, \
+                 preco_medio_centavos, liquidez, data_carencia, ir, observacao, meta_id, criado_em, \
                  atualizado_em) VALUES (:tipo, :instituicao, :emissor, :ticker, :indexador, :taxa, \
                  :benchmark, :data_aplicacao, :vencimento, :valor, :quantidade, :preco_medio, \
-                 :liquidez, :data_carencia, :ir, :observacao, :agora, :agora)",
+                 :liquidez, :data_carencia, :ir, :observacao, :meta_id, :agora, :agora)",
                 parametros!(c, agora),
             )
             .map_err(classifica)?;
@@ -296,12 +342,12 @@ impl Db {
         novo: &NovoInvestimento,
         hoje: NaiveDate,
     ) -> Result<Gravacao, CoreError> {
-        let v = match validar(novo, hoje) {
+        let v = match self.validar_com_meta(novo, hoje)? {
             Ok(v) => v,
             Err(erros) => return Ok(Gravacao::Invalido(erros)),
         };
         let agora = agora();
-        let c = Colunas::de(v);
+        let c = Colunas::de(v, novo.meta_id);
         let n = self
             .conn
             .execute(
@@ -311,7 +357,7 @@ impl Db {
                  vencimento = :vencimento, valor_aplicado_centavos = :valor, \
                  quantidade = :quantidade, preco_medio_centavos = :preco_medio, \
                  liquidez = :liquidez, data_carencia = :data_carencia, ir = :ir, \
-                 observacao = :observacao, atualizado_em = :agora WHERE id = :id",
+                 observacao = :observacao, meta_id = :meta_id, atualizado_em = :agora WHERE id = :id",
                 parametros!(c, agora, ":id": id),
             )
             .map_err(classifica)?;
@@ -336,7 +382,7 @@ impl Db {
     }
 
     pub fn investimento(&self, id: i64) -> Result<Investimento, CoreError> {
-        let sql = format!("SELECT {COLUNAS} FROM investimentos WHERE id = :id");
+        let sql = format!("{SELECT} WHERE i.id = :id");
         let l = self
             .conn
             .query_row(&sql, named_params! {":id": id}, linha)
@@ -349,8 +395,7 @@ impl Db {
 
     /// Ordenada pela classe (ordem do catálogo) e depois pelo nome, sem diferenciar maiúsculas.
     pub fn listar_investimentos(&self) -> Result<Vec<Investimento>, CoreError> {
-        let sql = format!("SELECT {COLUNAS} FROM investimentos");
-        let mut stmt = self.conn.prepare(&sql).map_err(classifica)?;
+        let mut stmt = self.conn.prepare(SELECT).map_err(classifica)?;
         let linhas = stmt
             .query_map([], linha)
             .map_err(classifica)?
@@ -366,6 +411,7 @@ impl Db {
 
     pub fn resumo_carteira(&self) -> Result<Resumo, CoreError> {
         let lista = self.listar_investimentos()?;
+        let alvo = self.alocacao_alvo()?;
         let mut classes: Vec<ResumoClasse> = Vec::new();
         for i in &lista {
             match classes.iter_mut().find(|c| c.classe == i.classe) {
@@ -377,7 +423,22 @@ impl Db {
                     classe: i.classe,
                     total_aplicado_centavos: soma(0, i)?,
                     quantidade: 1,
+                    percentual_decimos: 0,
+                    alvo_percentual: None,
                 }),
+            }
+        }
+        if let Some(alvo) = &alvo {
+            for (classe, pct) in alvo {
+                if *pct > 0 && !classes.iter().any(|c| c.classe == *classe) {
+                    classes.push(ResumoClasse {
+                        classe: *classe,
+                        total_aplicado_centavos: 0,
+                        quantidade: 0,
+                        percentual_decimos: 0,
+                        alvo_percentual: None,
+                    });
+                }
             }
         }
         classes.sort_by_key(|c| ordem_classe(c.classe));
@@ -385,11 +446,28 @@ impl Db {
             acc.checked_add(c.total_aplicado_centavos)
                 .ok_or_else(estouro)
         })?;
+        for c in &mut classes {
+            c.percentual_decimos = decimos(c.total_aplicado_centavos, total);
+            c.alvo_percentual = alvo.as_ref().and_then(|a| {
+                a.iter()
+                    .find(|(classe, _)| *classe == c.classe)
+                    .map(|(_, pct)| i64::from(*pct))
+            });
+        }
         Ok(Resumo {
             total_aplicado_centavos: total,
             classes,
         })
     }
+}
+
+/// `round(parte × 1000 / total)` em inteiros, meio para cima; total 0 dá 0.
+fn decimos(parte: i64, total: i64) -> i64 {
+    if total <= 0 {
+        return 0;
+    }
+    let (p, t) = (i128::from(parte), i128::from(total));
+    ((p * 2000 + t) / (2 * t)) as i64
 }
 
 fn estouro() -> CoreError {

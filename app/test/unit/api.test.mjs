@@ -26,6 +26,12 @@ test("api.investimentos e api.carteira repassam à ponte e desembrulham", async 
         ["catalogo", "listar", "ler", "criar", "atualizar", "apagar"].map((n) => [n, canal(n)]),
       ),
       carteira: { resumo: canal("resumo") },
+      perfil: Object.fromEntries(["questionario", "registrar", "atual"].map((n) => [n, canal(n)])),
+      alocacao: Object.fromEntries(["ler", "salvar"].map((n) => [n, canal(n)])),
+      objetivo: Object.fromEntries(["ler", "salvar"].map((n) => [n, canal(n)])),
+      metas: Object.fromEntries(
+        ["listar", "ler", "criar", "atualizar", "apagar"].map((n) => [n, canal(n)]),
+      ),
     },
   };
   try {
@@ -38,6 +44,19 @@ test("api.investimentos e api.carteira repassam à ponte e desembrulham", async 
     assert.equal(await api.investimentos.catalogo(), "catalogo");
     assert.equal(await api.carteira.resumo(), "resumo");
     assert.deepEqual(chamadas[1], ["atualizar", 2, { b: 2 }]);
+    assert.equal(await api.perfil.questionario(), "questionario");
+    assert.equal(await api.perfil.registrar([0]), "registrar");
+    assert.equal(await api.perfil.atual(), "atual");
+    assert.equal(await api.alocacao.ler(), "ler");
+    assert.equal(await api.alocacao.salvar([]), "salvar");
+    assert.equal(await api.objetivo.ler(), "ler");
+    assert.equal(await api.objetivo.salvar("x"), "salvar");
+    assert.equal(await api.metas.listar(), "listar");
+    assert.equal(await api.metas.ler(1), "ler");
+    assert.equal(await api.metas.criar({}), "criar");
+    assert.equal(await api.metas.atualizar(1, {}), "atualizar");
+    assert.equal(await api.metas.apagar(1), "apagar");
+    assert.deepEqual(chamadas.at(-1), ["apagar", 1]);
   } finally {
     delete globalThis.window;
   }
