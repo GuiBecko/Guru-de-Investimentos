@@ -4,6 +4,7 @@ mod repositorio;
 mod texto;
 mod validacao;
 
+pub(crate) use catalogo::enum_catalogo;
 pub use catalogo::{
     Benchmark, Classe, Forma, Garantia, INSTITUICOES, Indexador, Ir, Liquidez, TipoInfo, tipo,
     tipos,
