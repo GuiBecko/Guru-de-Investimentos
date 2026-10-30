@@ -9,7 +9,7 @@ const { Core } = createRequire(import.meta.url)("../index.js");
 test("abre o banco e informa as versões", () => {
   const dir = join(mkdtempSync(join(tmpdir(), "guru-")), "João da Silva");
   const info = Core.open(dir).info();
-  assert.equal(info.schemaVersion, 4);
+  assert.equal(info.schemaVersion, 5);
   assert.match(info.coreVersion, /^\d+\.\d+\.\d+/);
   assert.equal(info.dbPath, join(dir, "guru.db"));
 });

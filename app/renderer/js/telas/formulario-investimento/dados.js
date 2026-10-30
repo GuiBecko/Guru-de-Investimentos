@@ -26,6 +26,36 @@ export function legendaRendimento(indexador, taxa, rotuloBenchmark) {
 
 const vazio = (s) => s === undefined || s === null || String(s).trim() === "";
 
+// Campos que cada tipo usa. `contexto` = { tipo (do catálogo), liquidez (código escolhido) }.
+// O formulário mostra só estes; a importação os usa para saber o que pedir ao trocar o tipo.
+const rv = (c) => c.tipo.forma === "renda_variavel";
+const rf = (c) => c.tipo.forma === "renda_fixa";
+const sempre = () => true;
+export const CAMPOS_DO_TIPO = {
+  tipo: sempre,
+  emissor: (c) => !!c.tipo.exigeEmissor,
+  ticker: rv,
+  instituicao: sempre,
+  indexador: rf,
+  taxa: rf,
+  quantidade: rv,
+  precoMedioCentavos: rv,
+  dataAplicacao: sempre,
+  vencimento: (c) => !rv(c),
+  valorAplicadoCentavos: (c) => !rv(c),
+  liquidez: (c) => !rv(c),
+  dataCarencia: (c) => !rv(c) && c.liquidez === "carencia",
+  ir: rf,
+  garantia: rf,
+  metaId: sempre,
+  observacao: sempre,
+};
+
+export function campoDoTipo(nome, contexto) {
+  const regra = CAMPOS_DO_TIPO[nome];
+  return !!(regra && contexto.tipo && regra(contexto));
+}
+
 // `tipo` vem do catálogo; `v` são os textos dos campos. Só entram os campos da forma do tipo.
 // Devolve { dados, erros } — `erros` só cobre o formato do valor em reais, da taxa e da quantidade.
 export function montarDados(tipo, v) {

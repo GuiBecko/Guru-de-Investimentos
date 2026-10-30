@@ -33,6 +33,7 @@ test("api.investimentos e api.carteira repassam à ponte e desembrulham", async 
         ["listar", "ler", "criar", "atualizar", "apagar"].map((n) => [n, canal(n)]),
       ),
       mercado: Object.fromEntries(["atualizar", "status"].map((n) => [n, canal(n)])),
+      importacao: Object.fromEntries(["escolher", "aplicar", "ultima"].map((n) => [n, canal(n)])),
     },
   };
   try {
@@ -62,6 +63,10 @@ test("api.investimentos e api.carteira repassam à ponte e desembrulham", async 
     assert.deepEqual(chamadas.at(-1), ["apagar", 1]);
     assert.equal(await api.mercado.atualizar(), "atualizar");
     assert.equal(await api.mercado.status(), "status");
+    assert.equal(await api.importacao.escolher(), "escolher");
+    assert.equal(await api.importacao.aplicar("tk", [{ chave: "a" }]), "aplicar");
+    assert.deepEqual(chamadas.at(-1), ["aplicar", "tk", [{ chave: "a" }]]);
+    assert.equal(await api.importacao.ultima(), "ultima");
   } finally {
     delete globalThis.window;
   }

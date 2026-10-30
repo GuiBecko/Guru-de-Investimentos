@@ -1,5 +1,6 @@
 import { api } from "../api.js";
 import { render as formulario } from "./formulario-investimento.js";
+import { render as importacao, consumirAviso } from "./importacao.js";
 import { formatarData, formatarReais } from "../formato.js";
 import { dataDoMercado, textoNota } from "../mercado.js";
 import { caixaTabela, cabecalho, celulasValor, el } from "./_tabela.js";
@@ -17,10 +18,14 @@ const COLUNAS = [
   [""],
 ];
 
-function botaoNovo() {
-  const a = el("a", "Novo investimento", "btn");
-  a.href = "#/investimentos/novo";
-  return a;
+function botoesTopo() {
+  const novo = el("a", "Novo investimento", "btn");
+  novo.href = "#/investimentos/novo";
+  const importar = el("a", "Importar da B3", "btn ghost");
+  importar.href = "#/investimentos/importar";
+  const grupo = el("span", undefined, "acoes-topo");
+  grupo.append(importar, novo);
+  return grupo;
 }
 
 function confirmarApagar(inv) {
@@ -130,8 +135,14 @@ async function lista(el_, vigente) {
     }
 
     const topo = el("div", undefined, "row");
-    topo.append(el("h1", "Investimentos"), botaoNovo());
+    topo.append(el("h1", "Investimentos"), botoesTopo());
     const partes = [topo];
+    const feito = consumirAviso();
+    if (feito) {
+      const ok = el("div", feito, "faixa ok");
+      ok.setAttribute("role", "status");
+      partes.push(ok);
+    }
     if (aviso) {
       const faixa = el("div", aviso, "faixa");
       faixa.setAttribute("role", "alert");
@@ -150,6 +161,9 @@ async function lista(el_, vigente) {
 }
 
 export function render(elemento, parametros = [], vigente = () => true) {
+  if (parametros[0] === "importar") {
+    return importacao(elemento, parametros, vigente);
+  }
   if (parametros.length > 0) {
     return formulario(elemento, parametros, vigente);
   }

@@ -12,6 +12,9 @@ test("segmentos depois da tela viram parâmetros", () => {
   const novo = resolver("#/investimentos/novo");
   assert.equal(novo.tela.id, "investimentos");
   assert.deepEqual(novo.parametros, ["novo"]);
+  const importar = resolver("#/investimentos/importar");
+  assert.equal(importar.tela.id, "investimentos");
+  assert.deepEqual(importar.parametros, ["importar"]);
   const rf = resolver("#/carteira/rf");
   assert.equal(rf.tela.id, "carteira");
   assert.deepEqual(rf.parametros, ["rf"]);

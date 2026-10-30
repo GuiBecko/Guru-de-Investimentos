@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  campoDoTipo,
   formatarTaxa,
   legendaRendimento,
   montarDados,
@@ -103,4 +104,17 @@ test("metaId só vai quando uma meta foi escolhida, em qualquer forma de tipo", 
   assert.equal("metaId" in montarDados(CDB, base).dados, false);
   assert.equal(montarDados(CDB, { ...base, metaId: "7" }).dados.metaId, 7);
   assert.equal(montarDados(ACAO, { ...base, metaId: "7" }).dados.metaId, 7);
+});
+
+test("campoDoTipo diz quais campos cada tipo usa", () => {
+  const nomes = (tipo, liquidez = "vencimento") =>
+    ["emissor", "ticker", "indexador", "taxa", "quantidade", "precoMedioCentavos", "vencimento", "valorAplicadoCentavos", "liquidez", "dataCarencia", "ir"].filter((n) =>
+      campoDoTipo(n, { tipo, liquidez }),
+    );
+  assert.deepEqual(nomes(CDB), ["emissor", "indexador", "taxa", "vencimento", "valorAplicadoCentavos", "liquidez", "ir"]);
+  assert.deepEqual(nomes(CDB, "carencia"), ["emissor", "indexador", "taxa", "vencimento", "valorAplicadoCentavos", "liquidez", "dataCarencia", "ir"]);
+  assert.deepEqual(nomes(ACAO), ["ticker", "quantidade", "precoMedioCentavos"]);
+  assert.deepEqual(nomes(FUNDO), ["emissor", "vencimento", "valorAplicadoCentavos", "liquidez"]);
+  assert.equal(campoDoTipo("taxa", { tipo: undefined }), false);
+  assert.equal(campoDoTipo("desconhecido", { tipo: CDB }), false);
 });

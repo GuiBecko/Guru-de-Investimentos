@@ -21,3 +21,4 @@ Os planos detalhados:
 - Fase 2: [`superpowers/plans/2026-10-29-fase-2-perfil-objetivo.md`](superpowers/plans/2026-10-29-fase-2-perfil-objetivo.md)
 - Fase 3a: [`superpowers/plans/2026-10-29-fase-3a-dados-de-mercado.md`](superpowers/plans/2026-10-29-fase-3a-dados-de-mercado.md)
 - Fase 3b: [`superpowers/plans/2026-10-30-fase-3b-painel.md`](superpowers/plans/2026-10-30-fase-3b-painel.md)
+- Fase 4: [`superpowers/plans/2026-10-30-fase-4-importacao-b3.md`](superpowers/plans/2026-10-30-fase-4-importacao-b3.md)

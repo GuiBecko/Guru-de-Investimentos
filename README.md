@@ -2,7 +2,7 @@
 
 Um app para computador que conhece a sua carteira, o seu perfil de investidor e o seu objetivo, e usa a IA que você escolher para responder a pergunta de todo mês: **onde coloco o próximo dinheiro?**
 
-> **Status:** fases 0 a 3 concluídas. A ordem das fases está em [`docs/roadmap.md`](docs/roadmap.md); o escopo do MVP e o protótipo das telas estão em [`docs/`](docs/).
+> **Status:** fases 0 a 4 concluídas. A ordem das fases está em [`docs/roadmap.md`](docs/roadmap.md); o escopo do MVP e o protótipo das telas estão em [`docs/`](docs/).
 
 ## Ideia
 

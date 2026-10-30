@@ -25,7 +25,7 @@ test("abre com título e mostra a versão do esquema", async () => {
   try {
     const page = await app.firstWindow();
     expect(await page.title()).toBe("Guru de Investimentos");
-    await expect(page.getByTestId("schema-version")).toHaveText("4");
+    await expect(page.getByTestId("schema-version")).toHaveText("5");
     await expect(page.getByTestId("core-version")).not.toBeEmpty();
     expect(fs.existsSync(path.join(dataDir, "guru.db"))).toBe(true);
   } finally {
@@ -57,6 +57,7 @@ test("a ponte expõe só os canais do app e nada do Electron ou do Node", async 
       "objetivo",
       "metas",
       "mercado",
+      "importacao",
     ]);
     expect(await page.evaluate(() => Object.keys(window.guru.app))).toEqual(["info"]);
     expect(await page.evaluate(() => Object.keys(window.guru.investimentos))).toEqual([
@@ -88,6 +89,11 @@ test("a ponte expõe só os canais do app e nada do Electron ou do Node", async 
     expect(await page.evaluate(() => Object.keys(window.guru.mercado))).toEqual([
       "atualizar",
       "status",
+    ]);
+    expect(await page.evaluate(() => Object.keys(window.guru.importacao))).toEqual([
+      "escolher",
+      "aplicar",
+      "ultima",
     ]);
     expect(await page.evaluate(() => typeof window.ipcRenderer)).toBe("undefined");
     expect(await page.evaluate(() => typeof window.require)).toBe("undefined");
@@ -198,6 +204,61 @@ test("mercado pelo api: status das cinco fontes sem rede", async () => {
       "Tesouro Direto",
       "Cotações da B3",
     ]);
+  } finally {
+    await app.close();
+  }
+});
+
+test("importação pelo api: cancelar o diálogo devolve cancelado e ultima é nula", async () => {
+  // GURU_TESTE_ARQUIVO_B3 só vale fora do app empacotado (ver app/main.js).
+  const app = await lancar(novoDataDir(), { GURU_TESTE_ARQUIVO_B3: "cancelar" });
+  try {
+    const page = await app.firstWindow();
+    const r = await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) => api.importacao.escolher()),
+    );
+    expect(r).toEqual({ cancelado: true });
+    const u = await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) => api.importacao.ultima()),
+    );
+    expect(u).toBeNull();
+  } finally {
+    await app.close();
+  }
+});
+
+test("importação pelo api: caminho de teste compara a planilha e só leva o nome do arquivo", async () => {
+  const fixture = path.resolve(appDir, "../crates/guru-core/tests/fixtures/b3/posicao-bdr-rf.xlsx");
+  const app = await lancar(novoDataDir(), { GURU_TESTE_ARQUIVO_B3: fixture });
+  try {
+    const page = await app.firstWindow();
+    const r = await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) => api.importacao.escolher()),
+    );
+    expect(r.arquivo).toBe("posicao-bdr-rf.xlsx");
+    expect(r.itens.length).toBeGreaterThan(0);
+    expect(r.itens.every((i) => i.estado === "novo")).toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
+test("importação pelo api: arquivo inexistente dá ARQUIVO_INVALIDO sem vazar o caminho", async () => {
+  const faltando = path.join(os.tmpdir(), "guru-segredo-inexistente", "posicao.xlsx");
+  const app = await lancar(novoDataDir(), { GURU_TESTE_ARQUIVO_B3: faltando });
+  try {
+    const page = await app.firstWindow();
+    const erro = await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) =>
+        api.importacao.escolher().then(
+          () => null,
+          (e) => ({ code: e.code, message: e.message }),
+        ),
+      ),
+    );
+    expect(erro.code).toBe("ARQUIVO_INVALIDO");
+    expect(erro.message).toBe("Não foi possível ler o arquivo.");
+    expect(erro.message).not.toContain("guru-segredo");
   } finally {
     await app.close();
   }

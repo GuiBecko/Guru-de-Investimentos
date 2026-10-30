@@ -18,6 +18,10 @@ pub enum CoreError {
     MetaNaoEncontrada(i64),
     #[error("Período inválido: use 6 ou 12 meses.")]
     PeriodoInvalido(u32),
+    #[error("{0}")]
+    ArquivoInvalido(String),
+    #[error("{0}")]
+    DecisaoInvalida(String),
 }
 
 impl CoreError {
@@ -29,6 +33,8 @@ impl CoreError {
             CoreError::Sqlite(_) => "SQLITE",
             CoreError::NaoEncontrado(_) | CoreError::MetaNaoEncontrada(_) => "NAO_ENCONTRADO",
             CoreError::PeriodoInvalido(_) => "PERIODO_INVALIDO",
+            CoreError::ArquivoInvalido(_) => "ARQUIVO_INVALIDO",
+            CoreError::DecisaoInvalida(_) => "DECISAO_INVALIDA",
         }
     }
 }

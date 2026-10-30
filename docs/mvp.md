@@ -63,6 +63,7 @@ Escopo combinado durante a fase de protótipo. O protótipo das telas está em [
 | Classes | Renda fixa (inclui Tesouro), Ações (inclui ETFs), FIIs, Exterior (BDRs) e Outros (fundos, previdência e cripto). A classe Caixa do protótipo fica para quando houver um tipo para ela. |
 | Rentabilidade da carteira | Retorno mensal pelo método de Dietz modificado (os aportes pesam pelos dias em que ficaram aplicados no mês), encadeado no período. Investimento sem preço conta pelo valor aplicado, e o mês em que ele ganha preço não vira rendimento. Benchmarks comparados a partir do primeiro aporte do período. Histórico de 6 ou 12 meses, pelos fechamentos de fim de mês. |
 | Proventos | Fora do painel até haver fonte (importação da B3 ou V2). |
+| Importação | Planilha de posição da Área do Investidor B3 (.xlsx), lida pelo nome das abas e das colunas. Casa por ticker (renda variável), código ou emissor + vencimento (renda fixa) e título + vencimento (Tesouro). Valor aplicado, taxa e preço médio não vêm na posição: o usuário completa na tela antes de gravar. Nada é apagado sem escolha explícita. |
 
 ## Em aberto
 

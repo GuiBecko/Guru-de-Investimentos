@@ -133,8 +133,9 @@ test("Atualizar desabilita o botão durante a atualização", async () => {
 
 test("fonte com falha mostra 'com falhas' e o diálogo lista o CDI com a mensagem", async () => {
   const pasta = fs.mkdtempSync(path.join(os.tmpdir(), "guru-fixtures-"));
-  for (const nome of fs.readdirSync(FIXTURES)) {
-    if (nome !== "sgs-12.json") fs.copyFileSync(path.join(FIXTURES, nome), path.join(pasta, nome));
+  for (const nome of fs.readdirSync(FIXTURES, { withFileTypes: true })) {
+    // A pasta b3/ (planilhas de importação) não faz parte das fixtures de mercado.
+    if (nome.isFile() && nome.name !== "sgs-12.json") fs.copyFileSync(path.join(FIXTURES, nome.name), path.join(pasta, nome.name));
   }
   // O 404 do SGS é "sem dados"; a falha vem da página de erro HTML com status 200.
   fs.copyFileSync(path.join(FIXTURES, "sgs-erro.html"), path.join(pasta, "sgs-12.json"));

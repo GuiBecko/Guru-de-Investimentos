@@ -1,5 +1,6 @@
 mod db;
 mod error;
+mod importacao;
 mod investimento;
 mod mercado;
 mod metas;
@@ -12,6 +13,12 @@ pub use investimento::{
     Benchmark, Classe, ErroCampo, Forma, Garantia, Gravacao, INSTITUICOES, Indexador, Investimento,
     InvestimentoValido, Ir, Liquidez, MAX_CENTAVOS, NovoInvestimento, Resumo, ResumoClasse,
     TipoInfo, nome, rendimento, tipo, tipos, validar,
+};
+
+pub use importacao::{
+    Aba, AbaRv, Acao, Celula, Comparacao, Decisao, Estado, Item, LinhaB3, Posicao,
+    ResultadoImportacao, aplicar_importacao, comparar, ler_posicao, ler_posicao_abas, ler_xlsx,
+    ultima_importacao,
 };
 
 pub use perfil::{

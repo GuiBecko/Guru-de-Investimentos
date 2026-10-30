@@ -2,10 +2,10 @@
 import { api } from "../api.js";
 import { atualizarMercado } from "../mercado.js";
 import { formatarData, formatarReais, paraCentavos, paraTaxa } from "../formato.js";
-import { legendaRendimento, montarDados } from "./formulario-investimento/dados.js";
+import { CAMPOS_DO_TIPO as Q, legendaRendimento, montarDados } from "./formulario-investimento/dados.js";
 
 const OUTRA = "__outra";
-const ROTULO_TAXA = {
+export const ROTULO_TAXA = {
   pos: ["Rendimento", "%"],
   pre: ["Taxa prefixada", "% a.a."],
   ipca: ["Taxa acima da inflação", "% a.a."],
@@ -152,20 +152,20 @@ function montar(raiz, catalogo, vigente, { id, inicial, metas }) {
   };
 
   registrar("tipo", "Tipo", tipo);
-  registrar("emissor", "Emissor", emissor, { classe: "span2", quando: (c) => c.tipo.exigeEmissor });
-  registrar("ticker", "Ticker", ticker, { classe: "span2", quando: rv });
+  registrar("emissor", "Emissor", emissor, { classe: "span2", quando: Q.emissor });
+  registrar("ticker", "Ticker", ticker, { classe: "span2", quando: Q.ticker });
   registrar("instituicao", "Corretora ou banco", instituicao, { extra: [instituicaoOutra] });
-  registrar("indexador", "Indexador", indexador, { quando: rf });
-  registrar("taxa", "Rendimento", taxa, { quando: rf, dica: dicaTaxa, afixo: taxaComSufixo() });
-  registrar("quantidade", "Quantidade", quantidade, { quando: rv });
-  registrar("precoMedioCentavos", "Preço médio", preco, { quando: rv, afixo: prefixo(preco) });
+  registrar("indexador", "Indexador", indexador, { quando: Q.indexador });
+  registrar("taxa", "Rendimento", taxa, { quando: Q.taxa, dica: dicaTaxa, afixo: taxaComSufixo() });
+  registrar("quantidade", "Quantidade", quantidade, { quando: Q.quantidade });
+  registrar("precoMedioCentavos", "Preço médio", preco, { quando: Q.precoMedioCentavos, afixo: prefixo(preco) });
   registrar("dataAplicacao", "Data da aplicação", data);
-  registrar("vencimento", "Vencimento", vencimento, { quando: (c) => !rv(c) });
-  registrar("valorAplicadoCentavos", "Valor aplicado", valor, { quando: (c) => !rv(c), afixo: prefixo(valor) });
-  registrar("liquidez", "Liquidez", liquidez, { quando: (c) => !rv(c) });
-  registrar("dataCarencia", "Data da carência", carencia, { quando: (c) => !rv(c) && c.liquidez === "carencia" });
-  registrar("ir", "Imposto de renda", ir, { quando: rf, extra: [marcaIr] });
-  registrar("garantia", "Garantia", garantia, { quando: rf, extra: [marcaGarantia] });
+  registrar("vencimento", "Vencimento", vencimento, { quando: Q.vencimento });
+  registrar("valorAplicadoCentavos", "Valor aplicado", valor, { quando: Q.valorAplicadoCentavos, afixo: prefixo(valor) });
+  registrar("liquidez", "Liquidez", liquidez, { quando: Q.liquidez });
+  registrar("dataCarencia", "Data da carência", carencia, { quando: Q.dataCarencia });
+  registrar("ir", "Imposto de renda", ir, { quando: Q.ir, extra: [marcaIr] });
+  registrar("garantia", "Garantia", garantia, { quando: Q.garantia, extra: [marcaGarantia] });
   registrar("metaId", "Vincular a uma meta", meta, { classe: "span2" });
   registrar("observacao", "Observação (opcional)", observacao, { classe: "span3" });
   // O benchmark não tem campo próprio: o erro dele aparece junto da taxa.
