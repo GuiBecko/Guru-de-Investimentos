@@ -10,7 +10,7 @@ Escopo combinado durante a fase de protótipo. O protótipo das telas está em [
 | 2 | Objetivo e metas | Objetivo em texto livre ("por que você investe, o que é sucesso"), lido pela IA em toda análise. Metas com valor, prazo, aporte mensal necessário e alerta de atraso. |
 | 3 | Importar da B3 | Lê a planilha da Área do Investidor e compara com o que já está cadastrado: novo, atualizar, divergente, fora da B3, igual. O usuário escolhe o que fazer em cada linha. O que não veio na planilha nunca é apagado sozinho. |
 | 4 | Lançar manualmente | Campos fechados: tipo em lista, indexador, rendimento em dois campos (% + benchmark), datas por calendário, valor em reais. Preenche IR e garantia conforme o tipo. |
-| 5 | Carteira | Painel principal: saudação diferente a cada abertura, KPIs, evolução do patrimônio × total aportado, pizza por classe × alvo, rentabilidade × CDI/IPCA/BOVA11, mês a mês, proventos, instituições, vencimentos, altas e quedas, insights da IA e notícias com link. |
+| 5 | Carteira | Painel principal: saudação diferente a cada abertura, KPIs, evolução do patrimônio × total aportado, pizza por classe × alvo, rentabilidade × CDI/IPCA/BOVA11, mês a mês, instituições, vencimentos, altas e quedas. Insights da IA e notícias com link (fase 6). |
 | 6 | Detalhe da classe | Investimentos da classe e gráfico contra um benchmark à escolha (CDI, Selic, IPCA, BOVA11, XFIX11). |
 | 7 | Próximo aporte | Divisão do valor por classe por rebalanceamento (cálculo sem IA). Cada classe abre um chat com a IA focado em escolher o investimento dentro dela. |
 | 8 | Assistente | Chat com contexto da carteira, perfil, objetivo e mercado. Citações numeradas e painel com cada fonte, link e data. |
@@ -61,6 +61,8 @@ Escopo combinado durante a fase de protótipo. O protótipo das telas está em [
 | Saudação | Escrita pelo app, sorteada de uma lista fixa de frases. Não usa a IA nem gasta tokens. |
 | Contexto da IA | Cada parte do contexto (instruções, perfil, carteira, mercado, metas) pode ser desligada ou editada. |
 | Classes | Renda fixa (inclui Tesouro), Ações (inclui ETFs), FIIs, Exterior (BDRs) e Outros (fundos, previdência e cripto). A classe Caixa do protótipo fica para quando houver um tipo para ela. |
+| Rentabilidade da carteira | Retorno mensal pelo método de Dietz simples (desconta os aportes do mês), encadeado no período. Histórico de 6 ou 12 meses, pelos fechamentos de fim de mês. |
+| Proventos | Fora do painel até haver fonte (importação da B3 ou V2). |
 
 ## Em aberto
 
