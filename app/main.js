@@ -84,6 +84,8 @@ const canais = {
   "metas:criar": (dados) => nucleo().criarMeta(dados),
   "metas:atualizar": (id, dados) => nucleo().atualizarMeta(id, dados),
   "metas:apagar": (id) => nucleo().apagarMeta(id),
+  "mercado:atualizar": () => nucleo().atualizarMercado(),
+  "mercado:status": () => nucleo().statusMercado(),
 };
 for (const [canal, handler] of Object.entries(canais)) {
   ipcMain.handle(canal, tratar(handler));
@@ -98,7 +100,14 @@ function abrirNucleo() {
     erro.code = "ADDON_INDISPONIVEL";
     throw erro;
   }
-  return Core.open(app.getPath("userData"));
+  // Modo de teste do mercado: o atualizador lê arquivos da pasta em vez de baixar, com data fixa
+  // opcional. Só fora do app empacotado; empacotado, o núcleo sempre usa a rede e a data real.
+  const opcoes = {};
+  if (!app.isPackaged && process.env.GURU_MERCADO_FIXTURES) {
+    opcoes.pastaFixtures = process.env.GURU_MERCADO_FIXTURES;
+    if (process.env.GURU_MERCADO_HOJE) opcoes.hoje = process.env.GURU_MERCADO_HOJE;
+  }
+  return Core.open(app.getPath("userData"), opcoes);
 }
 
 function criarJanela() {

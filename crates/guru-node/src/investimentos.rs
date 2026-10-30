@@ -104,6 +104,12 @@ pub struct InvestimentoJs {
     pub observacao: Option<String>,
     pub meta_id: Option<i64>,
     pub meta_nome: Option<String>,
+    /// Valor bruto (antes do IR e de taxas).
+    pub valor_atual_centavos: i64,
+    pub rentabilidade_decimos: i64,
+    pub origem_valor: String,
+    pub origem_valor_rotulo: String,
+    pub data_valor: Option<String>,
 }
 
 #[napi(object)]
@@ -111,6 +117,7 @@ pub struct ResumoClasseJs {
     pub classe: String,
     pub rotulo: String,
     pub total_aplicado_centavos: i64,
+    pub total_atual_centavos: i64,
     pub quantidade: i64,
     pub percentual_decimos: i64,
     pub alvo_percentual: Option<i64>,
@@ -119,6 +126,7 @@ pub struct ResumoClasseJs {
 #[napi(object)]
 pub struct ResumoJs {
     pub total_aplicado_centavos: i64,
+    pub total_atual_centavos: i64,
     pub classes: Vec<ResumoClasseJs>,
 }
 
@@ -235,12 +243,18 @@ pub fn investimento(i: Investimento) -> InvestimentoJs {
         observacao: i.observacao,
         meta_id: i.meta_id,
         meta_nome: i.meta_nome,
+        valor_atual_centavos: i.valor_atual_centavos,
+        rentabilidade_decimos: i.rentabilidade_decimos,
+        origem_valor: i.origem_valor.codigo().to_string(),
+        origem_valor_rotulo: i.origem_valor.rotulo().to_string(),
+        data_valor: i.data_valor.map(|d| d.format("%Y-%m-%d").to_string()),
     }
 }
 
 pub fn resumo(r: Resumo) -> ResumoJs {
     ResumoJs {
         total_aplicado_centavos: r.total_aplicado_centavos,
+        total_atual_centavos: r.total_atual_centavos,
         classes: r
             .classes
             .into_iter()
@@ -248,6 +262,7 @@ pub fn resumo(r: Resumo) -> ResumoJs {
                 classe: c.classe.codigo().to_string(),
                 rotulo: c.classe.rotulo().to_string(),
                 total_aplicado_centavos: c.total_aplicado_centavos,
+                total_atual_centavos: c.total_atual_centavos,
                 quantidade: c.quantidade,
                 percentual_decimos: c.percentual_decimos,
                 alvo_percentual: c.alvo_percentual,
