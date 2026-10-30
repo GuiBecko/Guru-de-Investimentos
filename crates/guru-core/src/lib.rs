@@ -23,7 +23,7 @@ pub const CORE_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub use metas::{Meta, NovaMeta, Progresso, Situacao, formatar_reais, progresso};
 
 pub use mercado::{
-    B3Alvo, Baixador, BaixadorHttp, BaixadorPasta, Cotacao, ErroFonte, PontoDiario, PrecoTesouro,
-    ResultadoAtualizacao, StatusFonte, atualizar, ler_cotahist_txt, ler_cotahist_zip, ler_sgs,
-    ler_tesouro, titulo_tesouro,
+    B3Alvo, Baixador, BaixadorHttp, BaixadorPasta, Cotacao, ErroFonte, Origem, PontoDiario,
+    PrecoTesouro, ResultadoAtualizacao, StatusFonte, Valor, atualizar, ler_cotahist_txt,
+    ler_cotahist_zip, ler_sgs, ler_tesouro, titulo_tesouro, valorizar,
 };

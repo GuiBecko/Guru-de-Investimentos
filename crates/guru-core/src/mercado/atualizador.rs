@@ -116,7 +116,7 @@ pub fn atualizar(
     hoje: NaiveDate,
     espera: &dyn Fn(Duration),
 ) -> Result<ResultadoAtualizacao, CoreError> {
-    let carteira = db.listar_investimentos()?;
+    let carteira = db.listar_investimentos(hoje)?;
     let padrao = hoje
         .checked_sub_months(Months::new(13))
         .unwrap_or(NaiveDate::MIN);

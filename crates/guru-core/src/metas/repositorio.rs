@@ -106,7 +106,7 @@ impl Db {
     /// Ordenadas por prazo e depois por nome (sem diferenciar maiúsculas).
     pub fn listar_metas(&self, hoje: NaiveDate) -> Result<Vec<Meta>, CoreError> {
         let linhas = self.linhas_de_metas(None)?;
-        let vinculos = self.vinculos()?;
+        let vinculos = self.vinculos(hoje)?;
         let mut metas = linhas
             .into_iter()
             .map(|l| montar(l, &vinculos, hoje))
@@ -121,7 +121,7 @@ impl Db {
             .into_iter()
             .next()
             .ok_or(CoreError::MetaNaoEncontrada(id))?;
-        montar(l, &self.vinculos()?, hoje)
+        montar(l, &self.vinculos(hoje)?, hoje)
     }
 
     fn linhas_de_metas(&self, id: Option<i64>) -> Result<Vec<Linha>, CoreError> {
@@ -145,26 +145,17 @@ impl Db {
         .map_err(classifica)
     }
 
-    /// (meta, valor aplicado, data da aplicação) de todo investimento vinculado.
-    fn vinculos(&self) -> Result<Vec<Vinculo>, CoreError> {
-        let mut stmt = self
-            .conn
-            .prepare(
-                "SELECT meta_id, valor_aplicado_centavos, data_aplicacao FROM investimentos \
-                 WHERE meta_id IS NOT NULL",
-            )
-            .map_err(classifica)?;
-        let linhas: Vec<(i64, i64, String)> = stmt
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
-            .map_err(classifica)?
-            .collect::<Result<_, _>>()
-            .map_err(classifica)?;
-        linhas
+    /// (meta, valor atual, data da aplicação) de todo investimento vinculado.
+    fn vinculos(&self, hoje: NaiveDate) -> Result<Vec<Vinculo>, CoreError> {
+        self.listar_investimentos(hoje)?
             .into_iter()
-            .map(|(meta, valor, data)| {
-                let d = NaiveDate::parse_from_str(&data, "%Y-%m-%d")
-                    .map_err(|_| corrompido("data da aplicação"))?;
-                Ok((meta, valor, d))
+            .filter_map(|i| {
+                let meta = i.meta_id?;
+                Some(
+                    NaiveDate::parse_from_str(&i.data_aplicacao, "%Y-%m-%d")
+                        .map(|d| (meta, i.valor_atual_centavos, d))
+                        .map_err(|_| corrompido("data da aplicação")),
+                )
             })
             .collect()
     }

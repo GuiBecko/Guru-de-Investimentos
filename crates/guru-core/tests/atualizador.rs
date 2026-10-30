@@ -468,7 +468,7 @@ fn titulo_do_tesouro_usa_o_rotulo_do_catalogo() {
     let (_d, db) = abrir();
     criar(&db, tesouro_selic());
     criar(&db, cdb("2025-03-15"));
-    let lista = db.listar_investimentos().unwrap();
+    let lista = db.listar_investimentos(data(2026, 10, 28)).unwrap();
     let td = lista.iter().find(|i| i.tipo == "td-selic").unwrap();
     assert_eq!(
         titulo_tesouro(td),

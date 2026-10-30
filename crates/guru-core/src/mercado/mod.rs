@@ -6,6 +6,7 @@ mod rede;
 mod repositorio;
 mod sgs;
 mod tesouro;
+mod valorizacao;
 
 use std::fmt;
 
@@ -17,6 +18,8 @@ pub use rede::{Baixador, BaixadorHttp, BaixadorPasta};
 pub use repositorio::{B3Alvo, StatusFonte};
 pub use sgs::{PontoDiario, ler_sgs};
 pub use tesouro::{PrecoTesouro, ler_tesouro};
+pub use valorizacao::{Origem, Valor, valorizar};
+pub(crate) use valorizacao::{Series, valorizar_com};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ErroFonte {

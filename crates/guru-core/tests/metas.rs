@@ -158,9 +158,9 @@ fn apagar_meta_desvincula_e_mantem_o_investimento() {
         db.criar_investimento(&cdb(300_000, Some(m)), hoje())
             .unwrap(),
     );
-    assert_eq!(db.investimento(inv).unwrap().meta_id, Some(m));
+    assert_eq!(db.investimento(inv, hoje()).unwrap().meta_id, Some(m));
     db.apagar_meta(m).unwrap();
-    let i = db.investimento(inv).unwrap();
+    let i = db.investimento(inv, hoje()).unwrap();
     assert_eq!(i.meta_id, None);
     assert_eq!(i.meta_nome, None);
     assert!(db.listar_metas(hoje()).unwrap().is_empty());
@@ -182,7 +182,7 @@ fn investimento_com_meta_inexistente_da_erro_de_campo() {
             mensagem: "Escolha uma meta da lista.".into()
         }]
     );
-    assert!(db.listar_investimentos().unwrap().is_empty());
+    assert!(db.listar_investimentos(hoje()).unwrap().is_empty());
 }
 
 #[test]
@@ -206,20 +206,22 @@ fn investimento_com_meta_valida_traz_o_nome_e_atualizar_troca_ou_remove() {
         db.criar_investimento(&cdb(300_000, Some(m1)), hoje())
             .unwrap(),
     );
-    let i = db.investimento(inv).unwrap();
+    let i = db.investimento(inv, hoje()).unwrap();
     assert_eq!(
         (i.meta_id, i.meta_nome.as_deref()),
         (Some(m1), Some("Viagem"))
     );
     assert_eq!(
-        db.listar_investimentos().unwrap()[0].meta_nome.as_deref(),
+        db.listar_investimentos(hoje()).unwrap()[0]
+            .meta_nome
+            .as_deref(),
         Some("Viagem")
     );
 
     db.atualizar_investimento(inv, &cdb(300_000, Some(m2)), hoje())
         .unwrap();
     assert_eq!(
-        db.investimento(inv).unwrap().meta_nome.as_deref(),
+        db.investimento(inv, hoje()).unwrap().meta_nome.as_deref(),
         Some("Casa")
     );
     let Gravacao::Invalido(e) = db
@@ -231,7 +233,7 @@ fn investimento_com_meta_valida_traz_o_nome_e_atualizar_troca_ou_remove() {
     assert_eq!(e[0].campo, "metaId");
     db.atualizar_investimento(inv, &cdb(300_000, None), hoje())
         .unwrap();
-    assert_eq!(db.investimento(inv).unwrap().meta_id, None);
+    assert_eq!(db.investimento(inv, hoje()).unwrap().meta_id, None);
 }
 
 #[test]
@@ -258,7 +260,7 @@ fn resumo_traz_percentuais_e_classes_com_alvo_sem_investimento() {
         )
         .unwrap(),
     );
-    let r = db.resumo_carteira().unwrap();
+    let r = db.resumo_carteira(hoje()).unwrap();
     assert_eq!(r.classes.len(), 2);
     assert!(r.classes.iter().all(|c| c.alvo_percentual.is_none()));
     // 3.800.000 / 4.271.300 = 88,96...%
@@ -276,7 +278,7 @@ fn resumo_traz_percentuais_e_classes_com_alvo_sem_investimento() {
     .map(|(c, v)| (c.to_string(), *v))
     .collect();
     assert!(db.salvar_alocacao_alvo(&valores).unwrap().is_empty());
-    let r = db.resumo_carteira().unwrap();
+    let r = db.resumo_carteira(hoje()).unwrap();
     let v: Vec<_> = r
         .classes
         .iter()
@@ -314,7 +316,7 @@ fn resumo_vazio_com_alvo_lista_as_classes_do_alvo_com_total_zero() {
     .map(|(c, v)| (c.to_string(), *v))
     .collect();
     db.salvar_alocacao_alvo(&valores).unwrap();
-    let r = db.resumo_carteira().unwrap();
+    let r = db.resumo_carteira(hoje()).unwrap();
     assert_eq!(r.total_aplicado_centavos, 0);
     assert_eq!(r.classes.len(), 4);
     assert!(

@@ -64,13 +64,13 @@ impl Core {
 
     #[napi]
     pub fn listar_investimentos(&self) -> napi::Result<Vec<InvestimentoJs>, String> {
-        let lista = self.db()?.listar_investimentos().map_err(to_js)?;
+        let lista = self.db()?.listar_investimentos(hoje()).map_err(to_js)?;
         Ok(lista.into_iter().map(investimentos::investimento).collect())
     }
 
     #[napi]
     pub fn investimento(&self, id: i64) -> napi::Result<InvestimentoJs, String> {
-        let i = self.db()?.investimento(id).map_err(to_js)?;
+        let i = self.db()?.investimento(id, hoje()).map_err(to_js)?;
         Ok(investimentos::investimento(i))
     }
 
@@ -106,7 +106,7 @@ impl Core {
 
     #[napi]
     pub fn resumo_carteira(&self) -> napi::Result<ResumoJs, String> {
-        let r = self.db()?.resumo_carteira().map_err(to_js)?;
+        let r = self.db()?.resumo_carteira(hoje()).map_err(to_js)?;
         Ok(investimentos::resumo(r))
     }
 

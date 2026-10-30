@@ -7,6 +7,7 @@ use super::texto::{nome, rendimento};
 use super::validacao::validar;
 use crate::db::{Db, classifica};
 use crate::error::CoreError;
+use crate::mercado::{Origem, Series, valorizar_com};
 
 /// Resultado de criar ou atualizar: gravou (com o id) ou devolveu os erros de validação.
 #[derive(Debug)]
@@ -41,12 +42,20 @@ pub struct Investimento {
     pub observacao: Option<String>,
     pub meta_id: Option<i64>,
     pub meta_nome: Option<String>,
+    /// Valor bruto (antes do IR e de taxas) na data da consulta.
+    pub valor_atual_centavos: i64,
+    /// Décimos de ponto percentual sobre o valor aplicado.
+    pub rentabilidade_decimos: i64,
+    pub origem_valor: Origem,
+    /// Data dos dados usados no valor atual.
+    pub data_valor: Option<NaiveDate>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResumoClasse {
     pub classe: Classe,
     pub total_aplicado_centavos: i64,
+    pub total_atual_centavos: i64,
     pub quantidade: i64,
     /// Parte do total em décimos de ponto percentual (`round(parte × 1000 / total)`).
     pub percentual_decimos: i64,
@@ -57,6 +66,7 @@ pub struct ResumoClasse {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Resumo {
     pub total_aplicado_centavos: i64,
+    pub total_atual_centavos: i64,
     pub classes: Vec<ResumoClasse>,
 }
 
@@ -196,6 +206,10 @@ fn montar(l: Linha) -> Result<Investimento, CoreError> {
         observacao: l.observacao,
         meta_id: l.meta_id,
         meta_nome: l.meta_nome,
+        valor_atual_centavos: l.valor_aplicado,
+        rentabilidade_decimos: 0,
+        origem_valor: Origem::SemDados,
+        data_valor: None,
     })
 }
 
@@ -381,7 +395,7 @@ impl Db {
         Ok(())
     }
 
-    pub fn investimento(&self, id: i64) -> Result<Investimento, CoreError> {
+    pub fn investimento(&self, id: i64, hoje: NaiveDate) -> Result<Investimento, CoreError> {
         let sql = format!("{SELECT} WHERE i.id = :id");
         let l = self
             .conn
@@ -390,11 +404,15 @@ impl Db {
                 rusqlite::Error::QueryReturnedNoRows => CoreError::NaoEncontrado(id),
                 outro => classifica(outro),
             })?;
-        montar(l)
+        let mut inv = montar(l)?;
+        let series = Series::carregar(self, hoje)?;
+        self.preencher_valor(&series, &mut inv, hoje)?;
+        Ok(inv)
     }
 
     /// Ordenada pela classe (ordem do catálogo) e depois pelo nome, sem diferenciar maiúsculas.
-    pub fn listar_investimentos(&self) -> Result<Vec<Investimento>, CoreError> {
+    /// O valor atual de cada um é o de `hoje`; as séries são lidas uma vez só.
+    pub fn listar_investimentos(&self, hoje: NaiveDate) -> Result<Vec<Investimento>, CoreError> {
         let mut stmt = self.conn.prepare(SELECT).map_err(classifica)?;
         let linhas = stmt
             .query_map([], linha)
@@ -405,23 +423,45 @@ impl Db {
             .into_iter()
             .map(montar)
             .collect::<Result<Vec<_>, _>>()?;
+        let series = Series::carregar(self, hoje)?;
+        for inv in &mut lista {
+            self.preencher_valor(&series, inv, hoje)?;
+        }
         lista.sort_by_cached_key(|i| (ordem_classe(i.classe), i.nome.to_lowercase(), i.id));
         Ok(lista)
     }
 
-    pub fn resumo_carteira(&self) -> Result<Resumo, CoreError> {
-        let lista = self.listar_investimentos()?;
+    fn preencher_valor(
+        &self,
+        series: &Series,
+        inv: &mut Investimento,
+        hoje: NaiveDate,
+    ) -> Result<(), CoreError> {
+        let v = valorizar_com(self, series, inv, hoje)?;
+        inv.valor_atual_centavos = v.atual_centavos;
+        inv.rentabilidade_decimos = v.rentabilidade_decimos;
+        inv.origem_valor = v.origem;
+        inv.data_valor = v.data_referencia;
+        Ok(())
+    }
+
+    /// Totais e percentuais pelo valor atual de `hoje`; o aplicado vai junto.
+    pub fn resumo_carteira(&self, hoje: NaiveDate) -> Result<Resumo, CoreError> {
+        let lista = self.listar_investimentos(hoje)?;
         let alvo = self.alocacao_alvo()?;
         let mut classes: Vec<ResumoClasse> = Vec::new();
         for i in &lista {
             match classes.iter_mut().find(|c| c.classe == i.classe) {
                 Some(c) => {
-                    c.total_aplicado_centavos = soma(c.total_aplicado_centavos, i)?;
+                    c.total_aplicado_centavos =
+                        soma(c.total_aplicado_centavos, i.valor_aplicado_centavos)?;
+                    c.total_atual_centavos = soma(c.total_atual_centavos, i.valor_atual_centavos)?;
                     c.quantidade += 1;
                 }
                 None => classes.push(ResumoClasse {
                     classe: i.classe,
-                    total_aplicado_centavos: soma(0, i)?,
+                    total_aplicado_centavos: soma(0, i.valor_aplicado_centavos)?,
+                    total_atual_centavos: soma(0, i.valor_atual_centavos)?,
                     quantidade: 1,
                     percentual_decimos: 0,
                     alvo_percentual: None,
@@ -434,6 +474,7 @@ impl Db {
                     classes.push(ResumoClasse {
                         classe: *classe,
                         total_aplicado_centavos: 0,
+                        total_atual_centavos: 0,
                         quantidade: 0,
                         percentual_decimos: 0,
                         alvo_percentual: None,
@@ -442,12 +483,14 @@ impl Db {
             }
         }
         classes.sort_by_key(|c| ordem_classe(c.classe));
-        let total = classes.iter().try_fold(0_i64, |acc, c| {
-            acc.checked_add(c.total_aplicado_centavos)
-                .ok_or_else(estouro)
-        })?;
+        let total_aplicado = classes
+            .iter()
+            .try_fold(0_i64, |acc, c| soma(acc, c.total_aplicado_centavos))?;
+        let total_atual = classes
+            .iter()
+            .try_fold(0_i64, |acc, c| soma(acc, c.total_atual_centavos))?;
         for c in &mut classes {
-            c.percentual_decimos = decimos(c.total_aplicado_centavos, total);
+            c.percentual_decimos = decimos(c.total_atual_centavos, total_atual);
             c.alvo_percentual = alvo.as_ref().and_then(|a| {
                 a.iter()
                     .find(|(classe, _)| *classe == c.classe)
@@ -455,7 +498,8 @@ impl Db {
             });
         }
         Ok(Resumo {
-            total_aplicado_centavos: total,
+            total_aplicado_centavos: total_aplicado,
+            total_atual_centavos: total_atual,
             classes,
         })
     }
@@ -471,13 +515,11 @@ fn decimos(parte: i64, total: i64) -> i64 {
 }
 
 fn estouro() -> CoreError {
-    CoreError::DbInvalid("a soma dos valores aplicados excede o limite suportado".to_string())
+    CoreError::DbInvalid("a soma dos valores da carteira excede o limite suportado".to_string())
 }
 
-fn soma(total: i64, i: &Investimento) -> Result<i64, CoreError> {
-    total
-        .checked_add(i.valor_aplicado_centavos)
-        .ok_or_else(estouro)
+fn soma(total: i64, valor: i64) -> Result<i64, CoreError> {
+    total.checked_add(valor).ok_or_else(estouro)
 }
 
 fn ordem_classe(classe: Classe) -> usize {
@@ -490,6 +532,10 @@ fn ordem_classe(classe: Classe) -> usize {
 #[cfg(test)]
 mod testes {
     use super::*;
+
+    fn hoje() -> NaiveDate {
+        NaiveDate::from_ymd_opt(2026, 10, 28).unwrap()
+    }
 
     fn inserir(db: &Db, tipo: &str, valor: i64) {
         db.conn
@@ -525,7 +571,7 @@ mod testes {
         let db = Db::open(dir.path()).unwrap();
         inserir(&db, "fundo", i64::MAX);
         inserir(&db, "prev", i64::MAX);
-        let e = db.resumo_carteira().unwrap_err();
+        let e = db.resumo_carteira(hoje()).unwrap_err();
         assert!(matches!(&e, CoreError::DbInvalid(m) if m.contains("excede")));
     }
 
@@ -535,6 +581,9 @@ mod testes {
         let db = Db::open(dir.path()).unwrap();
         inserir(&db, "fundo", i64::MAX);
         inserir(&db, "rv-acao", 1);
-        assert!(matches!(db.resumo_carteira(), Err(CoreError::DbInvalid(_))));
+        assert!(matches!(
+            db.resumo_carteira(hoje()),
+            Err(CoreError::DbInvalid(_))
+        ));
     }
 }
