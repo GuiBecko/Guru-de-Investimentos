@@ -152,8 +152,30 @@ fn quantidade_texto(tipo_codigo: &str, q: i64) -> String {
     format!("{q} {}", nome[usize::from(!um)])
 }
 
+/// Valor em reais para centavos; `None` se não cabe (a conta nunca estoura: é checada).
 fn centavos(valor: Decimal) -> Option<i64> {
-    i64::try_from((valor * Decimal::from(100)).round()).ok()
+    let vezes_cem = valor.checked_mul(Decimal::ONE_HUNDRED)?;
+    i64::try_from(vezes_cem.round()).ok()
+}
+
+/// Produto da linha cujo valor em reais não cabe em centavos; ela vira aviso e não é comparada.
+fn fora_do_limite(linha: &LinhaB3) -> Option<&str> {
+    let (produto, valor) = match linha {
+        LinhaB3::Tesouro {
+            produto,
+            valor_aplicado,
+            ..
+        } => (produto, valor_aplicado),
+        LinhaB3::RendaFixa {
+            produto,
+            valor_curva,
+            ..
+        } => (produto, valor_curva),
+        LinhaB3::RendaVariavel { .. } => return None,
+    };
+    valor
+        .is_some_and(|v| centavos(v).is_none())
+        .then_some(produto.as_str())
 }
 
 fn tipo_da_aba(aba: AbaRv) -> &'static str {
@@ -549,9 +571,17 @@ pub fn comparar(db: &Db, posicao: &Posicao, hoje: NaiveDate) -> Result<Comparaca
         usados: HashSet::new(),
     };
     let mut itens = Vec::new();
+    let mut avisos = posicao.avisos.clone();
+    let mut linhas: Vec<(usize, &LinhaB3)> = Vec::new();
+    for (n, linha) in posicao.linhas.iter().enumerate() {
+        match fora_do_limite(linha) {
+            Some(produto) => avisos.push(format!("Valor fora do limite em {produto}.")),
+            None => linhas.push((n, linha)),
+        }
+    }
     let mut rv: Vec<GrupoRv> = Vec::new();
     let mut td: Vec<GrupoTesouro> = Vec::new();
-    for (n, linha) in posicao.linhas.iter().enumerate() {
+    for &(n, linha) in &linhas {
         match linha {
             LinhaB3::RendaVariavel {
                 aba,
@@ -607,7 +637,7 @@ pub fn comparar(db: &Db, posicao: &Posicao, hoje: NaiveDate) -> Result<Comparaca
             LinhaB3::RendaFixa { .. } => {}
         }
     }
-    for (n, linha) in posicao.linhas.iter().enumerate() {
+    for &(n, linha) in &linhas {
         let chave = format!("b3:{n}");
         let item = match linha {
             LinhaB3::RendaVariavel { ticker, aba, .. } => {
@@ -636,7 +666,7 @@ pub fn comparar(db: &Db, posicao: &Posicao, hoje: NaiveDate) -> Result<Comparaca
     itens.sort_by_key(|i| i.estado.ordem());
     Ok(Comparacao {
         itens,
-        avisos: posicao.avisos.clone(),
+        avisos,
         linhas_lidas: posicao.linhas_lidas,
     })
 }

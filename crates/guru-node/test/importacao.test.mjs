@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync } from "node:fs";
+import { crc32 } from "node:zlib";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
@@ -112,4 +113,60 @@ test("token velho com decisão inválida ainda dá IMPORTACAO_EXPIRADA", () => {
   assert.throws(() => c.aplicarImportacao("velho", [{ chave: "x", acao: "xyz" }]), {
     code: "IMPORTACAO_EXPIRADA",
   });
+});
+
+// `.xlsx` mínimo (zip sem compressão) com uma aba de células texto ou número (prefixo `#`).
+function xlsx(aba, linhas) {
+  const xml = (c) => (c.startsWith("#") ? `<c><v>${c.slice(1)}</v></c>` : `<c t="str"><v>${c}</v></c>`);
+  const partes = [
+    ["xl/workbook.xml", `<workbook xmlns:r="x"><sheets><sheet name="${aba}" sheetId="1" r:id="rId1"/></sheets></workbook>`],
+    ["xl/_rels/workbook.xml.rels", `<Relationships><Relationship Id="rId1" Type="x/worksheet" Target="worksheets/s1.xml"/></Relationships>`],
+    ["xl/worksheets/s1.xml", `<worksheet><sheetData>${linhas.map((l) => `<row>${l.map(xml).join("")}</row>`).join("")}</sheetData></worksheet>`],
+  ];
+  const locais = [];
+  const central = [];
+  let pos = 0;
+  for (const [nome, texto] of partes) {
+    const n = Buffer.from(nome);
+    const d = Buffer.from(texto);
+    const cab = Buffer.alloc(30);
+    cab.writeUInt32LE(0x04034b50, 0);
+    cab.writeUInt16LE(20, 4);
+    cab.writeUInt32LE(crc32(d), 14);
+    cab.writeUInt32LE(d.length, 18);
+    cab.writeUInt32LE(d.length, 22);
+    cab.writeUInt16LE(n.length, 26);
+    const cen = Buffer.alloc(46);
+    cen.writeUInt32LE(0x02014b50, 0);
+    cen.writeUInt16LE(20, 4);
+    cen.writeUInt16LE(20, 6);
+    cen.writeUInt32LE(crc32(d), 16);
+    cen.writeUInt32LE(d.length, 20);
+    cen.writeUInt32LE(d.length, 24);
+    cen.writeUInt16LE(n.length, 28);
+    cen.writeUInt32LE(pos, 42);
+    locais.push(cab, n, d);
+    central.push(cen, n);
+    pos += cab.length + n.length + d.length;
+  }
+  const dir = Buffer.concat(central);
+  const fim = Buffer.alloc(22);
+  fim.writeUInt32LE(0x06054b50, 0);
+  fim.writeUInt16LE(partes.length, 8);
+  fim.writeUInt16LE(partes.length, 10);
+  fim.writeUInt32LE(dir.length, 12);
+  fim.writeUInt32LE(pos, 16);
+  return Buffer.concat([...locais, dir, fim]);
+}
+
+test("valor enorme na planilha vira aviso em vez de derrubar o processo", () => {
+  const c = abrir();
+  const bytes = xlsx("Tesouro Direto", [
+    ["Produto", "Instituição", "Vencimento", "Valor Aplicado"],
+    ["Tesouro Selic 2029", "Rico", "01/03/2029", "#79228162514264337593543950335"],
+    ["Tesouro Selic 2027", "Rico", "01/03/2027", "#1000"],
+  ]);
+  const r = c.compararImportacao(bytes, "hostil.xlsx");
+  assert.deepEqual(r.avisos, ["Valor fora do limite em Tesouro Selic 2029."]);
+  assert.deepEqual(r.itens.map((i) => i.ativo), ["Tesouro Selic 2027"]);
 });

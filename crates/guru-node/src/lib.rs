@@ -42,6 +42,13 @@ fn to_js(e: CoreError) -> napi::Error<String> {
     napi::Error::new(e.code().to_string(), e.to_string())
 }
 
+fn erro_interno() -> napi::Error<String> {
+    napi::Error::new(
+        "ERRO_INTERNO".to_string(),
+        "Ocorreu um erro interno ao processar a planilha.".to_string(),
+    )
+}
+
 #[napi]
 impl Core {
     #[napi(factory)]
@@ -80,6 +87,20 @@ impl Core {
                 "LOCK_POISONED".to_string(),
                 "Estado interno do núcleo corrompido.".to_string(),
             )
+        })
+    }
+
+    /// Roda `f` e transforma um pânico em `ERRO_INTERNO` em vez de abortar o processo do Electron.
+    /// As travas voltam a valer: a transação que estivesse aberta foi desfeita ao ser solta, e a
+    /// comparação guardada é descartada, já que pode ter ficado pela metade.
+    fn blindar<T>(&self, f: impl FnOnce() -> napi::Result<T, String>) -> napi::Result<T, String> {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or_else(|_| {
+            self.db.clear_poison();
+            self.importacao.clear_poison();
+            if let Ok(mut g) = self.importacao.lock() {
+                *g = None;
+            }
+            Err(erro_interno())
         })
     }
 
@@ -289,16 +310,18 @@ impl Core {
         bytes: Buffer,
         arquivo: String,
     ) -> napi::Result<ComparacaoJs, String> {
-        let posicao = guru_core::ler_posicao(&bytes).map_err(to_js)?;
-        let c = guru_core::comparar(&*self.db()?, &posicao, hoje_real()).map_err(to_js)?;
-        let token = importacao::novo_token();
-        let js = importacao::comparacao(&token, &arquivo, &c);
-        *self.importacao()? = Some(ComparacaoGuardada {
-            token,
-            arquivo,
-            comparacao: c,
-        });
-        Ok(js)
+        self.blindar(|| {
+            let posicao = guru_core::ler_posicao(&bytes).map_err(to_js)?;
+            let c = guru_core::comparar(&*self.db()?, &posicao, hoje_real()).map_err(to_js)?;
+            let token = importacao::novo_token();
+            let js = importacao::comparacao(&token, &arquivo, &c);
+            *self.importacao()? = Some(ComparacaoGuardada {
+                token,
+                arquivo,
+                comparacao: c,
+            });
+            Ok(js)
+        })
     }
 
     #[napi]
@@ -307,31 +330,33 @@ impl Core {
         token: String,
         decisoes: Vec<DecisaoJs>,
     ) -> napi::Result<ResultadoImportacaoJs, String> {
-        let mut guardada = self.importacao()?;
-        // O token vale primeiro: um token velho é sempre IMPORTACAO_EXPIRADA.
-        let g = guardada
-            .as_ref()
-            .filter(|g| g.token == token)
-            .ok_or_else(importacao::expirada)?;
-        let decisoes = decisoes
-            .into_iter()
-            .map(importacao::decisao)
-            .collect::<Result<Vec<_>, _>>()
+        self.blindar(|| {
+            let mut guardada = self.importacao()?;
+            // O token vale primeiro: um token velho é sempre IMPORTACAO_EXPIRADA.
+            let g = guardada
+                .as_ref()
+                .filter(|g| g.token == token)
+                .ok_or_else(importacao::expirada)?;
+            let decisoes = decisoes
+                .into_iter()
+                .map(importacao::decisao)
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(to_js)?;
+            let r = guru_core::aplicar_importacao(
+                &*self.db()?,
+                &g.comparacao,
+                &decisoes,
+                &g.arquivo,
+                hoje_real(),
+            )
             .map_err(to_js)?;
-        let r = guru_core::aplicar_importacao(
-            &*self.db()?,
-            &g.comparacao,
-            &decisoes,
-            &g.arquivo,
-            hoje_real(),
-        )
-        .map_err(to_js)?;
-        // Aplicada com sucesso, a comparação é consumida: repetir a chamada não duplica nada.
-        // Com erros de campo nada foi gravado e ela fica para o usuário corrigir e tentar de novo.
-        if r.erros.is_empty() {
-            *guardada = None;
-        }
-        Ok(importacao::resultado(r.aplicadas, r.erros))
+            // Aplicada com sucesso, a comparação é consumida: repetir a chamada não duplica nada.
+            // Com erros de campo nada foi gravado e ela fica para o usuário corrigir e tentar de novo.
+            if r.erros.is_empty() {
+                *guardada = None;
+            }
+            Ok(importacao::resultado(r.aplicadas, r.erros))
+        })
     }
 
     #[napi]
@@ -367,5 +392,31 @@ fn resultado(g: Gravacao) -> ResultadoGravacao {
             id: None,
             erros: erros(lista),
         },
+    }
+}
+
+#[cfg(test)]
+mod testes {
+    use super::*;
+
+    fn core() -> Core {
+        let pasta = std::env::temp_dir().join(format!("guru-node-{}", importacao::novo_token()));
+        std::fs::create_dir_all(&pasta).unwrap();
+        Core::open(pasta.to_string_lossy().into_owned(), None).unwrap()
+    }
+
+    #[test]
+    fn panico_vira_erro_interno_e_as_travas_continuam_valendo() {
+        let c = core();
+        let r: napi::Result<(), String> = c.blindar(|| {
+            let _db = c.db()?;
+            let _imp = c.importacao()?;
+            panic!("simulado");
+        });
+        let e = r.unwrap_err();
+        assert_eq!(e.status, "ERRO_INTERNO");
+        assert!(c.db().is_ok());
+        assert!(c.importacao().unwrap().is_none());
+        assert_eq!(c.blindar(|| Ok(7)).unwrap(), 7);
     }
 }

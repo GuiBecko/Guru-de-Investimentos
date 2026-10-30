@@ -697,6 +697,36 @@ mod tests {
     }
 
     #[test]
+    fn numeros_absurdos_nao_derrubam_a_leitura() {
+        for bruto in [
+            "79228162514264337593543950335",
+            "-79228162514264337593543950335",
+            "792281625142643375935439503350",
+            "1E+308",
+            "1e999999999999",
+            "9.99E-400",
+            "0.00000000000000000000000000000001",
+        ] {
+            let linhas = vec![
+                cab_tesouro(),
+                vec![
+                    t("Tesouro Selic 2029"),
+                    t("Rico"),
+                    t("01/03/2029"),
+                    n(bruto),
+                ],
+            ];
+            // Basta não entrar em pânico: o valor vira número ou aviso de célula ilegível.
+            let _ = ler_posicao_abas(&[aba("Tesouro Direto", linhas)]);
+            let linhas_qtd = vec![
+                cab_acoes(),
+                vec![t("ITUB4 - ITAU"), t("Rico"), t("ITUB4"), n(bruto)],
+            ];
+            let _ = ler_posicao_abas(&[aba("Ações", linhas_qtd)]);
+        }
+    }
+
+    #[test]
     #[ignore = "usa o arquivo real em GURU_POSICAO_REAL; imprime só contagens"]
     fn posicao_real() {
         let caminho = std::env::var("GURU_POSICAO_REAL").expect("defina GURU_POSICAO_REAL");

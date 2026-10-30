@@ -797,3 +797,122 @@ fn ultima_importacao_devolve_a_data() {
         Some("2026-10-30")
     );
 }
+
+// ---- Planilhas hostis ----
+
+/// Monta um `.xlsx` mínimo com abas de células `str` (texto) ou numéricas (prefixo `#`).
+fn xlsx(abas: &[(&str, &[&[&str]])]) -> Vec<u8> {
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+    let mut wb = String::from(r#"<workbook xmlns:r="x"><sheets>"#);
+    let mut rels = String::from("<Relationships>");
+    let mut z = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let opcoes = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    for (n, (nome, linhas)) in abas.iter().enumerate() {
+        let i = n + 1;
+        wb += &format!(r#"<sheet name="{nome}" sheetId="{i}" r:id="rId{i}"/>"#);
+        rels += &format!(
+            r#"<Relationship Id="rId{i}" Type="x/worksheet" Target="worksheets/s{i}.xml"/>"#
+        );
+        let mut xml = String::from("<worksheet><sheetData>");
+        for linha in *linhas {
+            xml += "<row>";
+            for c in *linha {
+                match c.strip_prefix('#') {
+                    Some(num) => xml += &format!("<c><v>{num}</v></c>"),
+                    None => xml += &format!(r#"<c t="str"><v>{c}</v></c>"#),
+                }
+            }
+            xml += "</row>";
+        }
+        xml += "</sheetData></worksheet>";
+        z.start_file(format!("xl/worksheets/s{i}.xml"), opcoes)
+            .unwrap();
+        z.write_all(xml.as_bytes()).unwrap();
+    }
+    wb += "</sheets></workbook>";
+    rels += "</Relationships>";
+    z.start_file("xl/workbook.xml", opcoes).unwrap();
+    z.write_all(wb.as_bytes()).unwrap();
+    z.start_file("xl/_rels/workbook.xml.rels", opcoes).unwrap();
+    z.write_all(rels.as_bytes()).unwrap();
+    z.finish().unwrap().into_inner()
+}
+
+const ENORME: &str = "#79228162514264337593543950335";
+
+#[test]
+fn valor_enorme_vira_aviso_e_nao_derruba_a_comparacao() {
+    let bytes = xlsx(&[
+        (
+            "Ações",
+            &[
+                &[
+                    "Produto",
+                    "Instituição",
+                    "Código de Negociação",
+                    "Quantidade",
+                ],
+                &["ITUB4 - ITAU UNIBANCO", "Rico", "ITUB4", "#150"],
+            ],
+        ),
+        (
+            "Tesouro Direto",
+            &[
+                &["Produto", "Instituição", "Vencimento", "Valor Aplicado"],
+                &["Tesouro Selic 2029", "Rico", "01/03/2029", ENORME],
+            ],
+        ),
+        (
+            "Renda Fixa",
+            &[
+                &[
+                    "Produto",
+                    "Instituição",
+                    "Código",
+                    "Vencimento",
+                    "Quantidade",
+                    "Valor Atualizado CURVA",
+                ],
+                &[
+                    "CDB - BANCO ENORME S/A",
+                    "Rico",
+                    "CDB9",
+                    "15/03/2029",
+                    "#1",
+                    ENORME,
+                ],
+            ],
+        ),
+    ]);
+    let (_d, db) = abrir();
+    criar(&db, selic(800_000));
+    let posicao = ler_posicao(&bytes).unwrap();
+    let c = comparar(&db, &posicao, hoje()).unwrap();
+    assert!(
+        c.avisos
+            .contains(&"Valor fora do limite em Tesouro Selic 2029.".to_string()),
+        "{:?}",
+        c.avisos
+    );
+    assert!(
+        c.avisos
+            .contains(&"Valor fora do limite em CDB - BANCO ENORME S/A.".to_string()),
+        "{:?}",
+        c.avisos
+    );
+    // As linhas fora do limite não entram: o Tesouro cadastrado fica fora da B3.
+    let ativos: Vec<(&str, Estado)> = c
+        .itens
+        .iter()
+        .map(|i| (i.ativo.as_str(), i.estado))
+        .collect();
+    assert_eq!(ativos.len(), 2, "{ativos:?}");
+    assert!(ativos.contains(&("ITUB4", Estado::Novo)), "{ativos:?}");
+    assert!(
+        c.itens
+            .iter()
+            .any(|i| i.estado == Estado::ForaDaB3 && i.ativo.contains("Selic")),
+        "{ativos:?}"
+    );
+}
