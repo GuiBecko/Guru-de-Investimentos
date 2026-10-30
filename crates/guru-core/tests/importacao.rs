@@ -1,7 +1,7 @@
 use chrono::NaiveDate;
 use guru_core::{
-    AbaRv, Acao, Comparacao, Db, Estado, Gravacao, Item, LinhaB3, NovoInvestimento, Posicao,
-    SCHEMA_VERSION, comparar, ler_posicao,
+    AbaRv, Acao, Comparacao, Db, Decisao, Estado, Gravacao, Item, LinhaB3, NovoInvestimento,
+    Posicao, SCHEMA_VERSION, aplicar_importacao, comparar, ler_posicao, ultima_importacao,
 };
 
 const COMPLETA: &[u8] = include_bytes!("fixtures/b3/posicao-completa.xlsx");
@@ -535,4 +535,265 @@ fn rf_ligado_por_codigo_nao_serve_a_duas_linhas() {
     let segundo = c.itens.iter().find(|i| i.chave == "b3:1").unwrap();
     assert_eq!(primeiro.estado, Estado::Igual);
     assert_eq!(segundo.estado, Estado::Novo);
+}
+
+// ---- Aplicação ----
+
+fn decisao(chave: &str, acao: Acao) -> Decisao {
+    Decisao {
+        chave: chave.to_string(),
+        acao,
+        dados: None,
+    }
+}
+
+/// Completa a sugestão como o usuário faria na tela.
+fn completar(item: &Item) -> NovoInvestimento {
+    let mut n = item.sugestao.clone().expect("item sem sugestão");
+    n.data_aplicacao.get_or_insert_with(|| "2025-04-01".into());
+    if n.tipo.starts_with("rv-") {
+        n.preco_medio_centavos = Some(3_000);
+    } else {
+        n.valor_aplicado_centavos.get_or_insert(2_000_000);
+        let taxa = match (n.tipo.as_str(), n.indexador.as_deref()) {
+            ("td-selic", _) => "0.09",
+            ("td-ipca", _) => "6.5",
+            (_, Some("pre")) => "12.5",
+            _ => "102",
+        };
+        n.taxa.get_or_insert_with(|| taxa.to_string());
+    }
+    n
+}
+
+fn adicionar_tudo(c: &Comparacao) -> Vec<Decisao> {
+    c.itens
+        .iter()
+        .map(|i| Decisao {
+            chave: i.chave.clone(),
+            acao: Acao::Adicionar,
+            dados: Some(completar(i)),
+        })
+        .collect()
+}
+
+fn aplicar(db: &Db, c: &Comparacao, d: &[Decisao]) -> guru_core::ResultadoImportacao {
+    aplicar_importacao(db, c, d, "posicao.xlsx", hoje()).unwrap()
+}
+
+fn total(db: &Db) -> usize {
+    db.listar_investimentos(hoje()).unwrap().len()
+}
+
+#[test]
+fn adicionar_tudo_e_comparar_de_novo_da_tudo_igual() {
+    let (_d, db) = abrir();
+    let c = comparar_completa(&db);
+    let r = aplicar(&db, &c, &adicionar_tudo(&c));
+    assert!(r.erros.is_empty(), "{:?}", r.erros);
+    assert_eq!(r.aplicadas, c.itens.len());
+    assert_eq!(total(&db), c.itens.len());
+
+    let c2 = comparar_completa(&db);
+    assert_eq!(c2.itens.len(), c.itens.len());
+    assert!(
+        c2.itens.iter().all(|i| i.estado == Estado::Igual),
+        "{:?}",
+        c2.itens
+            .iter()
+            .map(|i| (&i.ativo, i.estado))
+            .collect::<Vec<_>>()
+    );
+    // Importar de novo não duplica.
+    let r2 = aplicar(&db, &c2, &[]);
+    assert_eq!(r2.aplicadas, 0);
+    assert_eq!(total(&db), c.itens.len());
+}
+
+#[test]
+fn codigo_b3_vem_do_ticker_do_codigo_e_do_isin() {
+    let (_d, db) = abrir();
+    let c = comparar_completa(&db);
+    aplicar(&db, &c, &adicionar_tudo(&c));
+    let conn = rusqlite::Connection::open(db.path()).unwrap();
+    let codigos: Vec<(String, Option<String>)> = conn
+        .prepare("SELECT tipo, codigo_b3 FROM investimentos")
+        .unwrap()
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert!(codigos.iter().all(|(_, c)| c.is_some()), "{codigos:?}");
+    let de = |t: &str| -> Vec<String> {
+        codigos
+            .iter()
+            .filter(|(tp, _)| tp.starts_with(t))
+            .filter_map(|(_, c)| c.clone())
+            .collect()
+    };
+    assert!(de("rv-").contains(&"ITUB4".to_string()));
+    assert!(de("rf-").contains(&"CDB224ABCDE".to_string()));
+    assert_eq!(de("td-").len(), 2);
+    assert!(
+        de("td-").contains(&"BRSTNCLF1RU6".to_string()),
+        "{codigos:?}"
+    );
+}
+
+#[test]
+fn adicionar_incompleto_nao_grava_nada() {
+    let (_d, db) = abrir();
+    let c = comparar_completa(&db);
+    let mut decisoes = adicionar_tudo(&c);
+    let itub = item(&c, "ITUB4").chave.clone();
+    let d = decisoes.iter_mut().find(|d| d.chave == itub).unwrap();
+    d.dados.as_mut().unwrap().preco_medio_centavos = None;
+    let r = aplicar(&db, &c, &decisoes);
+    assert_eq!(r.aplicadas, 0);
+    assert_eq!(r.erros.len(), 1);
+    assert_eq!(r.erros[0].0, itub);
+    assert!(
+        r.erros[0].1.iter().any(|e| e.campo == "precoMedioCentavos"),
+        "{:?}",
+        r.erros
+    );
+    assert_eq!(total(&db), 0);
+    assert_eq!(ultima_importacao(&db).unwrap(), None);
+}
+
+#[test]
+fn usar_b3_na_renda_variavel_muda_so_a_quantidade() {
+    let (d, db) = abrir();
+    let mut novo = rv("rv-acao", "ITUB4", 120);
+    novo.preco_medio_centavos = Some(3_142);
+    let id = criar(&db, novo);
+    marcar_importado(&d, id, "ITUB4");
+    let c = comparar_completa(&db);
+    let chave = item(&c, "ITUB4").chave.clone();
+    let r = aplicar(&db, &c, &[decisao(&chave, Acao::UsarB3)]);
+    assert_eq!((r.aplicadas, r.erros.len()), (1, 0));
+    let inv = db.investimento(id, hoje()).unwrap();
+    assert_eq!(inv.quantidade, Some(150));
+    assert_eq!(inv.preco_medio_centavos, Some(3_142));
+    assert_eq!(inv.valor_aplicado_centavos, 150 * 3_142);
+}
+
+#[test]
+fn usar_b3_no_tesouro_muda_so_o_valor_aplicado() {
+    let (d, db) = abrir();
+    let id = criar(&db, selic(500_000));
+    marcar_importado(&d, id, "BRSTNCLF1RU6");
+    let c = comparar_completa(&db);
+    let i = item(&c, "Tesouro Selic 2029");
+    assert_eq!(i.estado, Estado::Atualizar);
+    let chave = i.chave.clone();
+    aplicar(&db, &c, &[decisao(&chave, Acao::UsarB3)]);
+    let inv = db.investimento(id, hoje()).unwrap();
+    assert_eq!(inv.valor_aplicado_centavos, 800_000);
+    assert_eq!(inv.taxa.as_deref(), Some("0.09"));
+}
+
+#[test]
+fn fora_da_b3_mantem_ou_remove() {
+    let (_d, db) = abrir();
+    let id = criar(&db, rv("rv-acao", "PETR4", 10));
+    let c = comparar_completa(&db);
+    let fora = c
+        .itens
+        .iter()
+        .find(|i| i.estado == Estado::ForaDaB3)
+        .unwrap();
+    assert_eq!(fora.acao_padrao, Acao::Manter);
+    let chave = fora.chave.clone();
+    let r = aplicar(&db, &c, &[decisao(&chave, Acao::Manter)]);
+    assert_eq!(r.aplicadas, 0);
+    assert!(db.investimento(id, hoje()).is_ok());
+    let r = aplicar(&db, &c, &[decisao(&chave, Acao::Remover)]);
+    assert_eq!(r.aplicadas, 1);
+    assert!(db.investimento(id, hoje()).is_err());
+}
+
+#[test]
+fn vincular_grava_codigo_e_a_proxima_comparacao_casa_direto() {
+    let (_d, db) = abrir();
+    let a = criar(&db, cdb("Banco Ficticio", "2029-03-15"));
+    let _b = criar(&db, cdb("BANCO FICTICIO S.A.", "2029-03-15"));
+    let c = comparar_completa(&db);
+    let chave = c
+        .itens
+        .iter()
+        .find(|i| i.estado == Estado::Divergente)
+        .unwrap()
+        .chave
+        .clone();
+    let r = aplicar(&db, &c, &[decisao(&chave, Acao::Vincular(a))]);
+    assert_eq!(r.aplicadas, 1);
+    assert_eq!(
+        db.investimento(a, hoje()).unwrap().codigo_b3.as_deref(),
+        Some("CDB224ABCDE")
+    );
+    let c2 = comparar_completa(&db);
+    let i = c2
+        .itens
+        .iter()
+        .find(|i| i.investimentos == vec![a])
+        .unwrap();
+    assert_eq!(i.estado, Estado::Igual);
+}
+
+#[test]
+fn igual_na_renda_fixa_grava_o_codigo_sem_contar_como_alteracao() {
+    let (_d, db) = abrir();
+    let id = criar(&db, cdb("Banco Ficticio", "2029-03-15"));
+    let c = comparar_completa(&db);
+    let r = aplicar(&db, &c, &[]);
+    assert_eq!(r.aplicadas, 0);
+    assert_eq!(
+        db.investimento(id, hoje()).unwrap().codigo_b3.as_deref(),
+        Some("CDB224ABCDE")
+    );
+}
+
+#[test]
+fn divergente_mantido_nao_ganha_codigo() {
+    let (_d, db) = abrir();
+    let id = criar(&db, rv("rv-acao", "ITUB4", 120));
+    let c = comparar_completa(&db);
+    let chave = item(&c, "ITUB4").chave.clone();
+    aplicar(&db, &c, &[decisao(&chave, Acao::Manter)]);
+    assert_eq!(db.investimento(id, hoje()).unwrap().codigo_b3, None);
+}
+
+#[test]
+fn acao_fora_da_lista_ou_chave_desconhecida_e_decisao_invalida() {
+    let (_d, db) = abrir();
+    let c = comparar_completa(&db);
+    let chave = item(&c, "ITUB4").chave.clone();
+    for d in [
+        decisao(&chave, Acao::Remover),
+        decisao(&chave, Acao::UsarB3),
+        decisao("b3:999", Acao::Manter),
+    ] {
+        let e = aplicar_importacao(&db, &c, &[d], "x.xlsx", hoje()).unwrap_err();
+        assert_eq!(e.code(), "DECISAO_INVALIDA");
+    }
+    let duas = [
+        decisao(&chave, Acao::Ignorar),
+        decisao(&chave, Acao::Ignorar),
+    ];
+    let e = aplicar_importacao(&db, &c, &duas, "x.xlsx", hoje()).unwrap_err();
+    assert_eq!(e.code(), "DECISAO_INVALIDA");
+    assert_eq!(total(&db), 0);
+}
+
+#[test]
+fn ultima_importacao_devolve_a_data() {
+    let (_d, db) = abrir();
+    assert_eq!(ultima_importacao(&db).unwrap(), None);
+    let c = comparar_completa(&db);
+    aplicar(&db, &c, &[]);
+    assert_eq!(
+        ultima_importacao(&db).unwrap().as_deref(),
+        Some("2026-10-30")
+    );
 }

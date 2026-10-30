@@ -1,5 +1,5 @@
 use chrono::{NaiveDate, SecondsFormat, Utc};
-use rusqlite::{Row, named_params};
+use rusqlite::{Connection, Row, named_params};
 
 use super::catalogo::{Benchmark, Classe, Garantia, Indexador, Ir, Liquidez, TipoInfo, tipo};
 use super::modelo::{ErroCampo, InvestimentoValido, NovoInvestimento};
@@ -300,59 +300,79 @@ macro_rules! parametros {
     };
 }
 
-impl Db {
-    /// `validar` mais a checagem de `meta_id`, que precisa do banco; os erros vêm juntos.
-    fn validar_com_meta(
-        &self,
-        novo: &NovoInvestimento,
-        hoje: NaiveDate,
-    ) -> Result<Result<InvestimentoValido, Vec<ErroCampo>>, CoreError> {
-        let validado = validar(novo, hoje);
-        let meta_existe = match novo.meta_id {
-            None => true,
-            Some(id) => self
-                .conn
-                .query_row(
-                    "SELECT EXISTS (SELECT 1 FROM metas WHERE id = :id)",
-                    named_params! {":id": id},
-                    |r| r.get(0),
-                )
-                .map_err(classifica)?,
-        };
-        if meta_existe {
-            return Ok(validado);
-        }
-        let mut erros = validado.err().unwrap_or_default();
-        erros.push(ErroCampo {
-            campo: "metaId".to_string(),
-            mensagem: "Escolha uma meta da lista.".to_string(),
-        });
-        Ok(Err(erros))
+/// `validar` mais a checagem de `meta_id`, que precisa do banco; os erros vêm juntos.
+pub(crate) fn validar_com_meta(
+    conn: &Connection,
+    novo: &NovoInvestimento,
+    hoje: NaiveDate,
+) -> Result<Result<InvestimentoValido, Vec<ErroCampo>>, CoreError> {
+    let validado = validar(novo, hoje);
+    let meta_existe = match novo.meta_id {
+        None => true,
+        Some(id) => conn
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM metas WHERE id = :id)",
+                named_params! {":id": id},
+                |r| r.get(0),
+            )
+            .map_err(classifica)?,
+    };
+    if meta_existe {
+        return Ok(validado);
     }
+    let mut erros = validado.err().unwrap_or_default();
+    erros.push(ErroCampo {
+        campo: "metaId".to_string(),
+        mensagem: "Escolha uma meta da lista.".to_string(),
+    });
+    Ok(Err(erros))
+}
 
+/// Grava um investimento já validado; funciona dentro de uma transação aberta pelo chamador.
+pub(crate) fn inserir_validado(
+    conn: &Connection,
+    v: InvestimentoValido,
+    meta_id: Option<i64>,
+) -> Result<i64, CoreError> {
+    let agora = agora();
+    let c = Colunas::de(v, meta_id);
+    conn.execute(
+        "INSERT INTO investimentos (tipo, instituicao, emissor, ticker, indexador, taxa, \
+         benchmark, data_aplicacao, vencimento, valor_aplicado_centavos, quantidade, \
+         preco_medio_centavos, liquidez, data_carencia, ir, observacao, meta_id, criado_em, \
+         atualizado_em) VALUES (:tipo, :instituicao, :emissor, :ticker, :indexador, :taxa, \
+         :benchmark, :data_aplicacao, :vencimento, :valor, :quantidade, :preco_medio, \
+         :liquidez, :data_carencia, :ir, :observacao, :meta_id, :agora, :agora)",
+        parametros!(c, agora),
+    )
+    .map_err(classifica)?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub(crate) fn apagar_em(conn: &Connection, id: i64) -> Result<(), CoreError> {
+    let n = conn
+        .execute(
+            "DELETE FROM investimentos WHERE id = :id",
+            named_params! {":id": id},
+        )
+        .map_err(classifica)?;
+    if n == 0 {
+        return Err(CoreError::NaoEncontrado(id));
+    }
+    Ok(())
+}
+
+impl Db {
     pub fn criar_investimento(
         &self,
         novo: &NovoInvestimento,
         hoje: NaiveDate,
     ) -> Result<Gravacao, CoreError> {
-        let v = match self.validar_com_meta(novo, hoje)? {
+        let v = match validar_com_meta(&self.conn, novo, hoje)? {
             Ok(v) => v,
             Err(erros) => return Ok(Gravacao::Invalido(erros)),
         };
-        let agora = agora();
-        let c = Colunas::de(v, novo.meta_id);
-        self.conn
-            .execute(
-                "INSERT INTO investimentos (tipo, instituicao, emissor, ticker, indexador, taxa, \
-                 benchmark, data_aplicacao, vencimento, valor_aplicado_centavos, quantidade, \
-                 preco_medio_centavos, liquidez, data_carencia, ir, observacao, meta_id, criado_em, \
-                 atualizado_em) VALUES (:tipo, :instituicao, :emissor, :ticker, :indexador, :taxa, \
-                 :benchmark, :data_aplicacao, :vencimento, :valor, :quantidade, :preco_medio, \
-                 :liquidez, :data_carencia, :ir, :observacao, :meta_id, :agora, :agora)",
-                parametros!(c, agora),
-            )
-            .map_err(classifica)?;
-        Ok(Gravacao::Ok(self.conn.last_insert_rowid()))
+        Ok(Gravacao::Ok(inserir_validado(&self.conn, v, novo.meta_id)?))
     }
 
     pub fn atualizar_investimento(
@@ -361,7 +381,7 @@ impl Db {
         novo: &NovoInvestimento,
         hoje: NaiveDate,
     ) -> Result<Gravacao, CoreError> {
-        let v = match self.validar_com_meta(novo, hoje)? {
+        let v = match validar_com_meta(&self.conn, novo, hoje)? {
             Ok(v) => v,
             Err(erros) => return Ok(Gravacao::Invalido(erros)),
         };
@@ -387,17 +407,7 @@ impl Db {
     }
 
     pub fn apagar_investimento(&self, id: i64) -> Result<(), CoreError> {
-        let n = self
-            .conn
-            .execute(
-                "DELETE FROM investimentos WHERE id = :id",
-                named_params! {":id": id},
-            )
-            .map_err(classifica)?;
-        if n == 0 {
-            return Err(CoreError::NaoEncontrado(id));
-        }
-        Ok(())
+        apagar_em(&self.conn, id)
     }
 
     pub fn investimento(&self, id: i64, hoje: NaiveDate) -> Result<Investimento, CoreError> {

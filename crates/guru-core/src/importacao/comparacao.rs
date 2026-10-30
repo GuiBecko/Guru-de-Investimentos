@@ -91,6 +91,19 @@ pub struct Item {
     pub acao_padrao: Acao,
     pub sugestao: Option<NovoInvestimento>,
     pub faltando: Vec<ErroCampo>,
+    /// O que a aplicação precisa da planilha; não vai para a interface.
+    pub(crate) b3: DadosB3,
+}
+
+/// Dados da planilha que a aplicação grava ou usa (o texto do item é só para exibir).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct DadosB3 {
+    /// Ticker (renda variável), `Código` (renda fixa) ou ISIN / `<tipo>:<vencimento>` (Tesouro).
+    pub codigo: Option<String>,
+    /// Quantidade total do grupo, só na renda variável.
+    pub quantidade: Option<i64>,
+    /// `Valor Aplicado` somado do grupo, só no Tesouro (`None` se a planilha não traz).
+    pub aplicado_centavos: Option<i64>,
 }
 
 #[derive(Debug, Clone)]
@@ -202,6 +215,7 @@ struct GrupoTesouro<'a> {
     tipo: String,
     vencimento: NaiveDate,
     produto: String,
+    isin: Option<String>,
     primeira_linha: usize,
     /// `None` se alguma linha do grupo não traz o valor aplicado.
     aplicado: Option<i64>,
@@ -253,6 +267,7 @@ impl Contexto<'_> {
             acoes,
             sugestao,
             faltando,
+            b3: DadosB3::default(),
         }
     }
 
@@ -278,6 +293,11 @@ impl Contexto<'_> {
             })
             .collect();
         let na_b3 = Some(quantidade_texto(tipo_codigo, quantidade));
+        let dados_rv = DadosB3 {
+            codigo: Some(ticker.to_uppercase()),
+            quantidade: Some(quantidade),
+            aplicado_centavos: None,
+        };
         self.marcar(&pares);
         if pares.is_empty() {
             let sugestao = NovoInvestimento {
@@ -287,7 +307,7 @@ impl Contexto<'_> {
                 quantidade: Some(quantidade),
                 ..Default::default()
             };
-            return self.item(
+            let mut item = self.item(
                 chave,
                 Estado::Novo,
                 ticker.to_string(),
@@ -297,13 +317,15 @@ impl Contexto<'_> {
                 vec![Acao::Adicionar, Acao::Ignorar],
                 Some(sugestao),
             );
+            item.b3 = dados_rv;
+            return item;
         }
         let soma = pares
             .iter()
             .filter_map(|i| i.quantidade)
             .fold(0i64, i64::saturating_add);
         let (estado, acoes) = com_pares(&pares, soma == quantidade);
-        self.item(
+        let mut item = self.item(
             chave,
             estado,
             ticker.to_string(),
@@ -312,7 +334,9 @@ impl Contexto<'_> {
             ids(&pares),
             acoes,
             None,
-        )
+        );
+        item.b3 = dados_rv;
+        item
     }
 
     fn renda_fixa(&mut self, chave: String, linha: &LinhaB3) -> Option<Item> {
@@ -386,7 +410,7 @@ impl Contexto<'_> {
                 ..Default::default()
             }
         };
-        Some(match pares.as_slice() {
+        let mut item = match pares.as_slice() {
             [] => self.item(
                 chave,
                 Estado::Novo,
@@ -422,7 +446,9 @@ impl Contexto<'_> {
                     Some(sugestao()),
                 )
             }
-        })
+        };
+        item.b3.codigo = (!codigo.is_empty()).then(|| codigo.clone());
+        Some(item)
     }
 
     fn tesouro(&mut self, chave: String, grupo: &GrupoTesouro) -> Item {
@@ -440,6 +466,16 @@ impl Contexto<'_> {
             .collect();
         self.marcar(&pares);
         let aplicado_b3 = grupo.aplicado;
+        let dados_td = DadosB3 {
+            codigo: Some(
+                grupo
+                    .isin
+                    .clone()
+                    .unwrap_or_else(|| format!("{}:{}", grupo.tipo, venc)),
+            ),
+            quantidade: None,
+            aplicado_centavos: aplicado_b3,
+        };
         let na_b3 = aplicado_b3.map(formatar_reais);
         if pares.is_empty() {
             let info = tipo(&grupo.tipo);
@@ -456,7 +492,7 @@ impl Contexto<'_> {
                     .map(|i| i.codigo().to_string()),
                 ..Default::default()
             };
-            return self.item(
+            let mut item = self.item(
                 chave,
                 Estado::Novo,
                 grupo.produto.clone(),
@@ -466,11 +502,13 @@ impl Contexto<'_> {
                 vec![Acao::Adicionar, Acao::Ignorar],
                 Some(sugestao),
             );
+            item.b3 = dados_td;
+            return item;
         }
         let soma = total_aplicado(&pares);
         let igual = aplicado_b3.is_some_and(|b| b.abs_diff(soma) <= 1);
         let (estado, acoes) = com_pares(&pares, igual);
-        self.item(
+        let mut item = self.item(
             chave,
             estado,
             grupo.produto.clone(),
@@ -479,7 +517,9 @@ impl Contexto<'_> {
             ids(&pares),
             acoes,
             None,
-        )
+        );
+        item.b3 = dados_td;
+        item
     }
 
     fn fora_da_b3(&self, inv: &Investimento) -> Item {
@@ -538,6 +578,7 @@ pub fn comparar(db: &Db, posicao: &Posicao, hoje: NaiveDate) -> Result<Comparaca
             LinhaB3::Tesouro {
                 produto,
                 tipo,
+                isin,
                 instituicao,
                 vencimento,
                 valor_aplicado,
@@ -556,6 +597,7 @@ pub fn comparar(db: &Db, posicao: &Posicao, hoje: NaiveDate) -> Result<Comparaca
                         tipo: tipo.clone(),
                         vencimento: *vencimento,
                         produto: produto.clone(),
+                        isin: isin.clone(),
                         primeira_linha: n,
                         aplicado: valor,
                         instituicoes: vec![instituicao],
