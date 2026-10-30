@@ -81,6 +81,35 @@ test("decisão com ação desconhecida ou vincular sem id dá DECISAO_INVALIDA",
   const c = abrir();
   const r = c.compararImportacao(fixture("posicao-bdr-rf.xlsx"), "p.xlsx");
   const chave = r.itens[0].chave;
-  assert.throws(() => c.aplicarImportacao(r.token, [{ chave, acao: "xyz" }]), { code: "DECISAO_INVALIDA" });
-  assert.throws(() => c.aplicarImportacao(r.token, [{ chave, acao: "vincular" }]), { code: "DECISAO_INVALIDA" });
+  assert.throws(
+    () => c.aplicarImportacao(r.token, [{ chave, acao: "xyz" }]),
+    { code: "DECISAO_INVALIDA" },
+  );
+  assert.throws(
+    () => c.aplicarImportacao(r.token, [{ chave, acao: "vincular" }]),
+    { code: "DECISAO_INVALIDA" },
+  );
+});
+
+test("aplicar consome o token: a segunda chamada dá IMPORTACAO_EXPIRADA e não duplica", () => {
+  const c = abrir();
+  const r = c.compararImportacao(fixture("posicao-completa.xlsx"), "p.xlsx");
+  const decisoes = r.itens.map((i) => ({ chave: i.chave, acao: "ignorar" }));
+  assert.deepEqual(c.aplicarImportacao(r.token, decisoes).erros, []);
+  assert.throws(() => c.aplicarImportacao(r.token, decisoes), { code: "IMPORTACAO_EXPIRADA" });
+});
+
+test("aplicar com erros de campo mantém o token para tentar de novo", () => {
+  const c = abrir();
+  const r = c.compararImportacao(fixture("posicao-completa.xlsx"), "p.xlsx");
+  const d = [{ chave: r.itens[0].chave, acao: "adicionar" }];
+  assert.ok(c.aplicarImportacao(r.token, d).erros.length > 0);
+  assert.ok(c.aplicarImportacao(r.token, d).erros.length > 0);
+});
+
+test("token velho com decisão inválida ainda dá IMPORTACAO_EXPIRADA", () => {
+  const c = abrir();
+  assert.throws(() => c.aplicarImportacao("velho", [{ chave: "x", acao: "xyz" }]), {
+    code: "IMPORTACAO_EXPIRADA",
+  });
 });

@@ -307,16 +307,17 @@ impl Core {
         token: String,
         decisoes: Vec<DecisaoJs>,
     ) -> napi::Result<ResultadoImportacaoJs, String> {
+        let mut guardada = self.importacao()?;
+        // O token vale primeiro: um token velho é sempre IMPORTACAO_EXPIRADA.
+        let g = guardada
+            .as_ref()
+            .filter(|g| g.token == token)
+            .ok_or_else(importacao::expirada)?;
         let decisoes = decisoes
             .into_iter()
             .map(importacao::decisao)
             .collect::<Result<Vec<_>, _>>()
             .map_err(to_js)?;
-        let guardada = self.importacao()?;
-        let g = guardada
-            .as_ref()
-            .filter(|g| g.token == token)
-            .ok_or_else(importacao::expirada)?;
         let r = guru_core::aplicar_importacao(
             &*self.db()?,
             &g.comparacao,
@@ -325,6 +326,11 @@ impl Core {
             hoje_real(),
         )
         .map_err(to_js)?;
+        // Aplicada com sucesso, a comparação é consumida: repetir a chamada não duplica nada.
+        // Com erros de campo nada foi gravado e ela fica para o usuário corrigir e tentar de novo.
+        if r.erros.is_empty() {
+            *guardada = None;
+        }
         Ok(importacao::resultado(r.aplicadas, r.erros))
     }
 

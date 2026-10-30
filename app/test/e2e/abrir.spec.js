@@ -243,6 +243,27 @@ test("importação pelo api: caminho de teste compara a planilha e só leva o no
   }
 });
 
+test("importação pelo api: arquivo inexistente dá ARQUIVO_INVALIDO sem vazar o caminho", async () => {
+  const faltando = path.join(os.tmpdir(), "guru-segredo-inexistente", "posicao.xlsx");
+  const app = await lancar(novoDataDir(), { GURU_TESTE_ARQUIVO_B3: faltando });
+  try {
+    const page = await app.firstWindow();
+    const erro = await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) =>
+        api.importacao.escolher().then(
+          () => null,
+          (e) => ({ code: e.code, message: e.message }),
+        ),
+      ),
+    );
+    expect(erro.code).toBe("ARQUIVO_INVALIDO");
+    expect(erro.message).toBe("Não foi possível ler o arquivo.");
+    expect(erro.message).not.toContain("guru-segredo");
+  } finally {
+    await app.close();
+  }
+});
+
 test("sem GURU_DATA_DIR a pasta de dados usa o nome do produto", async () => {
   // Redireciona a pasta de configuração do sistema para não tocar nos dados reais.
   const config = novoDataDir();
