@@ -13,6 +13,12 @@ export function formatarReais(centavos) {
 const COM_MILHAR = /^\d{1,3}(\.\d{3})+(,\d{1,2})?$/;
 const SIMPLES = /^\d+(,\d{1,2})?$/;
 
+// true se o texto tem o formato de reais válido (independe do limite de tamanho).
+export function formatoDeReais(texto) {
+  const t = String(texto).trim().replace(/^R\$\s*/, "");
+  return COM_MILHAR.test(t) || SIMPLES.test(t);
+}
+
 // Texto digitado em reais -> centavos inteiros, ou null se vazio, ambíguo ou fora do limite.
 export function paraCentavos(texto) {
   const t = String(texto).trim().replace(/^R\$\s*/, "");

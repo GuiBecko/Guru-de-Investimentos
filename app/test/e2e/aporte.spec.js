@@ -48,6 +48,7 @@ const dividir = async (page, texto) => {
   await campoValor(page).fill(texto);
   await main(page).getByRole("button", { name: "Dividir" }).click();
 };
+const centavosDe = (t) => Number(t.replace(/\D/g, ""));
 const cartao = (page, rotulo) => main(page).getByTestId("parte").filter({ hasText: rotulo });
 
 test("sem alvo mostra o convite e leva ao perfil", async () => {
@@ -58,7 +59,7 @@ test("sem alvo mostra o convite e leva ao perfil", async () => {
     await expect(main(page).getByRole("heading", { name: "Próximo aporte" })).toBeVisible();
     await expect(main(page)).toContainText(CONVITE);
     await expect(main(page).getByLabel("Quanto vai aportar?")).toHaveCount(0);
-    await main(page).getByRole("button", { name: "Definir alocação-alvo" }).click();
+    await main(page).getByRole("link", { name: "Definir alocação-alvo" }).click();
     await expect(page).toHaveURL(/#\/perfil\/alocacao$/);
   } finally {
     await app.close();
@@ -95,12 +96,68 @@ test("classe acima do alvo recebe zero", async () => {
     await chamar(page, "(api, d) => api.investimentos.criar(d)", CDB);
     await chamar(page, "(api, d) => api.investimentos.criar(d)", ITUB4);
     await ir(page, "#/aporte");
-    await dividir(page, "1.000,00");
+    await dividir(page, "4.000,00");
     await expect(main(page).getByTestId("parte").first()).toBeVisible();
     await expect(cartao(page, "Renda fixa")).toContainText("R$ 0,00");
     await expect(cartao(page, "Renda fixa")).toContainText("acima do alvo.");
     await expect(cartao(page, "Renda fixa")).toContainText("Nada neste aporte.");
     await expect(main(page)).not.toContainText("Carteira vazia");
+    const valores = (await main(page).getByTestId("parte").locator(".mid").allTextContents()).map(centavosDe);
+    expect(valores.reduce((a, b) => a + b, 0)).toBe(400000);
+    expect(valores.filter((v) => v > 0)).toHaveLength(2);
+    expect(valores.filter((v) => v === 0)).toHaveLength(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test("classe acima do alvo que recebe parte explica o motivo", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await definirAlvo(page, [40, 40, 20, 0, 0]);
+    await chamar(page, "(api, d) => api.investimentos.criar(d)", CDB);
+    await chamar(page, "(api, d) => api.investimentos.criar(d)", ITUB4);
+    await ir(page, "#/aporte");
+    await dividir(page, "20.000,00");
+    const rf = cartao(page, "Renda fixa");
+    await expect(rf).toContainText("acima do alvo hoje, mas recebe parte porque o aporte é grande em relação à carteira.");
+    await expect(rf).not.toContainText("Nada neste aporte.");
+    await expect(rf.locator(".mid")).not.toHaveText("R$ 0,00");
+  } finally {
+    await app.close();
+  }
+});
+
+test("valor absurdo mostra 'Valor alto demais.' e o resultado é anunciado", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await definirAlvo(page, [40, 40, 20, 0, 0]);
+    await ir(page, "#/aporte");
+    await dividir(page, "99999999999999999999");
+    await expect(main(page)).toContainText("Valor alto demais.");
+    await expect(main(page)).not.toContainText("Informe o valor em reais");
+    await expect(main(page).locator('[aria-live="polite"]')).toHaveCount(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test("renderizar o resultado não gera erro de console nem violação de CSP", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    const erros = [];
+    page.on("pageerror", (e) => erros.push(String(e)));
+    page.on("console", (m) => {
+      if (m.type() === "error") erros.push(m.text());
+    });
+    await definirAlvo(page, [40, 40, 20, 0, 0]);
+    await ir(page, "#/aporte");
+    await dividir(page, "1.000,00");
+    await expect(main(page).getByTestId("parte")).toHaveCount(3);
+    expect(erros).toEqual([]);
   } finally {
     await app.close();
   }
@@ -125,7 +182,7 @@ test("valor inválido mostra erro sem calcular", async () => {
   }
 });
 
-test("trocar de tela no meio não quebra", async () => {
+test("trocar de tela logo após dividir não gera erro", async () => {
   const app = await lancar();
   try {
     const page = await app.firstWindow();

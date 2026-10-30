@@ -1,19 +1,22 @@
 import { api } from "../api.js";
-import { formatarDecimos, formatarReais, paraCentavos } from "../formato.js";
+import { formatarDecimos, formatarReais, formatoDeReais, paraCentavos } from "../formato.js";
 import { el } from "./_tabela.js";
-import { COR_CLASSE, legenda } from "./carteira/painel.js";
+import { COR_CLASSE } from "./carteira/painel.js";
 
 const CONVITE = "Para dividir o aporte, defina a sua alocação-alvo.";
 const MENSAGEM_VALOR = "Informe o valor em reais, como 2.000,00.";
+const MENSAGEM_ALTO = "Valor alto demais.";
 const AVISO =
   "Cálculo de rebalanceamento pela sua alocação-alvo, sem vender nada. Investimentos sem cotação contam pelo valor aplicado. Não é recomendação individual de investimento.";
 
 const semPercento = (decimos) => formatarDecimos(decimos).replace(/%$/, "");
 
-function situacao(p) {
+export function situacao(p) {
   const d = p.percentualAtualDecimos - 10 * p.alvoPercentual;
   let texto;
   if (p.situacao === "abaixo") texto = `${semPercento(Math.abs(d))} p.p. abaixo do alvo.`;
+  else if (p.situacao === "acima" && p.sugeridoCentavos > 0)
+    return `${semPercento(Math.abs(d))} p.p. acima do alvo hoje, mas recebe parte porque o aporte é grande em relação à carteira.`;
   else if (p.situacao === "acima") texto = `${semPercento(Math.abs(d))} p.p. acima do alvo.`;
   else if (p.situacao === "perto") texto = "Perto do alvo.";
   else texto = "Fora da sua alocação-alvo.";
@@ -24,7 +27,11 @@ function cartaoParte(p) {
   const c = el("div", undefined, "card");
   c.dataset.testid = "parte";
   const topo = el("div", undefined, "row");
-  topo.append(legenda([{ rotulo: p.rotulo, classe: `f-${COR_CLASSE[p.classe] ?? "c5"}` }]), el("span", formatarReais(p.sugeridoCentavos), "mid mono"));
+  const rotuloClasse = el("span", undefined, "classe-rotulo");
+  const marca = el("i", undefined, `marca f-${COR_CLASSE[p.classe] ?? "c5"}`);
+  marca.setAttribute("aria-hidden", "true");
+  rotuloClasse.append(marca, el("b", p.rotulo));
+  topo.append(rotuloClasse, el("span", formatarReais(p.sugeridoCentavos), "mid mono"));
   c.append(
     topo,
     el("small", `atual ${formatarDecimos(p.percentualAtualDecimos)} → depois ${formatarDecimos(p.percentualDepoisDecimos)} · alvo ${p.alvoPercentual}%`, "mono"),
@@ -46,7 +53,6 @@ function resultado(a) {
 function convite() {
   const botao = el("a", "Definir alocação-alvo", "btn");
   botao.href = "#/perfil/alocacao";
-  botao.setAttribute("role", "button");
   const card = el("div", undefined, "card");
   card.append(el("p", CONVITE), botao);
   return card;
@@ -95,6 +101,7 @@ export async function render(raiz, _parametros, vigente = () => true) {
   form.append(linha);
 
   const saida = el("div");
+  saida.setAttribute("aria-live", "polite");
   const rodape = el("p", AVISO, "legal");
   raiz.replaceChildren(titulo, form, saida, rodape);
 
@@ -120,7 +127,7 @@ export async function render(raiz, _parametros, vigente = () => true) {
     const centavos = paraCentavos(input.value);
     if (centavos === null) {
       saida.replaceChildren();
-      mostrarErro(MENSAGEM_VALOR);
+      mostrarErro(formatoDeReais(input.value) ? MENSAGEM_ALTO : MENSAGEM_VALOR);
       return;
     }
     ocupado = botao.disabled = true;
