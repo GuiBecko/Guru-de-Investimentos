@@ -1,6 +1,7 @@
 // Dinheiro sempre em centavos inteiros; nada de ponto flutuante.
 
 export function formatarReais(centavos) {
+  centavos = Math.round(centavos);
   const negativo = centavos < 0;
   const abs = Math.abs(centavos);
   const reais = Math.trunc(abs / 100);
@@ -71,7 +72,8 @@ export function formatarRentabilidade(decimos) {
 // Centésimos de ponto percentual -> "+1,07%", "−23,5%", "0,00%"; null -> "—". Duas casas abaixo
 // de 10% e uma acima (meio para cima). Sem ponto flutuante.
 export function formatarCentesimos(c) {
-  if (c === null || c === undefined) return "—";
+  if (c === null || c === undefined || !Number.isFinite(c)) return "—";
+  c = Math.round(c);
   const abs = Math.abs(c);
   let corpo;
   if (abs < 1000) {

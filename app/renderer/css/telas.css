@@ -181,3 +181,13 @@ svg.chart .dica-fundo { fill: var(--surface); stroke: var(--line-strong); stroke
 svg.chart .dica-titulo { fill: var(--ink); font: 600 11px var(--f-mono); }
 svg.chart .dica-texto { fill: var(--muted); font: 11px var(--f-mono); }
 svg.mini { width: 80px; height: 24px; display: block; }
+svg.chart .ponto { stroke: none; }
+svg.chart .ponto.s-carteira { fill: var(--accent); }
+svg.chart .ponto.s-bench { fill: var(--bench); }
+svg.chart .ponto.s-c1 { fill: var(--c1); }
+svg.chart .ponto.s-c2 { fill: var(--c2); }
+svg.chart .ponto.s-c3 { fill: var(--c3); }
+svg.chart .ponto.s-c4 { fill: var(--c4); }
+svg.chart .ponto.s-c5 { fill: var(--c5); }
+svg.chart .ponto.s-up { fill: var(--up); }
+svg.chart .ponto.s-down { fill: var(--down); }

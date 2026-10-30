@@ -17,7 +17,7 @@ export function dominioComZero(valores) {
   let min = 0;
   let max = 0;
   for (const v of valores) {
-    if (v === null || v === undefined || !Number.isFinite(v)) continue;
+    if (!Number.isFinite(v)) continue;
     if (v < min) min = v;
     if (v > max) max = v;
   }
@@ -66,6 +66,13 @@ export function arcosRosca(fatias, raio, raioInterno) {
   });
 }
 
+// Pontos sem vizinho (null dos dois lados): a linha não os desenha, então viram círculos.
+export function pontosIsolados(pontos) {
+  return pontos.filter((p, i) => p && !pontos[i - 1] && !pontos[i + 1]);
+}
+
+const ehNum = (v) => Number.isFinite(v);
+
 export function indiceMaisProximo(xs, x) {
   let melhor = 0;
   for (let i = 1; i < xs.length; i++) {
@@ -99,7 +106,7 @@ const W = 640;
 const H = 240;
 
 function eixoY(svg, y, dominio, formatarValor) {
-  const ticks = dominio[0] === dominio[1] ? [dominio[0]] : [0, 1, 2, 3].map((i) => dominio[0] + ((dominio[1] - dominio[0]) * i) / 3);
+  const ticks = dominio[0] === dominio[1] ? [Math.round(dominio[0])] : [0, 1, 2, 3].map((i) => Math.round(dominio[0] + ((dominio[1] - dominio[0]) * i) / 3));
   for (const v of ticks) {
     const py = y(v);
     svg.append(el("line", { class: "grade", x1: M.e, x2: W - M.d, y1: py, y2: py }));
@@ -152,6 +159,7 @@ function xDoMouse(svg, ev) {
 }
 
 function ligarHover(svg, xs, dica, linhasDe, guia) {
+  if (xs.length === 0) return;
   const alvo = el("rect", { class: "alvo", x: M.e, y: M.t, width: W - M.e - M.d, height: H - M.t - M.b });
   alvo.addEventListener("mousemove", (ev) => {
     const i = indiceMaisProximo(xs, xDoMouse(svg, ev));
@@ -179,8 +187,9 @@ export function graficoLinhas(datas, series, formatarValor, rotuloAcessivel) {
   const guia = el("line", { class: "guia", x1: 0, x2: 0, y1: M.t, y2: H - M.b, visibility: "hidden" });
   svg.append(guia);
   for (const s of series) {
-    const pontos = s.valores.map((v, i) => (v === null || v === undefined ? null : { x: xs[i], y: y(v) }));
+    const pontos = s.valores.map((v, i) => (ehNum(v) ? { x: xs[i], y: y(v) } : null));
     svg.append(el("path", { class: `serie ${s.classe}${s.tracejada ? " tracejada" : ""}`, d: caminhoLinha(pontos), fill: "none" }));
+    for (const p of pontosIsolados(pontos)) svg.append(el("circle", { class: `ponto ${s.classe}`, cx: arred(p.x), cy: arred(p.y), r: 2 }));
   }
   const dica = criarDica();
   ligarHover(
@@ -189,7 +198,7 @@ export function graficoLinhas(datas, series, formatarValor, rotuloAcessivel) {
     dica,
     (i) => [
       mesAno(datas[i]),
-      ...series.map((s) => `${s.rotulo}: ${s.valores[i] === null || s.valores[i] === undefined ? "—" : formatarValor(s.valores[i])}`),
+      ...series.map((s) => `${s.rotulo}: ${ehNum(s.valores[i]) ? formatarValor(s.valores[i]) : "—"}`),
     ],
     guia,
   );
@@ -207,7 +216,7 @@ export function graficoBarras(datas, valores, formatarValor, rotuloAcessivel) {
   eixoX(svg, datas, xs);
   const y0 = y(0);
   valores.forEach((v, i) => {
-    if (v === null || v === undefined || v === 0) return;
+    if (!ehNum(v) || v === 0) return;
     const topo = Math.min(y(v), y0);
     svg.append(
       el("rect", {
@@ -220,7 +229,7 @@ export function graficoBarras(datas, valores, formatarValor, rotuloAcessivel) {
     );
   });
   const dica = criarDica();
-  ligarHover(svg, xs, dica, (i) => [mesAno(datas[i]), valores[i] === null || valores[i] === undefined ? "—" : formatarValor(valores[i])], null);
+  ligarHover(svg, xs, dica, (i) => [mesAno(datas[i]), ehNum(valores[i]) ? formatarValor(valores[i]) : "—"], null);
   svg.append(dica.g);
   return svg;
 }

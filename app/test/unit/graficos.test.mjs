@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { escala, dominioComZero, caminhoLinha, arcosRosca, indiceMaisProximo } from "../../renderer/js/graficos.js";
+import { escala, dominioComZero, caminhoLinha, pontosIsolados, arcosRosca, indiceMaisProximo } from "../../renderer/js/graficos.js";
 
 test("escala mapeia o domínio na faixa e trata domínio degenerado", () => {
   assert.equal(escala([0, 10], [0, 100])(5), 50);
@@ -43,4 +43,15 @@ test("graficos.js não tem cores fixas", () => {
   const texto = readFileSync(new URL("../../renderer/js/graficos.js", import.meta.url), "utf8");
   assert.doesNotMatch(texto, /#[0-9a-fA-F]{3,6}\b/);
   assert.doesNotMatch(texto, /\.style\b|setAttribute\(\s*["']style|innerHTML/);
+});
+
+test("pontosIsolados acha só o ponto entre dois null", () => {
+  const a = { x: 0, y: 0 }, b = { x: 1, y: 1 }, c = { x: 2, y: 2 }, d = { x: 3, y: 3 };
+  assert.deepEqual(pontosIsolados([a, null, b, null, c, d]), [a, b]);
+  assert.deepEqual(pontosIsolados([a, b]), []);
+  assert.deepEqual(pontosIsolados([null, c]), [c]);
+});
+
+test("dominioComZero trata NaN e Infinity como lacuna", () => {
+  assert.deepEqual(dominioComZero([NaN, Infinity, 3, -Infinity]), [0, 3]);
 });
