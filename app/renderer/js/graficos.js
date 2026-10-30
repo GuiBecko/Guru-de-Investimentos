@@ -101,7 +101,7 @@ function svgBase(w, h, rotuloAcessivel, classe = "chart") {
   return svg;
 }
 
-const M = { e: 56, d: 12, t: 12, b: 26 };
+const M = { e: 64, d: 12, t: 12, b: 26 };
 const W = 640;
 const H = 240;
 

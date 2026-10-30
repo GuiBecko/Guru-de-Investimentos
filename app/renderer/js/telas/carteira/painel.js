@@ -14,6 +14,9 @@ const MESES = [12, 6];
 // de mercado) reaproveita as mesmas.
 let saudacaoDaSessao = null;
 
+// Reais inteiros nos eixos e na dica do gráfico de evolução: com centavos o rótulo não cabe na margem.
+const reaisInteiros = (centavos) => formatarReais(Math.round(centavos / 100) * 100).replace(/,00$/, "");
+
 function sinal(centesimos) {
   if (centesimos === null || centesimos === undefined) return "";
   if (centesimos > 0) return "up";
@@ -173,7 +176,7 @@ function desenhar(p, resumo) {
         { rotulo: "Patrimônio", valores: p.pontos.map((x) => x.patrimonioCentavos), classe: "s-carteira" },
         { rotulo: "Total aportado", valores: p.pontos.map((x) => x.aportadoCentavos), classe: "s-bench", tracejada: true },
       ],
-      formatarReais,
+      reaisInteiros,
       "Evolução do patrimônio contra o total aportado",
     ),
     legenda([

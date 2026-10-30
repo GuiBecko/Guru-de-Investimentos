@@ -195,7 +195,7 @@ svg.chart .ponto.s-down { fill: var(--down); }
 /* Painel da carteira (tela 5 do protótipo). */
 .topo-painel { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
 .saudacao-texto { display: grid; gap: 4px; min-width: 0; }
-.saudacao-texto small { text-transform: capitalize; }
+.saudacao-texto small::first-letter { text-transform: uppercase; }
 .main h1.frase { font-size: 22px; text-transform: none; }
 .acoes-topo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .seletor { display: flex; }
