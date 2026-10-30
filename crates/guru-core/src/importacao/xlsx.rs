@@ -32,6 +32,9 @@ const MAX_LINHAS: usize = 100_000;
 const MAX_COLUNAS: usize = 256;
 const MAX_CELULAS: usize = 2_000_000;
 const MAX_TEXTO_CELULA: usize = 32_767;
+const MAX_NUMERO: usize = 64;
+const MAX_COMPARTILHADAS: usize = 1_000_000;
+const MAX_RELACOES: usize = 200;
 const MAX_TEXTO_TOTAL: usize = 100 * 1024 * 1024;
 
 fn nao_xlsx() -> CoreError {
@@ -91,11 +94,16 @@ pub fn ler_xlsx(bytes: &[u8]) -> Result<Vec<Aba>, CoreError> {
     };
 
     let mut orcamento = Orcamento::default();
+    let mut lidas: Vec<&String> = Vec::new();
     let mut abas = Vec::new();
     for (nome, rid) in folhas {
         let Some(alvo) = rels.iter().find(|(id, _)| *id == rid).map(|(_, a)| a) else {
             continue; // aba sem relação de planilha (ex.: folha de gráfico)
         };
+        if lidas.contains(&alvo) {
+            return Err(nao_xlsx()); // duas abas na mesma parte multiplicariam a memória
+        }
+        lidas.push(alvo);
         let xml = ler_parte(&mut zip, alvo)?.ok_or_else(nao_xlsx)?;
         abas.push(Aba {
             nome,
@@ -172,6 +180,9 @@ fn ler_folhas(xml: &[u8]) -> Result<Vec<(String, String)>, CoreError> {
             Event::Start(e) | Event::Empty(e) if e.local_name().as_ref() == "sheet" => {
                 let nome = atributo(&e, "name")?.ok_or_else(nao_xlsx)?;
                 let rid = atributo(&e, "id")?.ok_or_else(nao_xlsx)?;
+                if folhas.len() >= MAX_ABAS {
+                    return Err(grande_demais());
+                }
                 folhas.push((nome, rid));
             }
             Event::Eof => return Ok(folhas),
@@ -193,6 +204,9 @@ fn ler_rels(xml: &[u8]) -> Result<Vec<(String, String)>, CoreError> {
                 }
                 let id = atributo(&e, "Id")?.ok_or_else(nao_xlsx)?;
                 let alvo = atributo(&e, "Target")?.ok_or_else(nao_xlsx)?;
+                if rels.len() >= MAX_RELACOES {
+                    return Err(grande_demais());
+                }
                 rels.push((id, caminho_da_parte(&alvo)));
             }
             Event::Eof => return Ok(rels),
@@ -264,11 +278,19 @@ fn ler_compartilhadas(xml: &[u8]) -> Result<Vec<String>, CoreError> {
                 (nome, Some(a)) => a.inicio(nome),
                 _ => {}
             },
-            Event::Empty(e) if e.local_name().as_ref() == "si" => lista.push(String::new()),
+            Event::Empty(e) if e.local_name().as_ref() == "si" => {
+                if lista.len() >= MAX_COMPARTILHADAS {
+                    return Err(grande_demais());
+                }
+                lista.push(String::new());
+            }
             Event::End(e) => match (e.local_name().as_ref(), atual.as_mut()) {
                 ("si", _) => {
                     let texto = atual.take().map(|a| a.texto).unwrap_or_default();
                     if texto.chars().count() > MAX_TEXTO_CELULA {
+                        return Err(grande_demais());
+                    }
+                    if lista.len() >= MAX_COMPARTILHADAS {
                         return Err(grande_demais());
                     }
                     lista.push(texto);
@@ -398,7 +420,7 @@ fn ler_aba(
                 } else if nome.as_ref() == "c" {
                     if let Some(c) = aberta.take() {
                         let (coluna, celula) = converter(c, compartilhadas)?;
-                        if let Celula::Texto(t) = &celula {
+                        if let Celula::Texto(t) | Celula::Numero(t) = &celula {
                             orcamento.texto(t)?;
                         }
                         let linha = linha_atual
@@ -456,6 +478,7 @@ fn converter(c: CelulaAberta, compartilhadas: &[String]) -> Result<(usize, Celul
         "b" => Celula::Texto(if valor == "1" { "TRUE" } else { "FALSE" }.to_string()),
         "e" => Celula::Vazia,
         _ if valor.is_empty() => Celula::Vazia,
+        _ if valor.len() > MAX_NUMERO => return Err(grande_demais()),
         _ => Celula::Numero(valor.to_string()),
     };
     Ok((c.coluna, celula))
@@ -777,5 +800,49 @@ mod testes {
         assert_eq!(ler_xlsx(&ok).unwrap().len(), 50);
         let mal = xlsx_de_abas(&vec![uma; 51], None);
         invalido(ler_xlsx(&mal), MSG_GRANDE);
+    }
+
+    #[test]
+    fn numero_enorme_e_rejeitado_e_conta_no_orcamento() {
+        let digitos = |n: usize| "1".repeat(n);
+        let aba = |n: usize| aba_de(&format!("<row><c><v>{}</v></c></row>", digitos(n)));
+        let ok = xlsx_de_abas(&[aba(64)], None);
+        assert_eq!(ler_xlsx(&ok).unwrap()[0].linhas[0][0], n(&digitos(64)));
+        invalido(ler_xlsx(&xlsx_de_abas(&[aba(65)], None)), MSG_GRANDE);
+    }
+
+    #[test]
+    fn duas_abas_na_mesma_parte_nao_sao_planilha() {
+        let wb = r#"<workbook xmlns:r="x"><sheets><sheet name="A" sheetId="1" r:id="rId1"/><sheet name="B" sheetId="2" r:id="rId2"/></sheets></workbook>"#;
+        let rels = r#"<Relationships><Relationship Id="rId1" Type="x/worksheet" Target="worksheets/s.xml"/><Relationship Id="rId2" Type="x/worksheet" Target="/xl/worksheets/s.xml"/></Relationships>"#;
+        let sheet = aba_com_n_linhas(1);
+        let bytes = zip_de(&[
+            ("xl/workbook.xml", wb),
+            ("xl/_rels/workbook.xml.rels", rels),
+            ("xl/worksheets/s.xml", &sheet),
+        ]);
+        invalido(ler_xlsx(&bytes), MSG_NAO_XLSX);
+    }
+
+    #[test]
+    fn listas_de_folhas_relacoes_e_compartilhadas_tem_teto() {
+        let folhas = "<sheet name=\"A\" r:id=\"r\"/>".repeat(51);
+        let wb = format!(r#"<workbook xmlns:r="x"><sheets>{folhas}</sheets></workbook>"#);
+        invalido(ler_xlsx(&zip_de(&[("xl/workbook.xml", &wb)])), MSG_GRANDE);
+
+        let wb1 = r#"<workbook xmlns:r="x"><sheets><sheet name="A" r:id="r"/></sheets></workbook>"#;
+        let rels = format!(
+            "<Relationships>{}</Relationships>",
+            r#"<Relationship Id="r" Type="x/worksheet" Target="a.xml"/>"#.repeat(201)
+        );
+        let bytes = zip_de(&[
+            ("xl/workbook.xml", wb1),
+            ("xl/_rels/workbook.xml.rels", &rels),
+        ]);
+        invalido(ler_xlsx(&bytes), MSG_GRANDE);
+
+        let sst = format!("<sst>{}</sst>", "<si/>".repeat(1_000_001));
+        let bytes = xlsx_de_abas(&[aba_com_n_linhas(1)], Some(&sst));
+        invalido(ler_xlsx(&bytes), MSG_GRANDE);
     }
 }
