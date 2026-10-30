@@ -34,3 +34,17 @@ CREATE TABLE fonte_status (
     atualizado_em TEXT,
     erro          TEXT
 );
+
+-- Desde quando a série diária/mensal já foi pedida (para não repetir pedidos sem dados).
+CREATE TABLE cobertura_serie (
+    serie TEXT PRIMARY KEY,
+    desde TEXT NOT NULL
+);
+
+-- Cobertura da B3 por data-alvo: pregão achado (NULL = esgotou as 7 tentativas) e
+-- tickers pedidos naquela vez (ordenados, separados por vírgula).
+CREATE TABLE b3_alvo (
+    alvo    TEXT PRIMARY KEY,
+    pregao  TEXT,
+    tickers TEXT NOT NULL
+);

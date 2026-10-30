@@ -16,6 +16,16 @@ pub struct StatusFonte {
     pub erro: Option<String>,
 }
 
+/// Cobertura da B3 de uma data-alvo.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct B3Alvo {
+    pub alvo: NaiveDate,
+    /// Pregão achado; `None` se as tentativas se esgotaram sem arquivo.
+    pub pregao: Option<NaiveDate>,
+    /// Tickers pedidos naquela vez, ordenados.
+    pub tickers: Vec<String>,
+}
+
 fn iso(d: NaiveDate) -> String {
     d.format("%Y-%m-%d").to_string()
 }
@@ -189,6 +199,86 @@ impl Db {
             });
         }
         Ok(out)
+    }
+
+    pub fn primeira_data_indice(&self, serie: &str) -> Result<Option<NaiveDate>, CoreError> {
+        let d: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT MIN(data) FROM indice_diario WHERE serie = ?1",
+                [serie],
+                |r| r.get(0),
+            )
+            .map_err(classifica)?;
+        d.map(data_de).transpose()
+    }
+
+    /// Data mais antiga já pedida com sucesso para a série (`cdi`, `selic`, `ipca`).
+    pub fn cobertura_desde(&self, serie: &str) -> Result<Option<NaiveDate>, CoreError> {
+        let d: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT desde FROM cobertura_serie WHERE serie = ?1",
+                [serie],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(classifica)?;
+        d.map(data_de).transpose()
+    }
+
+    /// Guarda `desde` se for mais antiga que a já registrada.
+    pub fn gravar_cobertura(&self, serie: &str, desde: NaiveDate) -> Result<(), CoreError> {
+        self.conn
+            .execute(
+                "INSERT INTO cobertura_serie (serie, desde) VALUES (?1, ?2) \
+                 ON CONFLICT (serie) DO UPDATE SET desde = MIN(desde, excluded.desde)",
+                params![serie, iso(desde)],
+            )
+            .map_err(classifica)?;
+        Ok(())
+    }
+
+    pub fn b3_alvos(&self) -> Result<Vec<B3Alvo>, CoreError> {
+        let mut st = self
+            .conn
+            .prepare("SELECT alvo, pregao, tickers FROM b3_alvo ORDER BY alvo")
+            .map_err(classifica)?;
+        let linhas = st
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, Option<String>>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(classifica)?;
+        let mut out = Vec::new();
+        for l in linhas {
+            let (alvo, pregao, tickers) = l.map_err(classifica)?;
+            out.push(B3Alvo {
+                alvo: data_de(alvo)?,
+                pregao: pregao.map(data_de).transpose()?,
+                tickers: tickers
+                    .split(',')
+                    .filter(|t| !t.is_empty())
+                    .map(str::to_string)
+                    .collect(),
+            });
+        }
+        Ok(out)
+    }
+
+    pub fn gravar_b3_alvo(&self, a: &B3Alvo) -> Result<(), CoreError> {
+        self.conn
+            .execute(
+                "INSERT INTO b3_alvo (alvo, pregao, tickers) VALUES (?1, ?2, ?3) \
+                 ON CONFLICT (alvo) DO UPDATE SET pregao = excluded.pregao, \
+                 tickers = excluded.tickers",
+                params![iso(a.alvo), a.pregao.map(iso), a.tickers.join(",")],
+            )
+            .map_err(classifica)?;
+        Ok(())
     }
 
     pub fn ultima_data_indice(&self, serie: &str) -> Result<Option<NaiveDate>, CoreError> {

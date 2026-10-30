@@ -14,7 +14,7 @@ use chrono::NaiveDate;
 pub use atualizador::{ResultadoAtualizacao, atualizar, titulo_tesouro};
 pub use cotahist::{Cotacao, ler_cotahist_txt, ler_cotahist_zip};
 pub use rede::{Baixador, BaixadorHttp, BaixadorPasta};
-pub use repositorio::StatusFonte;
+pub use repositorio::{B3Alvo, StatusFonte};
 pub use sgs::{PontoDiario, ler_sgs};
 pub use tesouro::{PrecoTesouro, ler_tesouro};
 

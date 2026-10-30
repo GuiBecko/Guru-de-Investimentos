@@ -55,7 +55,7 @@ fn tesouro_selic() -> NovoInvestimento {
         tipo: "td-selic".into(),
         instituicao: "Rico".into(),
         taxa: s("0.09"),
-        data_aplicacao: s("2025-01-10"),
+        data_aplicacao: s("2025-03-12"),
         vencimento: s("2029-03-01"),
         valor_aplicado_centavos: Some(1_800_000),
         ir: s("regressiva"),
@@ -219,8 +219,8 @@ fn segunda_rodada_nao_baixa_de_novo_nem_duplica() {
     assert!(segundo.com("bcdata.sgs.12").is_empty());
     assert!(segundo.com("bcdata.sgs.11").is_empty());
     assert!(segundo.com("PrecoTaxaTesouroDireto").is_empty());
-    // Só os fins de mês sem pregão na amostra são tentados de novo; o dia já guardado, não.
-    assert!(segundo.com("COTAHIST_D28102026").is_empty());
+    // Alvos de fim de mês esgotados e o pregão já guardado não são pedidos de novo.
+    assert!(segundo.com("COTAHIST").is_empty());
     assert!(r.fontes.iter().all(|f| f.erro.is_none()));
 }
 
@@ -476,4 +476,118 @@ fn titulo_do_tesouro_usa_o_rotulo_do_catalogo() {
     );
     let cdb = lista.iter().find(|i| i.tipo == "rf-cdb").unwrap();
     assert_eq!(titulo_tesouro(cdb), None);
+}
+
+fn tesouro_prefixado() -> NovoInvestimento {
+    NovoInvestimento {
+        tipo: "td-pre".into(),
+        instituicao: "Rico".into(),
+        taxa: s("14.5"),
+        data_aplicacao: s("2025-03-14"),
+        vencimento: s("2029-01-01"),
+        valor_aplicado_centavos: Some(1_000_000),
+        ir: s("regressiva"),
+        ..Default::default()
+    }
+}
+
+fn periodo(url: &str) -> (NaiveDate, NaiveDate) {
+    let p = |chave: &str| {
+        let t = &url.split(chave).nth(1).unwrap()[..10];
+        NaiveDate::parse_from_str(t, "%d/%m/%Y").unwrap()
+    };
+    (p("dataInicial="), p("dataFinal="))
+}
+
+#[test]
+fn aplicacao_antiga_cadastrada_depois_preenche_o_cdi_para_tras() {
+    let (_d, db) = abrir();
+    criar(&db, cdb("2026-01-05"));
+    let esperas = Esperas::novo();
+    atualizar(&db, &Falso::novo(), hoje(), &esperas.fecha()).unwrap();
+    let primeira = db.primeira_data_indice("cdi").unwrap().unwrap();
+
+    criar(&db, cdb("2014-03-05"));
+    let falso = Falso::novo();
+    atualizar(&db, &falso, hoje(), &esperas.fecha()).unwrap();
+    let janelas: Vec<_> = falso
+        .com("bcdata.sgs.12")
+        .iter()
+        .map(|u| periodo(u))
+        .collect();
+    assert_eq!(janelas.len(), 2);
+    assert_eq!(janelas[0].0, data(2014, 3, 5));
+    assert_eq!(janelas[1].1, primeira.pred_opt().unwrap());
+    assert_eq!(janelas[1].0, janelas[0].1.succ_opt().unwrap());
+    for (de, ate) in &janelas {
+        assert!(*ate < de.checked_add_months(chrono::Months::new(120)).unwrap());
+    }
+    // O IPCA também volta no tempo.
+    let ipca = falso.com("bcdata.sgs.433");
+    assert!(ipca.iter().any(|u| periodo(u).0 == data(2014, 3, 1)));
+
+    // Nada a repetir na rodada seguinte.
+    let terceiro = Falso::novo();
+    atualizar(&db, &terceiro, hoje(), &esperas.fecha()).unwrap();
+    assert!(terceiro.com("bcdata.sgs.12").is_empty());
+    assert!(terceiro.com("bcdata.sgs.11").is_empty());
+}
+
+#[test]
+fn titulo_novo_do_tesouro_baixa_o_csv_no_mesmo_dia() {
+    let (_d, db) = abrir();
+    criar(&db, tesouro_selic());
+    let esperas = Esperas::novo();
+    atualizar(&db, &Falso::novo(), hoje(), &esperas.fecha()).unwrap();
+    assert!(
+        db.preco_tesouro_em("Tesouro Prefixado", data(2029, 1, 1), hoje())
+            .unwrap()
+            .is_none()
+    );
+
+    criar(&db, tesouro_prefixado());
+    let falso = Falso::novo();
+    atualizar(&db, &falso, hoje(), &esperas.fecha()).unwrap();
+    assert_eq!(falso.com("PrecoTaxaTesouroDireto").len(), 1);
+    assert!(
+        db.preco_tesouro_em("Tesouro Prefixado", data(2029, 1, 1), hoje())
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[test]
+fn ticker_novo_ganha_cotacao_no_mesmo_dia() {
+    let (_d, db) = abrir();
+    criar(&db, itub4());
+    let esperas = Esperas::novo();
+    atualizar(&db, &Falso::novo(), hoje(), &esperas.fecha()).unwrap();
+    assert!(db.cotacao_em("B3SA3", hoje()).unwrap().is_none());
+
+    criar(
+        &db,
+        NovoInvestimento {
+            ticker: s("B3SA3"),
+            ..itub4()
+        },
+    );
+    atualizar(&db, &Falso::novo(), hoje(), &esperas.fecha()).unwrap();
+    let c = db.cotacao_em("B3SA3", hoje()).unwrap().unwrap();
+    assert_eq!(c.data, hoje());
+}
+
+#[test]
+fn rede_persistente_na_b3_para_tudo_apos_uma_nova_tentativa() {
+    let (_d, db) = abrir();
+    criar(&db, itub4());
+    let mut falso = Falso::novo();
+    falso.sem_rede = vec!["COTAHIST"];
+    let esperas = Esperas::novo();
+    atualizar(&db, &falso, hoje(), &esperas.fecha()).unwrap();
+    assert_eq!(falso.com("COTAHIST").len(), 2);
+    assert_eq!(esperas.0.get(), 1);
+    assert_eq!(
+        status(&db, "b3").erro.as_deref(),
+        Some("A B3 não respondeu. Tente de novo mais tarde.")
+    );
 }
