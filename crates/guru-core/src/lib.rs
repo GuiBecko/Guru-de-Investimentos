@@ -1,3 +1,4 @@
+mod aporte;
 mod db;
 mod error;
 mod importacao;
@@ -39,4 +40,8 @@ pub use mercado::{
 pub use painel::{
     Historico, Instituicao, Numeros, Painel, PontoHistorico, Referencia, Variacao, Vencimento,
     acumulado_benchmark, benchmark_padrao, datas_painel, historico, painel,
+};
+
+pub use aporte::{
+    Aporte, ParteAporte, ResultadoAporte, Situacao as SituacaoAporte, dividir_aporte,
 };
