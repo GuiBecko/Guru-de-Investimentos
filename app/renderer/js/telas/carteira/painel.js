@@ -20,6 +20,11 @@ let saudacaoDaSessao = null;
 // Período escolhido no seletor: sobrevive ao redesenho depois de uma atualização de mercado.
 let mesesEscolhidos = 12;
 
+// Contador único dos pedidos do painel (carga inicial, redesenho e troca de período): só a resposta
+// do último pedido pode desenhar. Vale para o módulo todo, e não por abertura da tela, porque um
+// clique no seletor da tela antiga (ainda visível enquanto a nova carrega) também é um pedido.
+let pedido = 0;
+
 // Reais inteiros nos eixos e na dica do gráfico de evolução: com centavos o rótulo não cabe na margem.
 const reaisInteiros = (centavos) => formatarReais(Math.round(centavos / 100) * 100).replace(/,00$/, "");
 
@@ -260,13 +265,27 @@ function topo(p, meses, aoTrocar, fontes) {
   return caixa;
 }
 
+// Pede o painel do período escolhido e repete enquanto outro pedido (um clique no seletor) passar
+// à frente: a resposta que volta só vale se ainda for a do último pedido.
+async function carregar(vigente) {
+  let meu;
+  let p;
+  do {
+    meu = ++pedido;
+    p = await api.carteira.painel(mesesEscolhidos);
+    if (!vigente()) return { p, meses: mesesEscolhidos, meu };
+  } while (meu !== pedido);
+  return { p, meses: mesesEscolhidos, meu };
+}
+
 export async function painel(elemento, vigente, erro) {
   let resumo;
   let p;
+  let meses;
   try {
     resumo = await api.carteira.resumo();
     if (!vigente()) return;
-    if (resumo.totalAplicadoCentavos > 0) p = await api.carteira.painel(mesesEscolhidos);
+    if (resumo.totalAplicadoCentavos > 0) ({ p, meses } = await carregar(vigente));
   } catch (e) {
     if (!vigente()) return;
     console.error("Falha ao carregar a carteira:", e);
@@ -288,9 +307,19 @@ export async function painel(elemento, vigente, erro) {
 
   const fontes = await statusDoMercado();
   if (!vigente()) return;
+  // Um clique na tela antiga durante a espera acima muda o período: carrega de novo.
+  if (meses !== mesesEscolhidos) {
+    try {
+      ({ p, meses } = await carregar(vigente));
+    } catch (e) {
+      if (!vigente()) return;
+      console.error("Falha ao carregar a carteira:", e);
+      erro(elemento, "Carteira");
+      return;
+    }
+    if (!vigente()) return;
+  }
 
-  let meses = mesesEscolhidos;
-  let pedido = 0;
   // Depois de uma falha os gráficos dão lugar ao aviso: clicar no botão já pressionado tenta de novo.
   let falhou = false;
   const caixaNumeros = el("div", undefined, "numeros-caixa");
@@ -300,6 +329,7 @@ export async function painel(elemento, vigente, erro) {
     const anterior = meses;
     const marcarBotoes = (m) => botoes.forEach((b, i) => b.setAttribute("aria-pressed", String(MESES.slice().reverse()[i] === m)));
     meses = novo;
+    mesesEscolhidos = novo;
     marcarBotoes(novo);
     const meu = ++pedido;
     let outro;
@@ -307,6 +337,7 @@ export async function painel(elemento, vigente, erro) {
       outro = await api.carteira.painel(novo);
     } catch (e) {
       if (!vigente() || meu !== pedido) return;
+      mesesEscolhidos = anterior;
       console.error("Falha ao carregar o período:", e);
       meses = anterior;
       marcarBotoes(anterior);
@@ -318,7 +349,6 @@ export async function painel(elemento, vigente, erro) {
     }
     if (!vigente() || meu !== pedido) return;
     falhou = false;
-    mesesEscolhidos = novo;
     caixaNumeros.replaceChildren(numeros(outro, novo));
     area.replaceChildren(...desenhar(outro, resumo));
   };

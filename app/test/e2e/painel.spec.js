@@ -111,8 +111,13 @@ test("painel mostra saudação, números, gráficos e listas", async () => {
     await expect(main.locator(".classes svg.mini").first()).toHaveAttribute("aria-hidden", "true");
     await expect(main.locator(".classes svg.mini[role]")).toHaveCount(0);
     await expect(main.locator(".legenda li").filter({ hasText: "BOVA11" }).locator(".marca.s-c4")).toHaveCount(1);
-    // Na janela normal (1280 × 800): os cinco números numa linha e os gráficos em duas colunas.
-    await expect(main.locator(".numeros")).not.toHaveClass(/apertado/);
+    // Na janela normal (1280 × 800): nenhum valor sai do card (cabe numa linha ou em 3 + 2, conforme
+    // a fonte do sistema), a página não rola na horizontal e os gráficos ficam em duas colunas
+    // (a largura do contêiner não depende de fonte).
+    await expect
+      .poll(() => main.locator(".numeros .mid").evaluateAll((v) => v.filter((e) => e.scrollWidth > e.clientWidth).length))
+      .toBe(0);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     for (const linha of [".graficos.g1", ".graficos.g2"]) {
       await expect.poll(() => main.locator(linha).evaluate((g) => getComputedStyle(g).gridTemplateColumns.split(" ").length)).toBe(2);
     }
@@ -130,6 +135,40 @@ test("painel mostra saudação, números, gráficos e listas", async () => {
     // As fixtures só têm a cotação de 28/10: sem a do fim de setembro não há variação no mês.
     await expect(main.getByTestId("lista-variacoes")).toContainText("Nada por aqui ainda.");
     await expect(main).toContainText("Valores brutos, antes do IR. Dados de mercado de");
+  } finally {
+    await app.close();
+  }
+});
+
+test("clicar em 6 meses enquanto o painel recarrega não é desfeito pela resposta de 12 meses", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await criar(page, CDB);
+    await criar(page, ITUB4);
+    await abrir(page);
+    const main = page.locator("main");
+    await expect(main.getByTestId("numero-periodo")).toBeVisible();
+    // Segura a resposta de 12 meses do próximo redesenho (como uma atualização de mercado num
+    // computador lento): a tela antiga continua visível e clicável enquanto isso.
+    await page.evaluate(async () => {
+      const { api } = await import("./js/api.js");
+      const original = api.carteira.painel;
+      window.__liberar = null;
+      api.carteira.painel = (meses, classe) => {
+        const r = original(meses, classe);
+        if (meses !== 12 || classe !== undefined || window.__liberar) return r;
+        return new Promise((resolve) => {
+          window.__liberar = () => r.then(resolve);
+        });
+      };
+    });
+    await page.evaluate(() => window.dispatchEvent(new Event("hashchange")));
+    await expect.poll(() => page.evaluate(() => typeof window.__liberar)).toBe("function");
+    await main.getByRole("button", { name: "6 meses" }).click();
+    await page.evaluate(() => window.__liberar());
+    await expect(main.getByRole("button", { name: "6 meses" })).toHaveAttribute("aria-pressed", "true");
+    await expect(main.locator(".numeros .card b")).toHaveText(["Patrimônio total", "No mês", "Em 6 meses", "Rendeu em 6 meses", "Total aportado"]);
   } finally {
     await app.close();
   }
