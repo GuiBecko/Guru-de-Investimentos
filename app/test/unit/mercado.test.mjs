@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { menorData, diaMes, textoIndicador, precisaAtualizar, deveRedesenhar, textoNota } from "../../renderer/js/mercado.js";
+import { menorData, diaMes, textoIndicador, precisaAtualizar, deveRedesenhar, textoNota, coalescer } from "../../renderer/js/mercado.js";
 
 const fontes = [
   { fonte: "cdi", rotulo: "CDI", ultimaData: "2026-10-28" },
@@ -44,4 +44,32 @@ test("deveRedesenhar só nas telas de leitura", () => {
 test("textoNota", () => {
   assert.equal(textoNota("28/10"), "Valores brutos, antes do IR. Dados de mercado de 28/10.");
   assert.equal(textoNota(null), "Valores brutos, antes do IR. Dados de mercado ainda não baixados.");
+});
+
+test("coalescer: pedidos durante a rodada viram uma única rodada seguinte", async () => {
+  let rodadas = 0;
+  let solta;
+  const acionar = coalescer(async () => {
+    rodadas += 1;
+    if (rodadas === 1) await new Promise((r) => (solta = r));
+  });
+  const primeira = acionar();
+  await acionar();
+  await acionar();
+  await acionar();
+  assert.equal(rodadas, 1);
+  solta();
+  await primeira;
+  assert.equal(rodadas, 2);
+  await acionar();
+  assert.equal(rodadas, 3);
+});
+
+test("coalescer: sem pedido durante a rodada não há rodada extra", async () => {
+  let rodadas = 0;
+  const acionar = coalescer(async () => {
+    rodadas += 1;
+  });
+  await acionar();
+  assert.equal(rodadas, 1);
 });

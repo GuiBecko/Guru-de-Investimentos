@@ -38,6 +38,29 @@ export function deveRedesenhar(hash) {
   return /^#?\/?(carteira(\/[^/]*)?|investimentos)?\/?$/.test(String(hash ?? ""));
 }
 
+// Devolve o gatilho de `executar` (que não deve lançar): chamado durante uma execução, marca um
+// pedido pendente; ao fim dela roda uma única execução de acompanhamento, por mais que tenham pedido.
+// A promessa devolvida só resolve quando tudo terminou.
+export function coalescer(executar) {
+  let rodando = false;
+  let pendente = false;
+  return async function acionar() {
+    if (rodando) {
+      pendente = true;
+      return;
+    }
+    rodando = true;
+    try {
+      do {
+        pendente = false;
+        await executar();
+      } while (pendente);
+    } finally {
+      rodando = false;
+    }
+  };
+}
+
 // Aciona a mesma atualização do botão (o indicador mostra "Atualizando…"); sem efeito antes de iniciarMercado.
 let acionar = () => {};
 export function atualizarMercado() {
@@ -110,10 +133,7 @@ export function iniciarMercado(raiz) {
     raiz.replaceChildren(...partes);
   }
 
-  async function atualizar() {
-    if (atualizando) return;
-    atualizando = true;
-    desenhar();
+  async function baixar() {
     try {
       fontes = (await api.mercado.atualizar()).fontes;
     } catch (e) {
@@ -124,6 +144,15 @@ export function iniciarMercado(raiz) {
         console.error("Falha ao ler o estado do mercado:", e2);
       }
     }
+  }
+  // Pedidos durante uma rodada (ex.: salvar um investimento) viram uma única rodada seguinte.
+  const rodar = coalescer(baixar);
+
+  async function atualizar() {
+    if (atualizando) return rodar();
+    atualizando = true;
+    desenhar();
+    await rodar();
     atualizando = false;
     desenhar();
     // Redesenha a tela atual com os valores novos, sem pisar em texto digitado.
