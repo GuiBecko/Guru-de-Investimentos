@@ -337,15 +337,31 @@ fn aplicacao_de_2014_pede_o_cdi_em_janelas_de_ate_10_anos() {
 }
 
 #[test]
-fn sem_tesouro_nem_renda_variavel_nao_baixa_tesouro_nem_b3() {
+fn sem_renda_variavel_a_b3_baixa_so_as_referencias() {
     let (_d, db) = abrir();
     criar(&db, cdb("2025-03-15"));
     let falso = Falso::novo();
     let esperas = Esperas::novo();
     atualizar(&db, &falso, hoje(), &esperas.fecha()).unwrap();
     assert!(falso.com("PrecoTaxaTesouroDireto").is_empty());
-    assert!(falso.com("COTAHIST").is_empty());
     assert_eq!(status(&db, "tesouro").atualizado_em, None);
+    // BOVA11 e XFIX11 são os benchmarks do painel: vêm mesmo sem ação nem FII.
+    assert!(!falso.com("COTAHIST").is_empty());
+    assert_eq!(status(&db, "b3").erro, None);
+    assert!(status(&db, "b3").atualizado_em.is_some());
+    assert!(db.cotacao_em("BOVA11", hoje()).unwrap().is_some());
+    assert!(db.cotacao_em("XFIX11", hoje()).unwrap().is_some());
+    assert!(db.cotacao_em("ITUB4", hoje()).unwrap().is_none());
+}
+
+#[test]
+fn sem_nenhum_investimento_nao_baixa_tesouro_nem_b3() {
+    let (_d, db) = abrir();
+    let falso = Falso::novo();
+    let esperas = Esperas::novo();
+    atualizar(&db, &falso, hoje(), &esperas.fecha()).unwrap();
+    assert!(falso.com("PrecoTaxaTesouroDireto").is_empty());
+    assert!(falso.com("COTAHIST").is_empty());
     assert_eq!(status(&db, "b3").atualizado_em, None);
 }
 

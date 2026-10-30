@@ -57,7 +57,7 @@ Escopo combinado durante a fase de protótipo. O protótipo das telas está em [
 | Custo da IA | O usuário usa e paga a própria IA. O app só integra. |
 | Cotações | Arquivo diário oficial da B3 (série histórica), com o preço de fechamento do último pregão. Sem preço em tempo real no MVP. |
 | Valor atual | Bruto, antes do IR, calculado pelos índices oficiais (renda fixa), pelo preço do Tesouro e pela cotação de fechamento da B3. Fundos, previdência e cripto ficam pelo valor aplicado até haver fonte. |
-| Ibovespa e IFIX | Comparação pelos ETFs BOVA11 e XFIX11, cujas cotações vêm do mesmo arquivo da B3. |
+| Ibovespa e IFIX | Comparação pelos ETFs BOVA11 e XFIX11, cujas cotações vêm do mesmo arquivo da B3. As cotações de referência são sempre baixadas, mesmo sem ações ou FIIs na carteira. |
 | Saudação | Escrita pelo app, sorteada de uma lista fixa de frases. Não usa a IA nem gasta tokens. |
 | Contexto da IA | Cada parte do contexto (instruções, perfil, carteira, mercado, metas) pode ser desligada ou editada. |
 | Classes | Renda fixa (inclui Tesouro), Ações (inclui ETFs), FIIs, Exterior (BDRs) e Outros (fundos, previdência e cripto). A classe Caixa do protótipo fica para quando houver um tipo para ela. |

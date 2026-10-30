@@ -17,7 +17,7 @@ const ANOS_POR_CONSULTA: u32 = 10;
 const FOLGA_TESOURO_DIAS: u64 = 10;
 const TENTATIVAS_B3: u32 = 7;
 const MESES_DE_HISTORICO: u32 = 12;
-/// Referências usadas pela fase 3b, gravadas junto com os tickers da carteira.
+/// Referências do painel (fase 3b), sempre baixadas, junto com os tickers da carteira.
 const TICKERS_REFERENCIA: [&str; 2] = ["BOVA11", "XFIX11"];
 
 const MSG_BCB: &str = "O Banco Central não respondeu. Tente de novo mais tarde.";
@@ -175,7 +175,9 @@ pub fn atualizar(
         novos += ctx.fechar("tesouro", r, MSG_TESOURO, |_| Ok(ultima.map(iso)))?;
     }
 
-    if carteira.iter().any(|i| i.tipo.starts_with("rv-")) {
+    // BOVA11 e XFIX11 são benchmarks do painel: a B3 roda com qualquer carteira, mesmo sem
+    // renda variável. Sem nenhum investimento não há o que comparar.
+    if !carteira.is_empty() {
         let mut tickers: HashSet<String> = carteira
             .iter()
             .filter(|i| i.tipo.starts_with("rv-"))
