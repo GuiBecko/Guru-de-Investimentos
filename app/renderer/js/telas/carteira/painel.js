@@ -60,7 +60,28 @@ function numeros(p, meses) {
     rendeu,
     cartao("Total aportado", formatarReais(n.aportadoCentavos)),
   );
+  ajustarCartoes(caixa);
   return caixa;
+}
+
+const transborda = (caixa) => [...caixa.querySelectorAll(".card > *")].some((e) => e.scrollWidth > e.clientWidth + 1);
+
+// Uma linha de cinco cards quando todos os valores cabem; senão 3 + 2 (.apertado). Mede de novo só
+// quando a largura muda: a troca de classe mexe na altura, não na largura, então não entra em laço.
+function ajustarCartoes(caixa) {
+  let largura = -1;
+  const observador = new ResizeObserver(([entrada]) => {
+    if (!caixa.isConnected) {
+      observador.disconnect();
+      return;
+    }
+    const nova = Math.round(entrada.contentRect.width);
+    if (nova <= 0 || nova === largura) return;
+    largura = nova;
+    caixa.classList.remove("apertado");
+    if (transborda(caixa)) caixa.classList.add("apertado");
+  });
+  observador.observe(caixa);
 }
 
 export function secao(titulo, subtitulo, ...filhos) {

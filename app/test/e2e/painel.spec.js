@@ -111,6 +111,11 @@ test("painel mostra saudação, números, gráficos e listas", async () => {
     await expect(main.locator(".classes svg.mini").first()).toHaveAttribute("aria-hidden", "true");
     await expect(main.locator(".classes svg.mini[role]")).toHaveCount(0);
     await expect(main.locator(".legenda li").filter({ hasText: "BOVA11" }).locator(".marca.s-c4")).toHaveCount(1);
+    // Na janela normal (1280 × 800): os cinco números numa linha e os gráficos em duas colunas.
+    await expect(main.locator(".numeros")).not.toHaveClass(/apertado/);
+    for (const linha of [".graficos.g1", ".graficos.g2"]) {
+      await expect.poll(() => main.locator(linha).evaluate((g) => getComputedStyle(g).gridTemplateColumns.split(" ").length)).toBe(2);
+    }
     // Texto dos eixos com pelo menos 10 px na tela, também na meia coluna.
     await expect.poll(() => menorFonteDosEixos(page)).toBeGreaterThanOrEqual(10);
     await expect(main).not.toContainText("NaN");

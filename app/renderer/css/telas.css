@@ -206,15 +206,14 @@ svg.chart .ponto.s-down { fill: var(--down); }
 .seletor .btn { margin: 0; }
 .seletor .btn[aria-pressed="true"] { background: var(--accent); color: var(--surface); }
 .painel-corpo { display: grid; gap: 14px; min-width: 0; container-type: inline-size; }
-/* Cards dos números: quebram em linhas em vez de espremer; o maior ocupa duas colunas. Com
-   menos de ~1150 px, seis colunas não cabem um "R$ 1.234.567,89": três (o maior + 1, depois 3). */
-.numeros-caixa { container-type: inline-size; }
-.numeros { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
-@container (max-width: 1150px) {
-  .numeros { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
+/* Cards dos números: uma linha de cinco, como no protótipo (o maior com o dobro da largura).
+   Se algum valor não couber (painel.js mede e põe .apertado), vira 3 + 2. */
+.numeros { display: grid; grid-template-columns: minmax(0, 2fr) repeat(4, minmax(0, 1fr)); gap: 12px; }
+.numeros.apertado { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.numeros.apertado > :nth-child(-n + 3) { grid-column: span 2; }
+.numeros.apertado > :nth-child(n + 4) { grid-column: span 3; }
 .numeros .card { min-width: 0; }
-.numeros .hero { grid-column: span 2; border-left: 3px solid var(--accent); }
+.numeros .hero { border-left: 3px solid var(--accent); }
 .numeros .mid { font-size: clamp(14px, 1.3vw, 16px); white-space: nowrap; min-width: 0; }
 .numeros .hero .mid { font-size: clamp(20px, 2.2vw, 28px); }
 .numeros .card b { font: 500 10.5px var(--f-mono); text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -222,8 +221,9 @@ svg.chart .ponto.s-down { fill: var(--down); }
 .graficos { display: grid; gap: 12px; min-width: 0; }
 .graficos.g1 { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
 .graficos.g2 { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
-/* Abaixo de ~1150 px de conteúdo, meia coluna deixa o gráfico estreito demais: uma coluna só. */
-@container (max-width: 1150px) {
+/* Duas colunas na janela normal (1280 × 800: ~1009 px de conteúdo) e na mínima (1100: ~829 px);
+   uma só quando o conteúdo fica mais estreito que isso. */
+@container (max-width: 780px) {
   .graficos.g1, .graficos.g2 { grid-template-columns: minmax(0, 1fr); }
 }
 .grafico { min-width: 0; }
