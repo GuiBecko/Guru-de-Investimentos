@@ -1,16 +1,19 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
 use guru_core::{CORE_VERSION, CoreError, Db, Gravacao};
+use napi::bindgen_prelude::AsyncTask;
 use napi_derive::napi;
 
 mod investimentos;
+mod mercado;
 mod metas;
 mod perfil;
 use investimentos::{
     Catalogo, ErroCampoJs, InvestimentoJs, NovoInvestimentoJs, ResultadoGravacao, ResumoJs,
     entrada, erros,
 };
+use mercado::{AtualizarMercado, ModoTeste, OpcoesCore, StatusFonteJs};
 use metas::{MetaJs, NovaMetaJs};
 use perfil::{AlocacaoClasseJs, PercentualClasseJs, PerfilJs, QuestionarioJs, ResultadoPerfilJs};
 
@@ -24,6 +27,9 @@ pub struct AppInfo {
 #[napi]
 pub struct Core {
     db: Mutex<Db>,
+    pasta_dados: PathBuf,
+    /// Só existe nos testes (ver `OpcoesCore`).
+    modo_teste: Option<ModoTeste>,
 }
 
 fn to_js(e: CoreError) -> napi::Error<String> {
@@ -33,9 +39,23 @@ fn to_js(e: CoreError) -> napi::Error<String> {
 #[napi]
 impl Core {
     #[napi(factory)]
-    pub fn open(data_dir: String) -> napi::Result<Core, String> {
+    pub fn open(data_dir: String, opcoes: Option<OpcoesCore>) -> napi::Result<Core, String> {
+        let modo_teste = mercado::modo_teste(opcoes)?;
         let db = Db::open(Path::new(&data_dir)).map_err(to_js)?;
-        Ok(Core { db: Mutex::new(db) })
+        Ok(Core {
+            db: Mutex::new(db),
+            pasta_dados: PathBuf::from(data_dir),
+            modo_teste,
+        })
+    }
+
+    /// Data de mercado: a fixa recebida em `Core.open` nos testes, senão a real. Vale só para o
+    /// atualizador e a valorização (leituras); validações e gravações usam `hoje_real`.
+    fn data_mercado(&self) -> chrono::NaiveDate {
+        self.modo_teste
+            .as_ref()
+            .and_then(|m| m.hoje)
+            .unwrap_or_else(hoje_real)
     }
 
     fn db(&self) -> napi::Result<MutexGuard<'_, Db>, String> {
@@ -64,13 +84,19 @@ impl Core {
 
     #[napi]
     pub fn listar_investimentos(&self) -> napi::Result<Vec<InvestimentoJs>, String> {
-        let lista = self.db()?.listar_investimentos().map_err(to_js)?;
+        let lista = self
+            .db()?
+            .listar_investimentos(self.data_mercado())
+            .map_err(to_js)?;
         Ok(lista.into_iter().map(investimentos::investimento).collect())
     }
 
     #[napi]
     pub fn investimento(&self, id: i64) -> napi::Result<InvestimentoJs, String> {
-        let i = self.db()?.investimento(id).map_err(to_js)?;
+        let i = self
+            .db()?
+            .investimento(id, self.data_mercado())
+            .map_err(to_js)?;
         Ok(investimentos::investimento(i))
     }
 
@@ -81,7 +107,7 @@ impl Core {
     ) -> napi::Result<ResultadoGravacao, String> {
         let g = self
             .db()?
-            .criar_investimento(&entrada(dados), hoje())
+            .criar_investimento(&entrada(dados), hoje_real())
             .map_err(to_js)?;
         Ok(resultado(g))
     }
@@ -94,7 +120,7 @@ impl Core {
     ) -> napi::Result<ResultadoGravacao, String> {
         let g = self
             .db()?
-            .atualizar_investimento(id, &entrada(dados), hoje())
+            .atualizar_investimento(id, &entrada(dados), hoje_real())
             .map_err(to_js)?;
         Ok(resultado(g))
     }
@@ -106,8 +132,26 @@ impl Core {
 
     #[napi]
     pub fn resumo_carteira(&self) -> napi::Result<ResumoJs, String> {
-        let r = self.db()?.resumo_carteira().map_err(to_js)?;
+        let r = self
+            .db()?
+            .resumo_carteira(self.data_mercado())
+            .map_err(to_js)?;
         Ok(investimentos::resumo(r))
+    }
+
+    #[napi]
+    pub fn atualizar_mercado(&self) -> AsyncTask<AtualizarMercado> {
+        mercado::tarefa(
+            self.pasta_dados.clone(),
+            self.modo_teste.clone(),
+            self.data_mercado(),
+        )
+    }
+
+    #[napi]
+    pub fn status_mercado(&self) -> napi::Result<Vec<StatusFonteJs>, String> {
+        let s = self.db()?.status_fontes().map_err(to_js)?;
+        Ok(mercado::status(s))
     }
 
     #[napi]
@@ -124,7 +168,7 @@ impl Core {
             .collect();
         let r = self
             .db()?
-            .registrar_perfil(&respostas, hoje())
+            .registrar_perfil(&respostas, hoje_real())
             .map_err(to_js)?;
         Ok(match r {
             Ok(g) => ResultadoPerfilJs {
@@ -140,7 +184,7 @@ impl Core {
 
     #[napi]
     pub fn perfil_atual(&self) -> napi::Result<Option<PerfilJs>, String> {
-        let p = self.db()?.perfil_atual(hoje()).map_err(to_js)?;
+        let p = self.db()?.perfil_atual(hoje_real()).map_err(to_js)?;
         Ok(p.map(perfil::perfil))
     }
 
@@ -176,13 +220,16 @@ impl Core {
 
     #[napi]
     pub fn listar_metas(&self) -> napi::Result<Vec<MetaJs>, String> {
-        let l = self.db()?.listar_metas(hoje()).map_err(to_js)?;
+        let l = self
+            .db()?
+            .listar_metas(self.data_mercado())
+            .map_err(to_js)?;
         Ok(l.into_iter().map(metas::meta).collect())
     }
 
     #[napi]
     pub fn meta(&self, id: i64) -> napi::Result<MetaJs, String> {
-        let m = self.db()?.meta(id, hoje()).map_err(to_js)?;
+        let m = self.db()?.meta(id, self.data_mercado()).map_err(to_js)?;
         Ok(metas::meta(m))
     }
 
@@ -190,7 +237,7 @@ impl Core {
     pub fn criar_meta(&self, dados: NovaMetaJs) -> napi::Result<ResultadoGravacao, String> {
         let r = self
             .db()?
-            .criar_meta(&metas::entrada(dados), hoje())
+            .criar_meta(&metas::entrada(dados), hoje_real())
             .map_err(to_js)?;
         Ok(resultado_meta(r))
     }
@@ -203,7 +250,7 @@ impl Core {
     ) -> napi::Result<ResultadoGravacao, String> {
         let r = self
             .db()?
-            .atualizar_meta(id, &metas::entrada(dados), hoje())
+            .atualizar_meta(id, &metas::entrada(dados), hoje_real())
             .map_err(to_js)?;
         Ok(resultado_meta(r))
     }
@@ -214,7 +261,7 @@ impl Core {
     }
 }
 
-fn hoje() -> chrono::NaiveDate {
+fn hoje_real() -> chrono::NaiveDate {
     chrono::Local::now().date_naive()
 }
 

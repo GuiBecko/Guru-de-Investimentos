@@ -1,7 +1,8 @@
 import { api } from "../api.js";
 import { render as formulario } from "./formulario-investimento.js";
 import { formatarData, formatarReais } from "../formato.js";
-import { caixaTabela, cabecalho, el } from "./_tabela.js";
+import { dataDoMercado, textoNota } from "../mercado.js";
+import { caixaTabela, cabecalho, celulasValor, el } from "./_tabela.js";
 
 const COLUNAS = [
   ["Investimento"],
@@ -9,6 +10,8 @@ const COLUNAS = [
   ["Instituição"],
   ["Rendimento"],
   ["Aplicado", "r"],
+  ["Atual", "r"],
+  ["Rentab.", "r"],
   ["Vencimento"],
   ["Liquidez"],
   [""],
@@ -61,6 +64,7 @@ function linha(inv, apagar) {
   celulas.forEach((texto, i) => {
     const td = el("td", texto, i === 4 ? "r mono" : i === 5 ? "mono" : "");
     tr.append(td);
+    if (i === 4) tr.append(...celulasValor(inv));
   });
   const editar = el("a", "Editar", "btn ghost sm");
   editar.href = `#/investimentos/${inv.id}`;
@@ -81,10 +85,11 @@ function tabela(lista, apagar) {
   tbody.append(...lista.map((inv) => linha(inv, apagar)));
 
   const total = lista.reduce((soma, inv) => soma + inv.valorAplicadoCentavos, 0);
+  const totalAtual = lista.reduce((soma, inv) => soma + inv.valorAtualCentavos, 0);
   const tr = el("tr");
-  const rotulo = el("td", "Total aplicado");
+  const rotulo = el("td", "Total aplicado / atual");
   rotulo.colSpan = 4;
-  tr.append(rotulo, el("td", formatarReais(total), "r mono"), el("td"), el("td"), el("td"));
+  tr.append(rotulo, el("td", formatarReais(total), "r mono"), el("td", formatarReais(totalAtual), "r mono"), el("td"), el("td"), el("td"), el("td"));
   const tfoot = el("tfoot");
   tfoot.append(tr);
 
@@ -105,6 +110,8 @@ async function lista(el_, vigente) {
       return;
     }
 
+    if (!vigente()) return;
+    const data = await dataDoMercado();
     if (!vigente()) return;
 
     async function apagar(inv) {
@@ -135,7 +142,7 @@ async function lista(el_, vigente) {
       vazio.append(el("p", "Nenhum investimento ainda."));
       partes.push(vazio);
     } else {
-      partes.push(tabela(itens, apagar));
+      partes.push(tabela(itens, apagar), el("p", textoNota(data), "hint"));
     }
     el_.replaceChildren(...partes);
   }

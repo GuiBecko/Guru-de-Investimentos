@@ -1,13 +1,9 @@
-const { test, expect, _electron } = require("@playwright/test");
+const { test, expect } = require("@playwright/test");
+const { lancar } = require("./_app");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const appDir = path.resolve(__dirname, "../..");
-
-function lancar(dir = fs.mkdtempSync(path.join(os.tmpdir(), "guru-e2e-"))) {
-  return _electron.launch({ args: ["."], cwd: appDir, env: { ...process.env, GURU_DATA_DIR: dir } });
-}
 
 const main = (page) => page.locator("main");
 const ir = (page, hash) =>

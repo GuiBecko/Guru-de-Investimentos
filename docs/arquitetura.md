@@ -50,12 +50,24 @@ A alternativa (binário Rust separado falando JSON por stdin/stdout) continua vi
 
 ## Dados
 
-- Tudo fica na pasta de dados do usuário que o Electron informa (`app.getPath("userData")`): `guru.db` e, depois, cache de indicadores.
+- Tudo fica na pasta de dados do usuário que o Electron informa (`app.getPath("userData")`), no arquivo `guru.db`.
 - **Dinheiro em centavos, como inteiro (`i64`).** Nunca `f64` para valor em reais.
 - **Taxas e percentuais em decimal exato** (`rust_decimal`), por exemplo `112.5` (% do CDI) ou `6.25` (% a.a.).
 - Datas como `YYYY-MM-DD` no banco e `chrono::NaiveDate` no Rust.
 - O esquema evolui por migrações numeradas dentro do `guru-core`. Um banco criado por uma versão mais nova do app não é aberto por uma mais antiga: o app avisa em vez de arriscar estragar os dados.
 - A chave da IA fica no cofre do sistema (Keychain, Credential Manager, Secret Service). Nunca vai para o SQLite nem para a interface.
+
+Dados de mercado ficam em sete tabelas, criadas pela migração `0004`:
+
+| Tabela | Guarda |
+|--------|--------|
+| `indice_diario` | CDI e Selic por dia |
+| `ipca_mensal` | IPCA por mês |
+| `tesouro_preco` | Taxa e preço unitário de compra e base de cada título, por dia |
+| `cotacao` | Preço de fechamento de cada ticker por dia, em centavos |
+| `fonte_status` | Última data, última atualização e erro de cada fonte |
+| `cobertura_serie` | Desde quando cada série já foi pedida, para não repetir pedidos |
+| `b3_alvo` | Para cada data pedida à B3, o pregão encontrado e os tickers pedidos |
 
 ## Segurança da janela
 
@@ -66,15 +78,26 @@ A alternativa (binário Rust separado falando JSON por stdin/stdout) continua vi
 
 ## Rede
 
-Só o `guru-core` acessa a rede, e só estes destinos:
+Só o `guru-core` acessa a rede, e só estes destinos. Qualquer outra URL é recusada antes da requisição. Cada requisição tem timeout de 60 s e `User-Agent: GuruDeInvestimentos/<versão>`. Nenhuma requisição leva dado do usuário: só datas e códigos de série nas URLs.
 
 | Destino | Para quê | Fase |
 |---------|----------|------|
-| `api.bcb.gov.br` (SGS) | Selic, CDI, IPCA | 3 |
+| `api.bcb.gov.br` (SGS) | Selic e CDI; IPCA pela série 433 do SGS (dado do IBGE publicado pelo Banco Central) | 3 |
 | Tesouro Transparente | Taxas e preços do Tesouro Direto | 3 |
-| IBGE (SIDRA) | IPCA oficial | 3 |
 | B3, série histórica (arquivo diário COTAHIST) | Preço de fechamento de ações, FIIs e ETFs | 3 |
 | `api.anthropic.com` | Claude, com a chave do usuário | 6 |
+
+## Atualização de mercado
+
+O atualizador roda no addon, em uma thread de fundo com a própria conexão ao banco. Os downloads não travam a tela.
+
+- Busca só o que falta. Uma aplicação antiga cadastrada depois faz o app buscar para trás até a data dela.
+- Da B3 guarda o último pregão e o último pregão de cada um dos 12 meses anteriores.
+- Cada fonte falha sozinha. A que falhou mostra a mensagem e mantém os dados que já tinha; as outras seguem.
+- Uma nova tentativa depois de 5 s. Na B3 só erro de rede é repetido, porque arquivo que não existe significa dia sem pregão.
+- Resposta HTML ou XML de erro do SGS, com status 200, conta como falha da fonte.
+
+O app atualiza ao abrir, se alguma fonte não foi atualizada hoje, e de novo depois de salvar um investimento. O botão "Atualizar" da barra lateral faz a mesma coisa sob demanda.
 
 ## Repositório
 
@@ -106,7 +129,18 @@ Guru-de-Investimentos/
 | JS puro da interface (roteador, formatação) | `node --test` |
 | App inteiro | Playwright com `_electron.launch` |
 
-A CI (GitHub Actions) roda tudo em Linux, Windows e macOS.
+A CI (GitHub Actions) roda fmt, clippy e os testes do núcleo Rust só em Linux; o addon (build e testes) e o app (testes unitários e E2E) rodam em Linux, Windows e macOS.
+
+### Modo de teste de mercado
+
+Os testes do núcleo nunca acessam a rede: usam a pasta `crates/guru-core/tests/fixtures/` (dados reais de 28/10/2026) e um `Baixador` falso.
+
+Nos e2e, o app lê os arquivos de uma pasta em vez de baixar, com duas variáveis:
+
+- `GURU_MERCADO_FIXTURES=<pasta>`: pasta com `sgs-<serie>.json`, `tesouro.csv` e `COTAHIST_D<ddMMaaaa>.ZIP`.
+- `GURU_MERCADO_HOJE=AAAA-MM-DD`: data que substitui "hoje" só nos dados de mercado (atualização e valorização). Os e2e usam `2026-10-28`.
+
+As duas valem só fora do app empacotado.
 
 ## Em aberto
 

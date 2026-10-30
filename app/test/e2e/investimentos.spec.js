@@ -1,6 +1,5 @@
-const { test, expect, _electron } = require("@playwright/test");
-const fs = require("node:fs");
-const os = require("node:os");
+const { test, expect } = require("@playwright/test");
+const { lancar } = require("./_app");
 const path = require("node:path");
 
 // Datas futuras derivadas do ano atual, para os testes não vencerem com o tempo.
@@ -10,15 +9,6 @@ const VENC_CDB_BR = `15/03/${ANO + 3}`;
 const VENC_SELIC = `${ANO + 4}-03-01`;
 const PRAZO = `${ANO + 4}-12`;
 
-const appDir = path.resolve(__dirname, "../..");
-
-function lancar() {
-  return _electron.launch({
-    args: ["."],
-    cwd: appDir,
-    env: { ...process.env, GURU_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), "guru-e2e-")) },
-  });
-}
 
 const CDB = {
   tipo: "rf-cdb",
@@ -75,6 +65,7 @@ test("a linha mostra os dados do CDB e o total", async () => {
     await expect(linha).toContainText(VENC_CDB_BR);
     await expect(linha.getByRole("link", { name: "Editar" })).toHaveAttribute("href", `#/investimentos/${id}`);
     await expect(page.locator("main")).toContainText("Total aplicado");
+    await expect(page.locator("main th")).toContainText(["Aplicado", "Atual", "Rentab."]);
   } finally {
     await app.close();
   }

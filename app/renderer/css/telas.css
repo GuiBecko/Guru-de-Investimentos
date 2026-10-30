@@ -137,3 +137,15 @@ textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
 .bar.p5-18 > i { width: 90.00%; }
 .bar.p5-19 > i { width: 95.00%; }
 .bar.p5-20 > i { width: 100.00%; }
+
+/* Dados de mercado: marca "com falhas", lista de falhas e rótulo "sem cotação". */
+.side .falhas-marca { background: none; border: 0; padding: 0; color: var(--warn-on-dark); font: inherit; text-decoration: underline; cursor: pointer; }
+.falhas { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.falhas li { display: grid; gap: 2px; }
+.falhas span { color: var(--muted); font-size: 12px; }
+.sem-cotacao { display: block; font: 400 10.5px var(--f-body); color: var(--muted); }
+.patrimonio { display: flex; gap: 32px; align-items: flex-end; }
+.side .mercado .btn.ghost { color: var(--side-ink); border-color: var(--side-muted); }
+.side .mercado .btn.ghost:hover:not(:disabled) { border-color: var(--side-ink); background: rgba(255, 255, 255, 0.1); }
+.side .mercado .btn.ghost:disabled { opacity: 0.75; color: var(--side-muted); }
+.side .falhas-marca:hover { color: var(--side-ink); }

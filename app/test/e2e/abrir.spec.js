@@ -25,7 +25,7 @@ test("abre com título e mostra a versão do esquema", async () => {
   try {
     const page = await app.firstWindow();
     expect(await page.title()).toBe("Guru de Investimentos");
-    await expect(page.getByTestId("schema-version")).toHaveText("3");
+    await expect(page.getByTestId("schema-version")).toHaveText("4");
     await expect(page.getByTestId("core-version")).not.toBeEmpty();
     expect(fs.existsSync(path.join(dataDir, "guru.db"))).toBe(true);
   } finally {
@@ -56,6 +56,7 @@ test("a ponte expõe só os canais do app e nada do Electron ou do Node", async 
       "alocacao",
       "objetivo",
       "metas",
+      "mercado",
     ]);
     expect(await page.evaluate(() => Object.keys(window.guru.app))).toEqual(["info"]);
     expect(await page.evaluate(() => Object.keys(window.guru.investimentos))).toEqual([
@@ -80,6 +81,10 @@ test("a ponte expõe só os canais do app e nada do Electron ou do Node", async 
       "criar",
       "atualizar",
       "apagar",
+    ]);
+    expect(await page.evaluate(() => Object.keys(window.guru.mercado))).toEqual([
+      "atualizar",
+      "status",
     ]);
     expect(await page.evaluate(() => typeof window.ipcRenderer)).toBe("undefined");
     expect(await page.evaluate(() => typeof window.require)).toBe("undefined");
@@ -148,6 +153,25 @@ test("metas e perfil pelo api: NAO_ENCONTRADO e questionário sem pontos", async
     );
     expect(q.perguntas).toHaveLength(12);
     expect(typeof q.perguntas[0].opcoes[0]).toBe("string");
+  } finally {
+    await app.close();
+  }
+});
+
+test("mercado pelo api: status das cinco fontes sem rede", async () => {
+  const app = await lancar(novoDataDir());
+  try {
+    const page = await app.firstWindow();
+    const status = await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) => api.mercado.status()),
+    );
+    expect(status.map((s) => s.rotulo)).toEqual([
+      "CDI",
+      "Selic",
+      "IPCA",
+      "Tesouro Direto",
+      "Cotações da B3",
+    ]);
   } finally {
     await app.close();
   }

@@ -1,5 +1,6 @@
 // Formulário de novo e de editar investimento: os campos mudam conforme o tipo escolhido.
 import { api } from "../api.js";
+import { atualizarMercado } from "../mercado.js";
 import { formatarData, formatarReais, paraCentavos, paraTaxa } from "../formato.js";
 import { legendaRendimento, montarDados } from "./formulario-investimento/dados.js";
 
@@ -309,6 +310,8 @@ function montar(raiz, catalogo, vigente, { id, inicial, metas }) {
     botaoSalvar.disabled = botaoOutro.disabled = true;
     try {
       const { erros = [] } = edicao ? await api.investimentos.atualizar(id, dados) : await api.investimentos.criar(dados);
+      // Salvou: busca em segundo plano o valor atual do que foi lançado.
+      if (erros.length === 0) atualizarMercado();
       if (!vigente()) return;
       if (erros.length) return marcarErros(erros);
       if (outro) {

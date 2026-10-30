@@ -1,0 +1,322 @@
+//! Valor atual bruto (antes do IR e de taxas) de um investimento, pelas fontes oficiais
+//! guardadas. Regras em "Regras de valorização" do plano da fase 3a.
+
+use std::str::FromStr;
+
+use chrono::{Datelike, Days, NaiveDate};
+use rust_decimal::Decimal;
+use rust_decimal::MathematicalOps;
+use rust_decimal::prelude::ToPrimitive;
+
+use super::{PontoDiario, titulo_tesouro};
+use crate::db::Db;
+use crate::error::CoreError;
+use crate::investimento::{Benchmark, Indexador, Investimento};
+
+/// Dias úteis por ano da convenção dos prefixados.
+const DIAS_UTEIS_ANO: i64 = 252;
+/// Dias depois do fim de um mês em que o IPCA dele ainda pode não ter sido publicado.
+const PRAZO_IPCA_DIAS: u64 = 45;
+/// Quanto depois da aplicação a série guardada pode começar e ainda cobri-la.
+const FOLGA_COBERTURA_DIAS: u64 = 7;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Origem {
+    Calculo,
+    Tesouro,
+    Cotacao,
+    SemFonte,
+    SemDados,
+}
+
+impl Origem {
+    pub fn codigo(self) -> &'static str {
+        match self {
+            Origem::Calculo => "calculo",
+            Origem::Tesouro => "tesouro",
+            Origem::Cotacao => "cotacao",
+            Origem::SemFonte => "sem_fonte",
+            Origem::SemDados => "sem_dados",
+        }
+    }
+
+    pub fn rotulo(self) -> &'static str {
+        match self {
+            Origem::Calculo => "calculado pelo índice",
+            Origem::Tesouro => "preço do Tesouro",
+            Origem::Cotacao => "cotação da B3",
+            Origem::SemFonte => "sem fonte de preço",
+            Origem::SemDados => "sem dados ainda",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Valor {
+    pub atual_centavos: i64,
+    /// `(atual − aplicado) / aplicado` em décimos de ponto percentual (`+17,1%` → `171`).
+    pub rentabilidade_decimos: i64,
+    pub origem: Origem,
+    /// Data dos dados usados; `None` quando não houve dado.
+    pub data_referencia: Option<NaiveDate>,
+}
+
+/// Séries diárias e mensais até a data de valorização, carregadas uma vez para a carteira.
+pub(crate) struct Series {
+    cdi: Vec<PontoDiario>,
+    selic: Vec<PontoDiario>,
+    ipca: Vec<(String, Decimal)>,
+}
+
+impl Series {
+    pub(crate) fn carregar(db: &Db, ate: NaiveDate) -> Result<Series, CoreError> {
+        let desde = NaiveDate::from_ymd_opt(1900, 1, 1).unwrap_or(NaiveDate::MIN);
+        Ok(Series {
+            cdi: db.indice_entre("cdi", desde, ate)?,
+            selic: db.indice_entre("selic", desde, ate)?,
+            ipca: db.ipca_meses("0000-00", &mes_de(ate))?,
+        })
+    }
+}
+
+fn mes_de(d: NaiveDate) -> String {
+    format!("{:04}-{:02}", d.year(), d.month())
+}
+
+/// Valor atual de `inv` em `data`, carregando as séries do banco.
+pub fn valorizar(db: &Db, inv: &Investimento, data: NaiveDate) -> Result<Valor, CoreError> {
+    valorizar_com(db, &Series::carregar(db, data)?, inv, data)
+}
+
+pub(crate) fn valorizar_com(
+    db: &Db,
+    series: &Series,
+    inv: &Investimento,
+    data: NaiveDate,
+) -> Result<Valor, CoreError> {
+    let aplicado = inv.valor_aplicado_centavos;
+    if inv.tipo == "fundo" || inv.tipo == "prev" || inv.tipo == "cripto" {
+        return Ok(valor(aplicado, Origem::SemFonte, None));
+    }
+    let aplicacao = NaiveDate::parse_from_str(&inv.data_aplicacao, "%Y-%m-%d")
+        .map_err(|_| CoreError::DbInvalid("investimento com data inválida no banco".into()))?;
+    if data < aplicacao {
+        return Ok(sem_dados(aplicado));
+    }
+    let calculado = if inv.tipo.starts_with("rf-") {
+        renda_fixa(series, inv, aplicacao, data)
+    } else if inv.tipo.starts_with("td-") {
+        tesouro(db, inv, aplicacao, data)?
+    } else if inv.tipo.starts_with("rv-") {
+        renda_variavel(db, inv, data)?
+    } else {
+        None
+    };
+    Ok(calculado.unwrap_or_else(|| sem_dados(aplicado)))
+}
+
+fn sem_dados(aplicado: i64) -> Valor {
+    valor(aplicado, Origem::SemDados, None)
+}
+
+fn valor(aplicado: i64, origem: Origem, ref_: Option<NaiveDate>) -> Valor {
+    Valor {
+        atual_centavos: aplicado,
+        rentabilidade_decimos: 0,
+        origem,
+        data_referencia: ref_,
+    }
+}
+
+fn com_atual(aplicado: i64, atual: i64, origem: Origem, ref_: Option<NaiveDate>) -> Valor {
+    Valor {
+        atual_centavos: atual,
+        rentabilidade_decimos: rentabilidade(aplicado, atual),
+        origem,
+        data_referencia: ref_,
+    }
+}
+
+/// `round((atual − aplicado) × 1000 / aplicado)`, meio para cima, em inteiros.
+pub(crate) fn rentabilidade(aplicado: i64, atual: i64) -> i64 {
+    if aplicado <= 0 {
+        return 0;
+    }
+    let (a, v) = (i128::from(aplicado), i128::from(atual));
+    let dec = ((v - a) * 2000 + a).div_euclid(2 * a);
+    i64::try_from(dec).unwrap_or(0)
+}
+
+fn centavos(d: Decimal) -> Option<i64> {
+    d.floor().to_i64()
+}
+
+/// Pontos da série com `de < data <= ate` (a série vem ordenada).
+fn dias_entre(pontos: &[PontoDiario], de: NaiveDate, ate: NaiveDate) -> &[PontoDiario] {
+    let ini = pontos.partition_point(|p| p.data <= de);
+    let fim = pontos.partition_point(|p| p.data <= ate);
+    &pontos[ini..fim.max(ini)]
+}
+
+/// A série cobre a aplicação se tem algum ponto e o primeiro não é mais de 7 dias depois dela.
+fn cobre(pontos: &[PontoDiario], aplicacao: NaiveDate) -> bool {
+    let limite = aplicacao.checked_add_days(Days::new(FOLGA_COBERTURA_DIAS));
+    match (pontos.first(), limite) {
+        (Some(p), Some(limite)) => p.data <= limite,
+        _ => false,
+    }
+}
+
+/// `(1 + taxa/100)^(du/252)` por `exp(ln(1 + taxa/100) × du/252)`, com 12 casas.
+fn potencia(taxa: Decimal, du: usize) -> Option<Decimal> {
+    if du == 0 {
+        return Some(Decimal::ONE);
+    }
+    let base = Decimal::ONE + taxa / Decimal::from(100);
+    let expoente =
+        base.checked_ln()?.checked_mul(Decimal::from(du as i64))? / Decimal::from(DIAS_UTEIS_ANO);
+    Some(expoente.checked_exp()?.round_dp(12))
+}
+
+fn renda_fixa(
+    series: &Series,
+    inv: &Investimento,
+    aplicacao: NaiveDate,
+    data: NaiveDate,
+) -> Option<Valor> {
+    let taxa = Decimal::from_str(inv.taxa.as_deref()?).ok()?;
+    let cem = Decimal::from(100);
+    let aplicado = inv.valor_aplicado_centavos;
+    let (fator, ref_) = match inv.indexador? {
+        Indexador::Pos => {
+            let pontos = match inv.benchmark? {
+                Benchmark::Cdi => &series.cdi,
+                Benchmark::Selic => &series.selic,
+            };
+            if !cobre(pontos, aplicacao) {
+                return None;
+            }
+            let dias = dias_entre(pontos, aplicacao, data);
+            let mut fator = Decimal::ONE;
+            for p in dias {
+                fator = fator.checked_mul(Decimal::ONE + p.valor / cem * taxa / cem)?;
+            }
+            (fator, dias.last().map(|p| p.data))
+        }
+        Indexador::Pre => {
+            if !cobre(&series.cdi, aplicacao) {
+                return None;
+            }
+            let dias = dias_entre(&series.cdi, aplicacao, data);
+            (potencia(taxa, dias.len())?, dias.last().map(|p| p.data))
+        }
+        Indexador::Ipca => {
+            if !cobre(&series.cdi, aplicacao) {
+                return None;
+            }
+            // Meses `m` do seguinte ao da aplicação até o último que já terminou em `data`.
+            let mut mes = aplicacao
+                .with_day(1)?
+                .checked_add_months(chrono::Months::new(1))?;
+            let ultimo = if data.succ_opt()?.month() != data.month() {
+                data.with_day(1)?
+            } else {
+                data.with_day(1)?.pred_opt()?.with_day(1)?
+            };
+            let mut inflacao = Decimal::ONE;
+            while mes <= ultimo {
+                let chave = mes_de(mes);
+                let proximo = mes.checked_add_months(chrono::Months::new(1))?;
+                match series.ipca.iter().find(|(m, _)| *m == chave) {
+                    Some((_, v)) => inflacao = inflacao.checked_mul(Decimal::ONE + *v / cem)?,
+                    None => {
+                        // Ainda dentro do prazo de publicação: o mês entra com fator 1.
+                        let fim_do_mes = proximo.pred_opt()?;
+                        let limite = fim_do_mes.checked_add_days(Days::new(PRAZO_IPCA_DIAS))?;
+                        if limite <= data {
+                            return None;
+                        }
+                    }
+                }
+                mes = proximo;
+            }
+            let dias = dias_entre(&series.cdi, aplicacao, data);
+            let fator = inflacao.checked_mul(potencia(taxa, dias.len())?)?;
+            (fator, dias.last().map(|p| p.data))
+        }
+        Indexador::Selic => return None,
+    };
+    let atual = centavos(Decimal::from(aplicado).checked_mul(fator)?)?;
+    Some(com_atual(aplicado, atual, Origem::Calculo, ref_))
+}
+
+fn tesouro(
+    db: &Db,
+    inv: &Investimento,
+    aplicacao: NaiveDate,
+    data: NaiveDate,
+) -> Result<Option<Valor>, CoreError> {
+    let Some((titulo, vencimento)) = titulo_tesouro(inv) else {
+        return Ok(None);
+    };
+    let (Some(compra), Some(base)) = (
+        db.preco_tesouro_em(&titulo, vencimento, aplicacao)?,
+        db.preco_tesouro_em(&titulo, vencimento, data)?,
+    ) else {
+        return Ok(None);
+    };
+    if compra.pu_compra <= Decimal::ZERO {
+        return Ok(None);
+    }
+    let aplicado = inv.valor_aplicado_centavos;
+    let atual = Decimal::from(aplicado)
+        .checked_div(compra.pu_compra)
+        .and_then(|q| q.checked_mul(base.pu_base))
+        .and_then(centavos);
+    Ok(atual.map(|a| com_atual(aplicado, a, Origem::Tesouro, Some(base.data))))
+}
+
+fn renda_variavel(
+    db: &Db,
+    inv: &Investimento,
+    data: NaiveDate,
+) -> Result<Option<Valor>, CoreError> {
+    let (Some(ticker), Some(quantidade)) = (inv.ticker.as_deref(), inv.quantidade) else {
+        return Ok(None);
+    };
+    let Some(c) = db.cotacao_em(ticker, data)? else {
+        return Ok(None);
+    };
+    let atual = quantidade.checked_mul(c.fechamento_centavos);
+    Ok(atual.map(|a| {
+        com_atual(
+            inv.valor_aplicado_centavos,
+            a,
+            Origem::Cotacao,
+            Some(c.data),
+        )
+    }))
+}
+
+#[cfg(test)]
+mod testes {
+    use super::*;
+
+    #[test]
+    fn rentabilidade_em_decimos_meio_para_cima() {
+        assert_eq!(rentabilidade(1_000_000, 1_171_000), 171);
+        assert_eq!(rentabilidade(1_000_000, 1_000_000), 0);
+        assert_eq!(rentabilidade(1_000_000, 1_000_500), 1);
+        assert_eq!(rentabilidade(1_000_000, 1_000_499), 0);
+        assert_eq!(rentabilidade(1_000_000, 800_000), -200);
+        assert_eq!(rentabilidade(1_000_000, 999_500), 0);
+        assert_eq!(rentabilidade(1_000_000, 999_499), -1);
+    }
+
+    #[test]
+    fn potencia_de_um_ano_cheio_e_a_taxa() {
+        let p = potencia(Decimal::from(12), 252).unwrap();
+        assert!((p - Decimal::new(112, 2)).abs() < Decimal::new(1, 9));
+        assert_eq!(potencia(Decimal::from(12), 0), Some(Decimal::ONE));
+    }
+}

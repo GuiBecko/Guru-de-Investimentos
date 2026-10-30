@@ -37,7 +37,7 @@ fn meses_contados(de: (i32, u32), ate: (i32, u32)) -> i64 {
     i64::from(ate.0 - de.0) * 12 + i64::from(ate.1) - i64::from(de.1) + 1
 }
 
-/// Situação de uma meta contra o alvo. `vinculados` traz (valor aplicado, data da aplicação).
+/// Situação de uma meta contra o alvo. `vinculados` traz (valor atual, data da aplicação).
 pub fn progresso(
     alvo: i64,
     prazo: (i32, u32),

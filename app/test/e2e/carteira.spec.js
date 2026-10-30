@@ -1,6 +1,5 @@
-const { test, expect, _electron } = require("@playwright/test");
-const fs = require("node:fs");
-const os = require("node:os");
+const { test, expect } = require("@playwright/test");
+const { lancar } = require("./_app");
 const path = require("node:path");
 
 // Datas futuras derivadas do ano atual, para os testes não vencerem com o tempo.
@@ -10,15 +9,6 @@ const VENC_CDB_BR = `15/03/${ANO + 3}`;
 const VENC_SELIC = `${ANO + 4}-03-01`;
 const PRAZO = `${ANO + 4}-12`;
 
-const appDir = path.resolve(__dirname, "../..");
-
-function lancar() {
-  return _electron.launch({
-    args: ["."],
-    cwd: appDir,
-    env: { ...process.env, GURU_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), "guru-e2e-")) },
-  });
-}
 
 const CDB = {
   tipo: "rf-cdb",
@@ -92,7 +82,7 @@ test("carteira mostra total e um card por classe, e o card abre o detalhe", asyn
     const main = page.locator("main");
     await expect(main.getByText("Total aplicado")).toBeVisible();
     await expect(main).toContainText("R$ 42.713,00");
-    await expect(main).toContainText("Valores aplicados. Cotações e rentabilidade chegam numa próxima versão.");
+    await expect(main).toContainText("Valores brutos, antes do IR. Dados de mercado de");
 
     const rf = main.getByRole("link", { name: /Renda fixa/ });
     await expect(rf).toHaveAttribute("href", "#/carteira/rf");
@@ -116,7 +106,7 @@ test("carteira mostra total e um card por classe, e o card abre o detalhe", asyn
     await expect(linhas.nth(1)).toContainText(`Tesouro Selic ${ANO + 4}`);
     await expect(main).not.toContainText("undefined");
     await expect(main.locator("th")).toHaveText([
-      "Investimento", "Instituição", "Rendimento", "Aplicado", "Vencimento", "Liquidez",
+      "Investimento", "Instituição", "Rendimento", "Aplicado", "Atual", "Rentab.", "Vencimento", "Liquidez",
     ]);
 
     await main.getByRole("link", { name: "Carteira ›" }).click();

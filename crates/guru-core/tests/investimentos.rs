@@ -71,7 +71,7 @@ fn cria_e_lista() {
     id(db
         .criar_investimento(&rv("rv-acao", "ITUB4", 150, 3142), hoje())
         .unwrap());
-    let lista = db.listar_investimentos().unwrap();
+    let lista = db.listar_investimentos(hoje()).unwrap();
     assert_eq!(lista.len(), 2);
     let c = &lista[0];
     assert_eq!(c.nome, "CDB Banco Inter");
@@ -99,7 +99,7 @@ fn invalido_nao_grava() {
         Gravacao::Invalido(e) => assert!(e.iter().any(|e| e.campo == "taxa")),
         Gravacao::Ok(_) => panic!("não deveria gravar"),
     }
-    assert!(db.listar_investimentos().unwrap().is_empty());
+    assert!(db.listar_investimentos(hoje()).unwrap().is_empty());
 }
 
 #[test]
@@ -114,13 +114,13 @@ fn atualiza_mantem_id_e_muda_campos() {
         db.atualizar_investimento(i, &novo, hoje()).unwrap(),
         Gravacao::Ok(x) if x == i
     ));
-    let v = db.investimento(i).unwrap();
+    let v = db.investimento(i, hoje()).unwrap();
     assert_eq!(v.id, i);
     assert_eq!(v.nome, "CDB Banco Master");
     assert_eq!(v.valor_aplicado_centavos, 500_000);
     assert_eq!(v.taxa.as_deref(), Some("102.5"));
     assert_eq!(v.rendimento.as_deref(), Some("102,5% do CDI"));
-    assert_eq!(db.listar_investimentos().unwrap().len(), 1);
+    assert_eq!(db.listar_investimentos(hoje()).unwrap().len(), 1);
 }
 
 #[test]
@@ -133,7 +133,7 @@ fn atualiza_invalido_nao_altera() {
         db.atualizar_investimento(i, &ruim, hoje()).unwrap(),
         Gravacao::Invalido(_)
     ));
-    assert_eq!(db.investimento(i).unwrap().nome, "CDB Banco Inter");
+    assert_eq!(db.investimento(i, hoje()).unwrap().nome, "CDB Banco Inter");
 }
 
 #[test]
@@ -145,7 +145,10 @@ fn atualiza_id_inexistente_da_nao_encontrado() {
         e.to_string(),
         "Este investimento não existe mais. Atualize a lista."
     );
-    assert_eq!(db.investimento(99).unwrap_err().code(), "NAO_ENCONTRADO");
+    assert_eq!(
+        db.investimento(99, hoje()).unwrap_err().code(),
+        "NAO_ENCONTRADO"
+    );
 }
 
 #[test]
@@ -153,7 +156,7 @@ fn apaga_e_some_da_lista() {
     let (_d, db) = abrir();
     let i = id(db.criar_investimento(&cdb(), hoje()).unwrap());
     db.apagar_investimento(i).unwrap();
-    assert!(db.listar_investimentos().unwrap().is_empty());
+    assert!(db.listar_investimentos(hoje()).unwrap().is_empty());
 }
 
 #[test]
@@ -177,7 +180,7 @@ fn lista_ordena_por_classe_e_nome() {
         .unwrap());
     id(db.criar_investimento(&cdb(), hoje()).unwrap());
     let nomes: Vec<String> = db
-        .listar_investimentos()
+        .listar_investimentos(hoje())
         .unwrap()
         .into_iter()
         .map(|i| i.nome)
@@ -196,7 +199,7 @@ fn resumo_por_classe() {
     id(db
         .criar_investimento(&rv("rv-fii", "HGLG11", 10, 16_000), hoje())
         .unwrap());
-    let r = db.resumo_carteira().unwrap();
+    let r = db.resumo_carteira(hoje()).unwrap();
     assert_eq!(r.total_aplicado_centavos, 4_431_300);
     let v: Vec<_> = r
         .classes
@@ -216,7 +219,7 @@ fn resumo_por_classe() {
 #[test]
 fn resumo_vazio() {
     let (_d, db) = abrir();
-    let r = db.resumo_carteira().unwrap();
+    let r = db.resumo_carteira(hoje()).unwrap();
     assert_eq!(r.total_aplicado_centavos, 0);
     assert!(r.classes.is_empty());
 }
@@ -228,7 +231,7 @@ fn dados_sobrevivem_a_reabrir() {
     id(db.criar_investimento(&cdb(), hoje()).unwrap());
     drop(db);
     let db = Db::open(dir.path()).unwrap();
-    assert_eq!(db.listar_investimentos().unwrap().len(), 1);
+    assert_eq!(db.listar_investimentos(hoje()).unwrap().len(), 1);
 }
 
 #[test]
@@ -243,7 +246,7 @@ fn migra_banco_da_versao_1() {
         .unwrap();
     }
     let db = Db::open(dir.path()).unwrap();
-    assert_eq!(db.schema_version().unwrap(), 3);
-    assert_eq!(SCHEMA_VERSION, 3);
-    assert!(db.listar_investimentos().unwrap().is_empty());
+    assert_eq!(db.schema_version().unwrap(), 4);
+    assert_eq!(SCHEMA_VERSION, 4);
+    assert!(db.listar_investimentos(hoje()).unwrap().is_empty());
 }

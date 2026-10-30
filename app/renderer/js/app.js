@@ -1,5 +1,6 @@
 import { api } from "./api.js";
 import { iniciar } from "./router.js";
+import { iniciarMercado } from "./mercado.js";
 
 function mostrarVersoes(core, esquema) {
   document.querySelector('[data-testid="core-version"]').textContent = core;
@@ -19,3 +20,5 @@ api.app
     console.error("Falha ao ler as versões:", e);
     mostrarVersoes("—", "—");
   });
+
+iniciarMercado(document.querySelector('[data-testid="mercado"]'));
