@@ -1,7 +1,12 @@
-//! Tipos da ponte para o painel. Os campos `Option` chegam ao JS como `null`
-//! (`use_nullable`), para o renderer checar com `=== null`.
+//! Tipos da ponte para o painel e a tarefa assíncrona que o calcula. Os campos `Option`
+//! chegam ao JS como `null` (`use_nullable`), para o renderer checar com `=== null`.
 
-use guru_core::{Classe, Painel};
+use std::path::PathBuf;
+
+use chrono::NaiveDate;
+use guru_core::{Classe, CoreError, Db, Painel};
+use napi::JsValue;
+use napi::bindgen_prelude::{AsyncTask, Env, Task};
 use napi_derive::napi;
 
 #[napi(object, use_nullable = true)]
@@ -35,6 +40,8 @@ pub struct NumerosPainelJs {
     pub periodo_centesimos: i64,
     pub periodo_cdi_centesimos: Option<i64>,
     pub rendeu_centavos: i64,
+    /// `AAAA-MM-DD` do primeiro aporte quando ele é posterior ao primeiro ponto; senão `null`.
+    pub desde: Option<String>,
 }
 
 #[napi(object)]
@@ -72,7 +79,7 @@ pub struct PainelJs {
     pub benchmark_padrao: Option<String>,
 }
 
-pub fn painel(p: Painel, classe: Option<Classe>) -> PainelJs {
+fn para_js(p: Painel, classe: Option<Classe>) -> PainelJs {
     PainelJs {
         datas: p.datas.iter().map(|d| d.to_string()).collect(),
         pontos: p
@@ -113,6 +120,7 @@ pub fn painel(p: Painel, classe: Option<Classe>) -> PainelJs {
             periodo_centesimos: p.numeros.periodo_centesimos,
             periodo_cdi_centesimos: p.numeros.periodo_cdi_centesimos,
             rendeu_centavos: p.numeros.rendeu_centavos,
+            desde: p.numeros.desde.map(|d| d.to_string()),
         },
         instituicoes: p
             .instituicoes
@@ -143,4 +151,76 @@ pub fn painel(p: Painel, classe: Option<Classe>) -> PainelJs {
             .collect(),
         benchmark_padrao: classe.map(|c| guru_core::benchmark_padrao(c).codigo().to_string()),
     }
+}
+
+/// Cálculo do painel na threadpool do libuv, como `AtualizarMercado`: com a carteira grande
+/// ele leva dezenas de milissegundos, que não podem travar o processo principal. A tarefa abre
+/// a própria conexão (`Db::open`), então o `Mutex` de `Core` não fica preso enquanto calcula;
+/// a data de mercado é capturada antes, na thread do JS.
+pub struct CalcularPainel {
+    pub pasta_dados: PathBuf,
+    pub hoje: NaiveDate,
+    pub meses: u32,
+    pub classe: Option<String>,
+}
+
+impl CalcularPainel {
+    fn classe(&self) -> Result<Option<Classe>, (String, String)> {
+        self.classe
+            .as_deref()
+            .map(|c| {
+                Classe::de_codigo(c).ok_or_else(|| {
+                    (
+                        "NAO_ENCONTRADO".to_string(),
+                        format!("Classe desconhecida: {c}."),
+                    )
+                })
+            })
+            .transpose()
+    }
+
+    fn executar(&self, classe: Option<Classe>) -> Result<Painel, CoreError> {
+        let db = Db::open(&self.pasta_dados)?;
+        guru_core::painel(&db, self.hoje, self.meses, classe)
+    }
+}
+
+impl Task for CalcularPainel {
+    type Output = Result<(Painel, Option<Classe>), (String, String)>;
+    type JsValue = PainelJs;
+
+    fn compute(&mut self) -> napi::Result<Self::Output> {
+        Ok(self.classe().and_then(|classe| {
+            self.executar(classe)
+                .map(|p| (p, classe))
+                .map_err(|e| (e.code().to_string(), e.to_string()))
+        }))
+    }
+
+    // Mesma rejeição com `code` de `AtualizarMercado::resolve`.
+    fn resolve(&mut self, env: Env, saida: Self::Output) -> napi::Result<Self::JsValue> {
+        match saida {
+            Ok((p, classe)) => Ok(para_js(p, classe)),
+            Err((code, mensagem)) => {
+                let mut erro =
+                    env.create_error(napi::Error::new(napi::Status::GenericFailure, mensagem))?;
+                erro.set("code", code)?;
+                Err(napi::Error::from(erro.to_unknown()))
+            }
+        }
+    }
+}
+
+pub fn tarefa(
+    pasta_dados: PathBuf,
+    hoje: NaiveDate,
+    meses: u32,
+    classe: Option<String>,
+) -> AsyncTask<CalcularPainel> {
+    AsyncTask::new(CalcularPainel {
+        pasta_dados,
+        hoje,
+        meses,
+        classe,
+    })
 }

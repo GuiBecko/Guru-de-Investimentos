@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
-use guru_core::{CORE_VERSION, Classe, CoreError, Db, Gravacao};
+use guru_core::{CORE_VERSION, CoreError, Db, Gravacao};
 use napi::bindgen_prelude::AsyncTask;
 use napi_derive::napi;
 
@@ -16,7 +16,7 @@ use investimentos::{
 };
 use mercado::{AtualizarMercado, ModoTeste, OpcoesCore, StatusFonteJs};
 use metas::{MetaJs, NovaMetaJs};
-use painel::PainelJs;
+use painel::CalcularPainel;
 use perfil::{AlocacaoClasseJs, PercentualClasseJs, PerfilJs, QuestionarioJs, ResultadoPerfilJs};
 
 #[napi(object)]
@@ -141,21 +141,10 @@ impl Core {
         Ok(investimentos::resumo(r))
     }
 
+    /// Assíncrono (`Promise`): calcula numa thread do libuv, com conexão própria.
     #[napi]
-    pub fn painel(&self, meses: u32, classe: Option<String>) -> napi::Result<PainelJs, String> {
-        let classe = classe
-            .map(|c| {
-                Classe::de_codigo(&c).ok_or_else(|| {
-                    napi::Error::new(
-                        "NAO_ENCONTRADO".to_string(),
-                        format!("Classe desconhecida: {c}."),
-                    )
-                })
-            })
-            .transpose()?;
-        let p =
-            guru_core::painel(&*self.db()?, self.data_mercado(), meses, classe).map_err(to_js)?;
-        Ok(painel::painel(p, classe))
+    pub fn painel(&self, meses: u32, classe: Option<String>) -> AsyncTask<CalcularPainel> {
+        painel::tarefa(self.pasta_dados.clone(), self.data_mercado(), meses, classe)
     }
 
     #[napi]
