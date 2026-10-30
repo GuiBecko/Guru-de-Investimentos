@@ -67,3 +67,19 @@ export function formatarRentabilidade(decimos) {
   if (decimos > 0) return `+${corpo}`;
   return decimos < 0 ? `\u2212${corpo}` : corpo;
 }
+
+// Centésimos de ponto percentual -> "+1,07%", "−23,5%", "0,00%"; null -> "—". Duas casas abaixo
+// de 10% e uma acima (meio para cima). Sem ponto flutuante.
+export function formatarCentesimos(c) {
+  if (c === null || c === undefined) return "—";
+  const abs = Math.abs(c);
+  let corpo;
+  if (abs < 1000) {
+    corpo = `${Math.trunc(abs / 100)},${String(abs % 100).padStart(2, "0")}%`;
+  } else {
+    const dec = Math.floor((abs + 5) / 10);
+    corpo = `${Math.trunc(dec / 10)},${dec % 10}%`;
+  }
+  if (c > 0) return `+${corpo}`;
+  return c < 0 ? `−${corpo}` : corpo;
+}

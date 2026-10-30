@@ -149,3 +149,35 @@ textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
 .side .mercado .btn.ghost:hover:not(:disabled) { border-color: var(--side-ink); background: rgba(255, 255, 255, 0.1); }
 .side .mercado .btn.ghost:disabled { opacity: 0.75; color: var(--side-muted); }
 .side .falhas-marca:hover { color: var(--side-ink); }
+
+/* Gráficos em SVG (graficos.js): cores e tracejados só por classe, com tokens que já têm versão escura. */
+svg.chart .grade { stroke: var(--gridline); stroke-width: 1; stroke-dasharray: 1 3; }
+svg.chart .zero { stroke: var(--line-strong); stroke-width: 1; }
+svg.chart .guia { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 3; }
+svg.chart .eixo { fill: var(--muted); font: 10px var(--f-mono); }
+svg.chart .alvo { fill: transparent; }
+svg.chart .serie, svg.mini .serie { fill: none; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+svg.chart .serie.tracejada { stroke-width: 1.2; stroke-dasharray: 5 4; }
+.serie.s-carteira { stroke: var(--accent); }
+.serie.s-bench { stroke: var(--bench); }
+.serie.s-c1 { stroke: var(--c1); }
+.serie.s-c2 { stroke: var(--c2); }
+.serie.s-c3 { stroke: var(--c3); }
+.serie.s-c4 { stroke: var(--c4); }
+.serie.s-c5 { stroke: var(--c5); }
+.serie.s-up { stroke: var(--up); }
+.serie.s-down { stroke: var(--down); }
+svg.chart .barra.up { fill: var(--up); }
+svg.chart .barra.down { fill: var(--down); }
+svg.chart .fatia { stroke: var(--surface); stroke-width: 1; }
+.fatia.f-c1 { fill: var(--c1); }
+.fatia.f-c2 { fill: var(--c2); }
+.fatia.f-c3 { fill: var(--c3); }
+.fatia.f-c4 { fill: var(--c4); }
+.fatia.f-c5 { fill: var(--c5); }
+.fatia.f-accent { fill: var(--accent); }
+svg.chart .rosca-texto { fill: var(--ink); font: 600 12px var(--f-body); }
+svg.chart .dica-fundo { fill: var(--surface); stroke: var(--line-strong); stroke-width: 1; }
+svg.chart .dica-titulo { fill: var(--ink); font: 600 11px var(--f-mono); }
+svg.chart .dica-texto { fill: var(--muted); font: 11px var(--f-mono); }
+svg.mini { width: 80px; height: 24px; display: block; }

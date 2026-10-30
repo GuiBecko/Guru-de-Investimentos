@@ -88,3 +88,14 @@ test("formatarRentabilidade", async () => {
   assert.equal(formatarRentabilidade(-32), "−3,2%");
   assert.equal(formatarRentabilidade(-5), "−0,5%");
 });
+
+test("formatarCentesimos", async () => {
+  const { formatarCentesimos } = await import("../../renderer/js/formato.js");
+  assert.equal(formatarCentesimos(107), "+1,07%");
+  assert.equal(formatarCentesimos(-2350), "−23,5%");
+  assert.equal(formatarCentesimos(0), "0,00%");
+  assert.equal(formatarCentesimos(null), "—");
+  assert.equal(formatarCentesimos(-5), "−0,05%");
+  assert.equal(formatarCentesimos(999), "+9,99%");
+  assert.equal(formatarCentesimos(1005), "+10,1%");
+});
