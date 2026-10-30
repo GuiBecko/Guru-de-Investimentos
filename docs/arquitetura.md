@@ -69,6 +69,8 @@ Dados de mercado ficam em sete tabelas, criadas pela migração `0004`:
 | `cobertura_serie` | Desde quando cada série já foi pedida, para não repetir pedidos |
 | `b3_alvo` | Para cada data pedida à B3, o pregão encontrado e os tickers pedidos |
 
+A migração `0005` acrescenta `investimentos.codigo_b3` (código do ativo na planilha, usado para casar a renda fixa) e a tabela `importacao`, com a data, o nome do arquivo, o total de linhas e quantas foram aplicadas em cada importação.
+
 ## Segurança da janela
 
 - `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`.
@@ -98,6 +100,20 @@ O atualizador roda no addon, em uma thread de fundo com a própria conexão ao b
 - Resposta HTML ou XML de erro do SGS, com status 200, conta como falha da fonte.
 
 O app atualiza ao abrir, se alguma fonte não foi atualizada hoje, e de novo depois de salvar um investimento. O botão "Atualizar" da barra lateral faz a mesma coisa sob demanda.
+
+## Importação da B3
+
+A planilha de posição é lida e comparada com a carteira no `guru-core`. Ela nunca sai do computador: a rede não é usada nessa etapa.
+
+- O diálogo de arquivo fica no processo principal (`main.js`). Antes de ler, o tamanho do arquivo é conferido, e o caminho nunca passa para o addon.
+- O addon recebe só os bytes e o nome do arquivo, lê o XLSX (`importacao/xlsx.rs`, sobre `zip` e `quick-xml`) e guarda a última comparação sob um token. O token é consumido ao aplicar, então a mesma comparação não é gravada duas vezes.
+- Aplicar roda em uma única transação: tudo ou nada.
+- Limites contra arquivo malicioso: 20 MB no arquivo; 50 MB descompactados por parte do ZIP; 50 abas; 100 mil linhas; 256 colunas; 2 milhões de células; 100 MB de texto. Acima disso, ou se não for XLSX, o erro é `ARQUIVO_INVALIDO`.
+- Na barra lateral, o rodapé mostra "Última importação B3: dd/mm/aaaa".
+
+### Modo de teste da importação
+
+Nos e2e, `GURU_TESTE_ARQUIVO_B3=<caminho>` faz o diálogo devolver esse arquivo, e `GURU_TESTE_ARQUIVO_B3=cancelar` simula o cancelamento. As duas valem só fora do app empacotado.
 
 ## Repositório
 
