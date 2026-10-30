@@ -29,7 +29,10 @@ const MAX_ARQUIVO: usize = 20 * 1024 * 1024;
 const MAX_PARTE: u64 = 50 * 1024 * 1024;
 const MAX_ABAS: usize = 50;
 const MAX_LINHAS: usize = 100_000;
-const MAX_COLUNAS: usize = 16_384;
+const MAX_COLUNAS: usize = 256;
+const MAX_CELULAS: usize = 2_000_000;
+const MAX_TEXTO_CELULA: usize = 32_767;
+const MAX_TEXTO_TOTAL: usize = 100 * 1024 * 1024;
 
 fn nao_xlsx() -> CoreError {
     CoreError::ArquivoInvalido(MSG_NAO_XLSX.to_string())
@@ -37,6 +40,31 @@ fn nao_xlsx() -> CoreError {
 
 fn grande_demais() -> CoreError {
     CoreError::ArquivoInvalido(MSG_GRANDE.to_string())
+}
+
+/// Orçamento de memória do livro inteiro, para que um arquivo pequeno não vire gigabytes.
+#[derive(Default)]
+struct Orcamento {
+    celulas: usize,
+    texto: usize,
+}
+
+impl Orcamento {
+    fn celulas(&mut self, n: usize) -> Result<(), CoreError> {
+        self.celulas += n;
+        if self.celulas > MAX_CELULAS {
+            return Err(grande_demais());
+        }
+        Ok(())
+    }
+
+    fn texto(&mut self, s: &str) -> Result<(), CoreError> {
+        self.texto += s.len();
+        if self.texto > MAX_TEXTO_TOTAL {
+            return Err(grande_demais());
+        }
+        Ok(())
+    }
 }
 
 type Zip<'a> = ZipArchive<Cursor<&'a [u8]>>;
@@ -62,6 +90,7 @@ pub fn ler_xlsx(bytes: &[u8]) -> Result<Vec<Aba>, CoreError> {
         None => Vec::new(),
     };
 
+    let mut orcamento = Orcamento::default();
     let mut abas = Vec::new();
     for (nome, rid) in folhas {
         let Some(alvo) = rels.iter().find(|(id, _)| *id == rid).map(|(_, a)| a) else {
@@ -70,7 +99,7 @@ pub fn ler_xlsx(bytes: &[u8]) -> Result<Vec<Aba>, CoreError> {
         let xml = ler_parte(&mut zip, alvo)?.ok_or_else(nao_xlsx)?;
         abas.push(Aba {
             nome,
-            linhas: ler_aba(&xml, &compartilhadas)?,
+            linhas: ler_aba(&xml, &compartilhadas, &mut orcamento)?,
         });
     }
     Ok(abas)
@@ -237,7 +266,13 @@ fn ler_compartilhadas(xml: &[u8]) -> Result<Vec<String>, CoreError> {
             },
             Event::Empty(e) if e.local_name().as_ref() == "si" => lista.push(String::new()),
             Event::End(e) => match (e.local_name().as_ref(), atual.as_mut()) {
-                ("si", _) => lista.push(atual.take().map(|a| a.texto).unwrap_or_default()),
+                ("si", _) => {
+                    let texto = atual.take().map(|a| a.texto).unwrap_or_default();
+                    if texto.chars().count() > MAX_TEXTO_CELULA {
+                        return Err(grande_demais());
+                    }
+                    lista.push(texto);
+                }
                 (nome, Some(a)) => a.fim(nome),
                 _ => {}
             },
@@ -280,10 +315,26 @@ struct CelulaAberta {
     em_is: bool,
 }
 
-fn ler_aba(xml: &[u8], compartilhadas: &[String]) -> Result<Vec<Vec<Celula>>, CoreError> {
+/// Coluna (base 0) de uma `<c>`: pela referência, ou a seguinte à anterior.
+fn coluna_da_celula(e: &BytesStart<'_>, proxima: usize) -> Result<usize, CoreError> {
+    let coluna = atributo(e, "r")?
+        .as_deref()
+        .and_then(coluna_da_referencia)
+        .unwrap_or(proxima);
+    if coluna >= MAX_COLUNAS {
+        return Err(grande_demais());
+    }
+    Ok(coluna)
+}
+
+fn ler_aba(
+    xml: &[u8],
+    compartilhadas: &[String],
+    orcamento: &mut Orcamento,
+) -> Result<Vec<Vec<Celula>>, CoreError> {
     let mut r = leitor(xml);
     let mut linhas: Vec<Vec<Celula>> = Vec::new();
-    let mut linha_atual = 0usize;
+    let mut linha_atual: Option<usize> = None;
     let mut proxima_linha = 0usize;
     let mut proxima_coluna = 0usize;
     let mut aberta: Option<CelulaAberta> = None;
@@ -292,27 +343,27 @@ fn ler_aba(xml: &[u8], compartilhadas: &[String]) -> Result<Vec<Vec<Celula>>, Co
         let ev = r.read_event().map_err(|_| nao_xlsx())?;
         match &ev {
             Event::Start(e) | Event::Empty(e) if e.local_name().as_ref() == "row" => {
-                linha_atual = match atributo(e, "r")?.as_deref().and_then(linha_da_referencia) {
+                let n = match atributo(e, "r")?.as_deref().and_then(linha_da_referencia) {
                     Some(n) => n,
                     None => proxima_linha,
                 };
-                if linha_atual >= MAX_LINHAS {
+                if n >= MAX_LINHAS {
                     return Err(grande_demais());
                 }
-                if linhas.len() <= linha_atual {
-                    linhas.resize(linha_atual + 1, Vec::new());
+                if linhas.len() <= n {
+                    orcamento.celulas(n + 1 - linhas.len())?;
+                    linhas.resize(n + 1, Vec::new());
                 }
-                proxima_linha = linha_atual + 1;
+                proxima_linha = n + 1;
+                // `<row/>` vazia não tem células; só `<row>` com filhos abre a linha.
+                linha_atual = matches!(ev, Event::Start(_)).then_some(n);
                 proxima_coluna = 0;
             }
             Event::Start(e) if e.local_name().as_ref() == "c" => {
-                let coluna = match atributo(e, "r")?.as_deref().and_then(coluna_da_referencia) {
-                    Some(c) => c,
-                    None => proxima_coluna,
-                };
-                if coluna >= MAX_COLUNAS {
+                if linha_atual.is_none() {
                     return Err(nao_xlsx());
                 }
+                let coluna = coluna_da_celula(e, proxima_coluna)?;
                 proxima_coluna = coluna + 1;
                 aberta = Some(CelulaAberta {
                     coluna,
@@ -324,10 +375,10 @@ fn ler_aba(xml: &[u8], compartilhadas: &[String]) -> Result<Vec<Vec<Celula>>, Co
                 });
             }
             Event::Empty(e) if e.local_name().as_ref() == "c" => {
-                let coluna = match atributo(e, "r")?.as_deref().and_then(coluna_da_referencia) {
-                    Some(c) => c,
-                    None => proxima_coluna,
-                };
+                if linha_atual.is_none() {
+                    return Err(nao_xlsx());
+                }
+                let coluna = coluna_da_celula(e, proxima_coluna)?;
                 proxima_coluna = coluna + 1;
             }
             Event::Start(e) => {
@@ -342,17 +393,22 @@ fn ler_aba(xml: &[u8], compartilhadas: &[String]) -> Result<Vec<Vec<Celula>>, Co
             }
             Event::End(e) => {
                 let nome = e.local_name();
-                if nome.as_ref() == "c" {
+                if nome.as_ref() == "row" {
+                    linha_atual = None;
+                } else if nome.as_ref() == "c" {
                     if let Some(c) = aberta.take() {
-                        if c.coluna >= MAX_COLUNAS {
-                            return Err(nao_xlsx());
+                        let (coluna, celula) = converter(c, compartilhadas)?;
+                        if let Celula::Texto(t) = &celula {
+                            orcamento.texto(t)?;
                         }
-                        let celula = converter(c, compartilhadas)?;
-                        let linha = &mut linhas[linha_atual];
-                        if linha.len() <= celula.0 {
-                            linha.resize(celula.0 + 1, Celula::Vazia);
+                        let linha = linha_atual
+                            .and_then(|n| linhas.get_mut(n))
+                            .ok_or_else(nao_xlsx)?;
+                        if linha.len() <= coluna {
+                            orcamento.celulas(coluna + 1 - linha.len())?;
+                            linha.resize(coluna + 1, Celula::Vazia);
                         }
-                        linha[celula.0] = celula.1;
+                        linha[coluna] = celula;
                     }
                 } else if let Some(c) = aberta.as_mut() {
                     match nome.as_ref() {
@@ -377,12 +433,15 @@ fn ler_aba(xml: &[u8], compartilhadas: &[String]) -> Result<Vec<Vec<Celula>>, Co
     }
 }
 
-fn texto(s: String) -> Celula {
-    if s.is_empty() {
+fn texto(s: String) -> Result<Celula, CoreError> {
+    if s.chars().count() > MAX_TEXTO_CELULA {
+        return Err(grande_demais());
+    }
+    Ok(if s.is_empty() {
         Celula::Vazia
     } else {
         Celula::Texto(s)
-    }
+    })
 }
 
 fn converter(c: CelulaAberta, compartilhadas: &[String]) -> Result<(usize, Celula), CoreError> {
@@ -390,10 +449,10 @@ fn converter(c: CelulaAberta, compartilhadas: &[String]) -> Result<(usize, Celul
     let celula = match c.tipo.as_str() {
         "s" => {
             let i: usize = valor.parse().map_err(|_| nao_xlsx())?;
-            texto(compartilhadas.get(i).cloned().ok_or_else(nao_xlsx)?)
+            texto(compartilhadas.get(i).cloned().ok_or_else(nao_xlsx)?)?
         }
-        "inlineStr" => texto(c.inline.texto),
-        "str" | "d" => texto(c.valor),
+        "inlineStr" => texto(c.inline.texto)?,
+        "str" | "d" => texto(c.valor)?,
         "b" => Celula::Texto(if valor == "1" { "TRUE" } else { "FALSE" }.to_string()),
         "e" => Celula::Vazia,
         _ if valor.is_empty() => Celula::Vazia,
@@ -599,5 +658,124 @@ mod testes {
         ))
         .unwrap();
         assert_eq!(desconhecida.len(), 2);
+    }
+
+    const CAB: &str = r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>"#;
+    const RODAPE: &str = "</sheetData></worksheet>";
+
+    /// Monta um `.xlsx` mínimo (abas inline, sem sharedStrings) a partir dos XMLs das abas.
+    fn xlsx_de_abas(abas: &[String], compartilhadas: Option<&str>) -> Vec<u8> {
+        let mut wb = String::from(r#"<workbook xmlns:r="x"><sheets>"#);
+        let mut rels = String::from("<Relationships>");
+        for i in 1..=abas.len() {
+            wb += &format!(r#"<sheet name="A{i}" sheetId="{i}" r:id="rId{i}"/>"#);
+            rels += &format!(
+                r#"<Relationship Id="rId{i}" Type="x/worksheet" Target="worksheets/s{i}.xml"/>"#
+            );
+        }
+        wb += "</sheets></workbook>";
+        rels += "</Relationships>";
+        let nomes: Vec<String> = (1..=abas.len())
+            .map(|i| format!("xl/worksheets/s{i}.xml"))
+            .collect();
+        let mut partes: Vec<(&str, &str)> = vec![
+            ("xl/workbook.xml", &wb),
+            ("xl/_rels/workbook.xml.rels", &rels),
+        ];
+        if let Some(ss) = compartilhadas {
+            partes.push(("xl/sharedStrings.xml", ss));
+        }
+        for (nome, xml) in nomes.iter().zip(abas) {
+            partes.push((nome, xml));
+        }
+        zip_de(&partes)
+    }
+
+    fn aba_de(linhas: &str) -> String {
+        format!("{CAB}{linhas}{RODAPE}")
+    }
+
+    fn aba_com_n_linhas(n: usize) -> String {
+        aba_de(&"<row><c><v>1</v></c></row>".repeat(n))
+    }
+
+    #[test]
+    fn linha_larga_e_esparsa_nao_aloca_milhares_de_colunas() {
+        let bytes = xlsx_de_abas(
+            &[aba_de(r#"<row r="1"><c r="XFD1"><v>1</v></c></row>"#)],
+            None,
+        );
+        invalido(ler_xlsx(&bytes), MSG_GRANDE);
+        // O limite é de 256 colunas: IV (256ª) passa, IW (257ª) não.
+        let ok = xlsx_de_abas(&[aba_de(r#"<row><c r="IV1"><v>1</v></c></row>"#)], None);
+        assert_eq!(ler_xlsx(&ok).unwrap()[0].linhas[0].len(), 256);
+        let mal = xlsx_de_abas(&[aba_de(r#"<row><c r="IW1"><v>1</v></c></row>"#)], None);
+        invalido(ler_xlsx(&mal), MSG_GRANDE);
+    }
+
+    #[test]
+    fn total_de_celulas_do_livro_e_limitado() {
+        // 100 mil linhas com uma célula na coluna Z: 2,6 milhões de células alocadas.
+        let linha = r#"<row><c r="Z1"><v>1</v></c></row>"#;
+        let bytes = xlsx_de_abas(&[aba_de(&linha.repeat(100_000))], None);
+        invalido(ler_xlsx(&bytes), MSG_GRANDE);
+    }
+
+    #[test]
+    fn celula_fora_de_linha_nao_derruba() {
+        let antes = xlsx_de_abas(&[aba_de(r#"<c r="A1"><v>1</v></c>"#)], None);
+        invalido(ler_xlsx(&antes), MSG_NAO_XLSX);
+        let depois = xlsx_de_abas(
+            &[aba_de(r#"<row r="1"></row><c r="A1"><v>1</v></c>"#)],
+            None,
+        );
+        invalido(ler_xlsx(&depois), MSG_NAO_XLSX);
+        let vazia = xlsx_de_abas(&[aba_de(r#"<row r="1"/><c r="A1"/>"#)], None);
+        invalido(ler_xlsx(&vazia), MSG_NAO_XLSX);
+    }
+
+    fn compartilhadas_de(tamanho: usize) -> String {
+        format!(
+            r#"<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><si><t>{}</t></si></sst>"#,
+            "a".repeat(tamanho)
+        )
+    }
+
+    #[test]
+    fn string_compartilhada_acima_do_limite_do_excel() {
+        let aba = aba_de(r#"<row><c t="s"><v>0</v></c></row>"#);
+        let ok = xlsx_de_abas(std::slice::from_ref(&aba), Some(&compartilhadas_de(32_767)));
+        assert_eq!(
+            ler_xlsx(&ok).unwrap()[0].linhas[0][0],
+            t(&"a".repeat(32_767))
+        );
+        let grande = xlsx_de_abas(&[aba], Some(&compartilhadas_de(32_768)));
+        invalido(ler_xlsx(&grande), MSG_GRANDE);
+    }
+
+    #[test]
+    fn string_compartilhada_reutilizada_estoura_o_total_de_texto() {
+        // 4 mil células de 30 mil caracteres: 120 MB de texto vindos de poucos KB.
+        let aba = aba_de(&r#"<row><c t="s"><v>0</v></c></row>"#.repeat(4_000));
+        let bytes = xlsx_de_abas(&[aba], Some(&compartilhadas_de(30_000)));
+        assert!(bytes.len() < 200 * 1024);
+        invalido(ler_xlsx(&bytes), MSG_GRANDE);
+    }
+
+    #[test]
+    fn limite_de_linhas_aceita_100_mil_e_rejeita_100_001() {
+        let ok = xlsx_de_abas(&[aba_com_n_linhas(100_000)], None);
+        assert_eq!(ler_xlsx(&ok).unwrap()[0].linhas.len(), 100_000);
+        let mal = xlsx_de_abas(&[aba_com_n_linhas(100_001)], None);
+        invalido(ler_xlsx(&mal), MSG_GRANDE);
+    }
+
+    #[test]
+    fn limite_de_abas_aceita_50_e_rejeita_51() {
+        let uma = aba_com_n_linhas(1);
+        let ok = xlsx_de_abas(&vec![uma.clone(); 50], None);
+        assert_eq!(ler_xlsx(&ok).unwrap().len(), 50);
+        let mal = xlsx_de_abas(&vec![uma; 51], None);
+        invalido(ler_xlsx(&mal), MSG_GRANDE);
     }
 }
