@@ -69,7 +69,7 @@ Origens: `calculo` (renda fixa privada), `tesouro`, `cotacao`, `sem_fonte`, `sem
   - `pub struct Cotacao { pub ticker: String, pub data: NaiveDate, pub fechamento_centavos: i64 }`; `pub fn ler_cotahist_txt(txt: &[u8]) -> Result<Vec<Cotacao>, ErroFonte>` (só registros `01` com TPMERC `010`; posições 1-based do layout da B3: TIPREG 1-2, DATA 3-10, CODNEG 13-24 com `trim`, TPMERC 25-27, PREULT 109-121 com 2 casas implícitas) e `pub fn ler_cotahist_zip(zip: &[u8]) -> Result<Vec<Cotacao>, ErroFonte>` (primeiro arquivo `.TXT` do ZIP).
   - `pub enum ErroFonte { Rede(String), Status(u16), Formato(String) }` com `Display` em pt-BR.
 
-- [ ] **Step 1: Testes que falham** — SGS: `sgs-12-cdi.json` tem o primeiro ponto `01/09/2026` = `0.051660`; `sgs-433-ipca.json` lê `01/09/2026` = `0.82` (confira no arquivo); `sgs-erro.html` → `Formato`. Tesouro: `tesouro-amostra.csv` lê `Tesouro Selic` `01/03/2029` em `28/10/2026` com `pu_base = 20151.28`; cabeçalho trocado → `Formato`. COTAHIST: o TXT tem exatamente 6 cotações (ITUB4, BOVA11, HGLG11, B3SA3, M1TA34, XFIX11 — as linhas `020` e `030` são ignoradas), `ITUB4` em `28/10/2026` com fechamento lido de PREULT (confira no arquivo), e o ZIP dá o mesmo resultado que o TXT; bytes que não são ZIP → `Formato`.
+- [ ] **Step 1: Testes que falham** — SGS: `sgs-12.json` tem o primeiro ponto `01/09/2026` = `0.051660`; `sgs-433.json` lê `01/09/2026` = `0.82` (confira no arquivo); `sgs-erro.html` → `Formato`. Tesouro: `tesouro.csv` lê `Tesouro Selic` `01/03/2029` em `28/10/2026` com `pu_base = 20151.28`; cabeçalho trocado → `Formato`. COTAHIST: o TXT tem exatamente 6 cotações (ITUB4, BOVA11, HGLG11, B3SA3, M1TA34, XFIX11 — as linhas `020` e `030` são ignoradas), `ITUB4` em `28/10/2026` com fechamento lido de PREULT (confira no arquivo), e o ZIP dá o mesmo resultado que o TXT; bytes que não são ZIP → `Formato`.
 - [ ] **Step 2: Rodar e ver falhar.**
 - [ ] **Step 3: Implementar** com `serde_json` (struct com `#[derive(Deserialize)]`), leitura manual do CSV (é simples, sem aspas) e fatias de bytes no COTAHIST (o arquivo é ISO-8859-1; só os campos ASCII são usados).
 - [ ] **Step 4: Rodar e ver passar** — `cargo test --workspace && cargo clippy --workspace --all-targets -- -D warnings && cargo fmt --check`.
@@ -121,6 +121,8 @@ Regras do atualizador:
 - **B3**: se a carteira tem renda variável, tenta os pregões que faltam entre estas datas-alvo: `hoje` e o último dia de cada um dos 12 meses anteriores (para o histórico da fase 3b); para cada data-alvo sem cotação guardada, tenta a data e volta um dia por vez até 7 tentativas até achar um arquivo válido. Grava só os tickers da carteira mais `BOVA11` e `XFIX11` (usados como referência na fase 3b).
 - Uma nova tentativa depois de 5 s para cada falha de rede, status ≠ 200 ou formato inválido; a segunda falha registra `erro` com a mensagem em pt-BR (ex.: "O Banco Central não respondeu. Tente de novo mais tarde.") e mantém `ultima_data` anterior.
 - `ultima_data` de cada fonte = a data mais recente guardada; `atualizado_em` = agora (UTC, RFC 3339) quando a fonte terminou sem erro.
+- **B3, dia sem pregão** (decidido antes da execução): na B3, status ≠ 200 ou ZIP inválido numa data quer dizer "sem pregão nesse dia" — passa para o dia anterior **sem** nova tentativa e sem `espera`. Só `ErroFonte::Rede` ganha a nova tentativa de 5 s. A data-alvo `hoje` volta dia a dia até achar um arquivo válido ou uma data que já tem cotação guardada (aí para sem baixar); se não achar nada em 7 tentativas, a B3 fica com `erro` "A B3 não publicou cotações nos últimos 7 dias.". Uma data-alvo de fim de mês está satisfeita se já existe cotação guardada entre `alvo − 6` e `alvo`; se não achar arquivo em 7 tentativas, é pulada sem erro.
+- **Título do Tesouro** (decidido antes da execução): o `tipo` do CSV é o rótulo do catálogo do tipo `td-*` (`td-selic` → "Tesouro Selic", `td-pre` → "Tesouro Prefixado", `td-ipca` → "Tesouro IPCA+"), e o vencimento é o `vencimento` do investimento. Exponha essa correspondência numa função pública do módulo `mercado` (ex.: `titulo_tesouro(&Investimento) -> Option<(String, NaiveDate)>`), porque a Tarefa 4 usa a mesma.
 
 - [ ] **Step 1: Testes que falham** — com o `BaixadorPasta` das fixtures e uma carteira com um CDB, um Tesouro Selic 2029 e ITUB4: depois de `atualizar`, `status_fontes` sem erros e `ultima_data` do CDI = 28/10/2026; rodar de novo não chama o baixador para o CDI (o falso conta chamadas) e `novos == 0`; baixador falso que devolve `sgs-erro.html` duas vezes → `erro` preenchido no CDI, Selic e B3 seguem; `espera` chamada uma vez por fonte com falha; aplicação em 2014 → as URLs do CDI pedidas são duas janelas que não passam de 10 anos; URL fora da lista recusada pelo `BaixadorHttp` sem rede (teste de unidade da validação, sem chamar a rede); B3: data-alvo num sábado volta para a sexta (o falso só tem o arquivo de 28/10/2026 — use `hoje = 2026-10-31` e confira que pediu 31, 30, 29 e 28).
 - [ ] **Step 2: Rodar e ver falhar.**
@@ -146,6 +148,11 @@ Regras do atualizador:
   - `pub fn valorizar(db: &Db, inv: &Investimento, data: NaiveDate) -> Result<Valor, CoreError>` — regras da seção "Regras de valorização".
   - `Investimento` ganha `valor_atual_centavos`, `rentabilidade_decimos`, `origem_valor`, `data_valor` (preenchidos em `listar_investimentos`/`investimento` com `data = hoje`; `listar_investimentos` passa a receber `hoje`).
   - **Decisão desta fase**: o resumo da carteira (total, percentuais e diferença contra o alvo) e o acumulado das metas passam a usar o **valor atual**; o resumo ganha também `total_aplicado_centavos` ao lado de `total_atual_centavos`.
+  - Decidido antes da execução:
+    - `Resumo` já tem `total_aplicado_centavos`; ganha `total_atual_centavos`. `ResumoClasse` ganha `total_atual_centavos` ao lado do `total_aplicado_centavos` que já existe.
+    - IPCA: o mês `m` entra se o último dia de `m` é ≤ D e o valor de `m` está guardado.
+    - O título do Tesouro usa a função de correspondência criada na Tarefa 3.
+    - Mudar a assinatura de `listar_investimentos` quebra o addon. Ajuste o `crates/guru-node` só o necessário para compilar, passando a data local de hoje. Os campos novos no JS ficam para a Tarefa 5.
 
 - [ ] **Step 1: Testes que falham** (com as fixtures gravadas no banco):
   - CDB 100% CDI de R$ 10.000,00 aplicado em 31/08/2026: valor em 28/10/2026 = `1.000.000 × Π(1 + cdi_d/100)` dos dias da fixture (calcule o esperado no teste a partir do arquivo, não à mão), tolerância 1 centavo.
@@ -176,6 +183,7 @@ Regras do atualizador:
   - `core.statusMercado(): StatusFonteJs[]` com `{ fonte, rotulo /* "CDI", "Selic", "IPCA", "Tesouro Direto", "Cotações da B3" */, ultimaData?, atualizadoEm?, erro? }`.
   - `Investimento` JS ganha `valorAtualCentavos`, `rentabilidadeDecimos`, `origemValor`, `origemValorRotulo`, `dataValor?`; resumo ganha `totalAtualCentavos`; metas usam o valor atual (sem mudar nomes de campo).
   - A `Db` atrás do `Mutex` não pode ficar travada durante o download: o atualizador baixa sem o lock e só o pega para gravar (divida `atualizar` em "planejar e baixar" e "gravar", ou abra uma segunda conexão `Db::open` para a tarefa — escolha e documente).
+  - **Data fixa no modo de teste** (decidido antes da execução): a amostra só tem o pregão de 28/10/2026, então com a data real os e2e passariam a falhar com o tempo. `Core.open(dataDir, { pastaFixtures, hoje })` aceita `hoje` (`YYYY-MM-DD`) só junto com `pastaFixtures`, e essa data substitui a de hoje no atualizador e na valorização. O main lê `GURU_MERCADO_HOJE`, também só com `!app.isPackaged`. Nos testes, use `2026-10-28`.
 - Produces (IPC/api): `api.mercado = { atualizar, status }` (canais `mercado:atualizar`, `mercado:status`); superfície `["app", "investimentos", "carteira", "perfil", "alocacao", "objetivo", "metas", "mercado"]`.
 
 - [ ] **Step 1: Testes que falham** — addon com `pastaFixtures` = `crates/guru-core/tests/fixtures`: `atualizarMercado()` resolve com 5 fontes; um CDB lido depois tem `origemValor === "calculo"`; `statusMercado()` tem os rótulos exatos; e2e: superfície e `api.mercado.status()`.
@@ -190,7 +198,7 @@ Regras do atualizador:
 
 **Files:**
 - Create: `app/renderer/js/mercado.js` (estado da última atualização e o indicador do menu)
-- Modify: `app/renderer/index.html` (indicador no rodapé do menu), `app/renderer/js/app.js`, `telas/investimentos.js`, `telas/carteira.js`, `telas/perfil/metas.js` (só textos, se preciso), `css/telas.css`, `app/playwright.config.js` (`GURU_MERCADO_FIXTURES` apontando para `crates/guru-core/tests/fixtures`)
+- Modify: `app/renderer/index.html` (indicador no rodapé do menu), `app/renderer/js/app.js`, `telas/investimentos.js`, `telas/carteira.js`, `telas/perfil/metas.js` (só textos, se preciso), `css/telas.css`, `app/playwright.config.js` (`GURU_MERCADO_FIXTURES` apontando para `crates/guru-core/tests/fixtures` e `GURU_MERCADO_HOJE=2026-10-28`)
 - Test: `app/test/e2e/mercado.spec.js`; ajustes em `investimentos.spec.js`, `carteira.spec.js`
 
 Comportamento:
