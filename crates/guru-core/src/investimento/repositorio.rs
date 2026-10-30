@@ -40,6 +40,8 @@ pub struct Investimento {
     pub ir: Option<Ir>,
     pub garantia: Option<Garantia>,
     pub observacao: Option<String>,
+    /// Código do ativo na B3 quando o investimento veio de uma importação.
+    pub codigo_b3: Option<String>,
     pub meta_id: Option<i64>,
     pub meta_nome: Option<String>,
     /// Valor bruto (antes do IR e de taxas) na data da consulta.
@@ -73,7 +75,7 @@ pub struct Resumo {
 const SELECT: &str = "SELECT i.id, i.tipo, i.instituicao, i.emissor, i.ticker, i.indexador, \
     i.taxa, i.benchmark, i.data_aplicacao, i.vencimento, i.valor_aplicado_centavos, \
     i.quantidade, i.preco_medio_centavos, i.liquidez, i.data_carencia, i.ir, i.observacao, \
-    i.meta_id, m.nome AS meta_nome \
+    i.codigo_b3, i.meta_id, m.nome AS meta_nome \
     FROM investimentos i LEFT JOIN metas m ON m.id = i.meta_id";
 
 fn agora() -> String {
@@ -121,6 +123,7 @@ struct Linha {
     data_carencia: Option<String>,
     ir: Option<String>,
     observacao: Option<String>,
+    codigo_b3: Option<String>,
     meta_id: Option<i64>,
     meta_nome: Option<String>,
 }
@@ -144,6 +147,7 @@ fn linha(r: &Row) -> rusqlite::Result<Linha> {
         data_carencia: r.get("data_carencia")?,
         ir: r.get("ir")?,
         observacao: r.get("observacao")?,
+        codigo_b3: r.get("codigo_b3")?,
         meta_id: r.get("meta_id")?,
         meta_nome: r.get("meta_nome")?,
     })
@@ -204,6 +208,7 @@ fn montar(l: Linha) -> Result<Investimento, CoreError> {
         ir,
         garantia: info.garantia,
         observacao: l.observacao,
+        codigo_b3: l.codigo_b3,
         meta_id: l.meta_id,
         meta_nome: l.meta_nome,
         valor_atual_centavos: l.valor_aplicado,
@@ -412,17 +417,19 @@ impl Db {
 
     /// Ordenada pela classe (ordem do catálogo) e depois pelo nome, sem diferenciar maiúsculas.
     /// O valor atual de cada um é o de `hoje`; as séries são lidas uma vez só.
-    pub fn listar_investimentos(&self, hoje: NaiveDate) -> Result<Vec<Investimento>, CoreError> {
+    /// Investimentos como gravados, sem valorização (`valor_atual_centavos` = aplicado).
+    pub(crate) fn listar_investimentos_brutos(&self) -> Result<Vec<Investimento>, CoreError> {
         let mut stmt = self.conn.prepare(SELECT).map_err(classifica)?;
         let linhas = stmt
             .query_map([], linha)
             .map_err(classifica)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(classifica)?;
-        let mut lista = linhas
-            .into_iter()
-            .map(montar)
-            .collect::<Result<Vec<_>, _>>()?;
+        linhas.into_iter().map(montar).collect()
+    }
+
+    pub fn listar_investimentos(&self, hoje: NaiveDate) -> Result<Vec<Investimento>, CoreError> {
+        let mut lista = self.listar_investimentos_brutos()?;
         let series = Series::carregar(self, hoje)?;
         for inv in &mut lista {
             self.preencher_valor(&series, inv, hoje)?;

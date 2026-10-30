@@ -222,8 +222,8 @@ fn migra_banco_da_versao_3() {
         conn.pragma_update(None, "user_version", 3).unwrap();
     }
     let db = Db::open(dir.path()).unwrap();
-    assert_eq!(db.schema_version().unwrap(), 4);
-    assert_eq!(SCHEMA_VERSION, 4);
+    assert_eq!(db.schema_version().unwrap(), 5);
+    assert_eq!(SCHEMA_VERSION, 5);
     let conn = rusqlite::Connection::open(db.path()).unwrap();
     let n: i64 = conn
         .query_row("SELECT COUNT(*) FROM investimentos", [], |r| r.get(0))

@@ -25,7 +25,7 @@ test("abre com título e mostra a versão do esquema", async () => {
   try {
     const page = await app.firstWindow();
     expect(await page.title()).toBe("Guru de Investimentos");
-    await expect(page.getByTestId("schema-version")).toHaveText("4");
+    await expect(page.getByTestId("schema-version")).toHaveText("5");
     await expect(page.getByTestId("core-version")).not.toBeEmpty();
     expect(fs.existsSync(path.join(dataDir, "guru.db"))).toBe(true);
   } finally {

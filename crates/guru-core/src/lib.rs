@@ -16,7 +16,8 @@ pub use investimento::{
 };
 
 pub use importacao::{
-    Aba, AbaRv, Celula, LinhaB3, Posicao, ler_posicao, ler_posicao_abas, ler_xlsx,
+    Aba, AbaRv, Acao, Celula, Comparacao, Estado, Item, LinhaB3, Posicao, comparar, ler_posicao,
+    ler_posicao_abas, ler_xlsx,
 };
 
 pub use perfil::{
