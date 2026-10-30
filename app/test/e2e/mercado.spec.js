@@ -1,4 +1,5 @@
-const { test, expect, _electron } = require("@playwright/test");
+const { test, expect } = require("@playwright/test");
+const { lancar: lancarComDir } = require("./_app");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -6,13 +7,7 @@ const path = require("node:path");
 const appDir = path.resolve(__dirname, "../..");
 const FIXTURES = path.resolve(appDir, "../crates/guru-core/tests/fixtures");
 
-function lancar(extraEnv = {}) {
-  return _electron.launch({
-    args: ["."],
-    cwd: appDir,
-    env: { ...process.env, GURU_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), "guru-e2e-")), ...extraEnv },
-  });
-}
+const lancar = (extraEnv) => lancarComDir(undefined, extraEnv);
 
 function criar(page, dados) {
   return page.evaluate((d) => import("./js/api.js").then(({ api }) => api.investimentos.criar(d)), dados);
