@@ -1056,3 +1056,99 @@ fn vincular_o_que_outra_linha_casou_de_forma_unica_e_decisao_invalida() {
         Some("X1")
     );
 }
+
+// ---- Itens menores ----
+
+#[test]
+fn tesouro_sem_valor_aplicado_nao_oferece_usar_b3() {
+    let sem_valor = || match tesouro_b3("Rico", 0) {
+        LinhaB3::Tesouro {
+            produto,
+            tipo,
+            isin,
+            instituicao,
+            vencimento,
+            ..
+        } => LinhaB3::Tesouro {
+            produto,
+            tipo,
+            isin,
+            instituicao,
+            vencimento,
+            valor_aplicado: None,
+            valor_atualizado: None,
+        },
+        _ => unreachable!(),
+    };
+    // Sem código: divergente, só Manter.
+    let (d, db) = abrir();
+    let id = criar(&db, selic(800_000));
+    let c = comparar(&db, &posicao(vec![sem_valor()]), hoje()).unwrap();
+    let i = &c.itens[0];
+    assert_eq!(
+        (i.acoes.clone(), i.acao_padrao),
+        (vec![Acao::Manter], Acao::Manter)
+    );
+    // Já importado: também não vira Atualizar com UsarB3 como padrão.
+    marcar_importado(&d, id, "td-selic:2029-03-01");
+    let c = comparar(&db, &posicao(vec![sem_valor()]), hoje()).unwrap();
+    let i = &c.itens[0];
+    assert!(!i.acoes.contains(&Acao::UsarB3), "{:?}", i.acoes);
+    assert_eq!(i.acao_padrao, Acao::Manter);
+}
+
+#[test]
+fn usar_b3_sem_preco_medio_ou_sem_quantidade_pede_o_campo() {
+    let (d, db) = abrir();
+    let id = criar(&db, rv("rv-acao", "ITUB4", 120));
+    marcar_importado(&d, id, "ITUB4");
+    let conn = rusqlite::Connection::open(d.path().join("guru.db")).unwrap();
+    let caso = |sql: &str| {
+        conn.execute(sql, rusqlite::params![id]).unwrap();
+        let c = comparar_completa(&db);
+        let chave = item(&c, "ITUB4").chave.clone();
+        let r = aplicar(&db, &c, &[decisao(&chave, Acao::UsarB3)]);
+        assert_eq!(r.aplicadas, 0);
+        r.erros[0].1.clone()
+    };
+    let e = caso("UPDATE investimentos SET preco_medio_centavos = NULL WHERE id = ?1");
+    assert_eq!(
+        (e[0].campo.as_str(), e[0].mensagem.as_str()),
+        ("precoMedioCentavos", "Informe o preço médio.")
+    );
+    let e = caso(
+        "UPDATE investimentos SET preco_medio_centavos = 3000, quantidade = NULL WHERE id = ?1",
+    );
+    assert_eq!(
+        (e[0].campo.as_str(), e[0].mensagem.as_str()),
+        ("quantidade", "Informe a quantidade.")
+    );
+}
+
+#[test]
+fn aplicar_espera_a_escrita_concorrente_em_vez_de_falhar() {
+    use std::sync::mpsc;
+    let (d, db) = abrir();
+    let id = criar(&db, rv("rv-acao", "ITUB4", 120));
+    marcar_importado(&d, id, "ITUB4");
+    let c = comparar_completa(&db);
+    let chave = item(&c, "ITUB4").chave.clone();
+
+    // Outra conexão (a atualização de mercado) segura a escrita e grava logo depois.
+    let caminho = d.path().join("guru.db");
+    let (pronto, esperar) = mpsc::channel();
+    let outra = std::thread::spawn(move || {
+        let conn = rusqlite::Connection::open(caminho).unwrap();
+        conn.execute_batch("BEGIN IMMEDIATE").unwrap();
+        pronto.send(()).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        conn.execute_batch("UPDATE investimentos SET observacao = 'mercado'; COMMIT")
+            .unwrap();
+    });
+    esperar.recv().unwrap();
+    let r = aplicar_importacao(&db, &c, &[decisao(&chave, Acao::UsarB3)], "p.xlsx", hoje());
+    outra.join().unwrap();
+    let r = r.expect("a aplicação deve esperar a outra escrita terminar");
+    assert_eq!((r.aplicadas, r.erros.len()), (1, 0));
+    assert_eq!(db.investimento(id, hoje()).unwrap().quantidade, Some(150));
+}

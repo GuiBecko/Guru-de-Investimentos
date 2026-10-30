@@ -12,7 +12,7 @@
 use std::collections::HashSet;
 
 use chrono::NaiveDate;
-use rusqlite::{Connection, named_params};
+use rusqlite::{Connection, Transaction, TransactionBehavior, named_params};
 
 use super::comparacao::{Acao, Comparacao, Estado, Item};
 use crate::db::{Db, classifica};
@@ -130,11 +130,14 @@ fn planejar(
                 if q <= 0 {
                     return Ok(Err(erro("quantidade", "Informe a quantidade.")));
                 }
-                let aplicado = preco
-                    .and_then(|p| q.checked_mul(p))
-                    .filter(|a| *a <= MAX_CENTAVOS);
-                match (quantidade, aplicado) {
-                    (Some(_), Some(aplicado)) => ops.push((
+                let Some(preco) = preco else {
+                    return Ok(Err(erro("precoMedioCentavos", "Informe o preço médio.")));
+                };
+                if quantidade.is_none() {
+                    return Ok(Err(erro("quantidade", "Informe a quantidade.")));
+                }
+                match q.checked_mul(preco).filter(|a| *a <= MAX_CENTAVOS) {
+                    Some(aplicado) => ops.push((
                         Operacao::Quantidade {
                             id,
                             quantidade: q,
@@ -142,7 +145,7 @@ fn planejar(
                         },
                         true,
                     )),
-                    _ => {
+                    None => {
                         return Ok(Err(erro(
                             "quantidade",
                             "Quantidade vezes preço médio passa do limite.",
@@ -320,7 +323,10 @@ pub fn aplicar_importacao(
     conferir_vinculos(comparacao, decisoes)?;
 
     // Dropar a transação sem `commit` desfaz tudo, inclusive nos retornos antecipados.
-    let tx = db.conn.unchecked_transaction().map_err(classifica)?;
+    // `IMMEDIATE` pega a escrita logo no início (esperando o `busy_timeout` se a atualização de
+    // mercado estiver gravando): uma transação adiada que já leu falharia ao passar a escrever.
+    let tx =
+        Transaction::new_unchecked(&db.conn, TransactionBehavior::Immediate).map_err(classifica)?;
     let mut plano = Vec::new();
     let mut erros = Vec::new();
     for item in &comparacao.itens {

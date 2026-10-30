@@ -487,10 +487,12 @@ export async function render(raiz, _parametros = [], vigente = () => true) {
     partes.push(rodape);
 
     const contar = () => linhas.filter((l) => MUDAM.has(l.acao().codigo)).length;
+    // Sem alterações mas com itens iguais, aplicar ainda grava os vínculos com a B3 e a data.
+    const haIguais = iguais.length > 0;
     const atualizarBotao = () => {
       const n = contar();
-      aplicar.textContent = `Aplicar ${alteracoes(n)}`;
-      aplicar.disabled = n === 0;
+      aplicar.textContent = n === 0 && haIguais ? "Concluir importação" : `Aplicar ${alteracoes(n)}`;
+      aplicar.disabled = n === 0 && !haIguais;
     };
     aplicar.refrescar = atualizarBotao;
     for (const l of linhas) l.aoMudar(atualizarBotao);
@@ -535,7 +537,8 @@ export async function render(raiz, _parametros = [], vigente = () => true) {
         atualizarMercado();
         atualizarUltimaImportacao();
         if (!vigente()) return;
-        guardarAviso(`${alteracoes(resultado.aplicadas)} ${resultado.aplicadas === 1 ? "aplicada" : "aplicadas"}.`);
+        const n = resultado.aplicadas;
+        guardarAviso(n === 0 ? "Importação concluída, sem alterações na carteira." : `${alteracoes(n)} ${n === 1 ? "aplicada" : "aplicadas"}.`);
         window.location.hash = "#/investimentos";
         return;
       }
@@ -579,6 +582,8 @@ export async function render(raiz, _parametros = [], vigente = () => true) {
       desenhar(r, catalogo, new Map(lista.map((i) => [i.id, descreverVinculo(i)])));
     } catch (e) {
       if (!vigente()) return;
+      // O núcleo já descartou a comparação anterior: a tela volta ao início com a mensagem.
+      inicial();
       if (e.code === "ARQUIVO_INVALIDO") {
         dizer(e.message);
       } else {

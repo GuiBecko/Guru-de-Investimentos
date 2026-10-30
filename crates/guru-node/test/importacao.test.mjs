@@ -170,3 +170,12 @@ test("valor enorme na planilha vira aviso em vez de derrubar o processo", () => 
   assert.deepEqual(r.avisos, ["Valor fora do limite em Tesouro Selic 2029."]);
   assert.deepEqual(r.itens.map((i) => i.ativo), ["Tesouro Selic 2027"]);
 });
+
+test("comparação que falha descarta a anterior: o token antigo expira", () => {
+  const c = abrir();
+  const a = c.compararImportacao(fixture("posicao-completa.xlsx"), "a.xlsx");
+  assert.throws(() => c.compararImportacao(Buffer.from("isto não é xlsx"), "x.xlsx"), {
+    code: "ARQUIVO_INVALIDO",
+  });
+  assert.throws(() => c.aplicarImportacao(a.token, []), { code: "IMPORTACAO_EXPIRADA" });
+});

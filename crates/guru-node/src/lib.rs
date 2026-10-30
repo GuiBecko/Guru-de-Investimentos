@@ -310,6 +310,8 @@ impl Core {
         bytes: Buffer,
         arquivo: String,
     ) -> napi::Result<ComparacaoJs, String> {
+        // A anterior deixa de valer já: se esta falhar, o token antigo é IMPORTACAO_EXPIRADA.
+        *self.importacao()? = None;
         self.blindar(|| {
             let posicao = guru_core::ler_posicao(&bytes).map_err(to_js)?;
             let c = guru_core::comparar(&*self.db()?, &posicao, hoje_real()).map_err(to_js)?;

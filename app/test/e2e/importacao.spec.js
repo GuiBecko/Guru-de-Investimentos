@@ -23,6 +23,8 @@ async function escolher(page) {
 const item = (page, ativo) => page.locator("tbody.item", { hasText: ativo });
 
 async function ignorarTodosExceto(page, ativo) {
+  // A comparação chega depois do clique: sem esperar, a contagem pode dar zero linhas.
+  await expect(page.locator(".cartao-arquivo")).toBeVisible();
   const linhas = page.locator("tbody.item");
   const n = await linhas.count();
   for (let i = 0; i < n; i++) {
@@ -327,6 +329,58 @@ test("a data de emissão vem como data da aplicação editável, para conferir",
     await expect(data).toBeVisible();
     await expect(data).toBeEditable();
     await expect(data).not.toHaveValue("");
+  } finally {
+    await app.close();
+  }
+});
+
+test("outra planilha que falha descarta a comparação mostrada e volta à tela inicial", async () => {
+  const app = await abrir(COMPLETA);
+  try {
+    const page = await app.firstWindow();
+    await irParaImportar(page);
+    await escolher(page);
+    await expect(page.locator(".marcas").getByText("9 novos")).toBeVisible();
+    await app.evaluate((_electron, arquivo) => {
+      process.env.GURU_TESTE_ARQUIVO_B3 = arquivo;
+    }, DESCONHECIDA);
+    await page.getByRole("button", { name: "Escolher outra planilha" }).click();
+    await expect(page.getByRole("alert")).toContainText("Não encontrei nenhuma aba da posição da B3 neste arquivo.");
+    await expect(page.locator("tbody.item")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Escolher planilha" })).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
+test("só com itens iguais o botão vira Concluir importação e grava a data", async () => {
+  const app = await abrir(COMPLETA);
+  try {
+    const page = await app.firstWindow();
+    const r = await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) =>
+        api.investimentos.criar({
+          tipo: "rv-acao",
+          instituicao: "Rico",
+          ticker: "ITUB4",
+          dataAplicacao: "2025-01-10",
+          quantidade: 150,
+          precoMedioCentavos: 3050,
+        }),
+      ),
+    );
+    expect(r.erros).toEqual([]);
+    await expect(page.getByTestId("importacao-ultima")).toBeHidden();
+    await irParaImportar(page);
+    await escolher(page);
+    await expect(page.locator(".marcas").getByText("1 igual")).toBeVisible();
+    await ignorarTodosExceto(page, "ITUB4");
+    const concluir = page.getByRole("button", { name: "Concluir importação", exact: true });
+    await expect(concluir).toBeEnabled();
+    await concluir.click();
+    await expect(page.getByRole("heading", { name: "Investimentos" })).toBeVisible();
+    await expect(page.getByText("Importação concluída, sem alterações na carteira.")).toBeVisible();
+    await expect(page.getByTestId("importacao-ultima")).toHaveText(/^Última importação B3: \d\d\/\d\d\/\d{4}$/);
   } finally {
     await app.close();
   }

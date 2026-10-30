@@ -532,8 +532,11 @@ impl Contexto<'_> {
             return item;
         }
         let soma = total_aplicado(&pares);
-        let igual = aplicado_b3.is_some_and(|b| b.abs_diff(soma) <= 1);
-        let (estado, acoes) = com_pares(&pares, igual);
+        let (estado, acoes) = match aplicado_b3 {
+            // Sem o valor aplicado na planilha não há o que usar da B3: só manter.
+            None => (Estado::Divergente, vec![Acao::Manter]),
+            Some(b) => com_pares(&pares, b.abs_diff(soma) <= 1),
+        };
         let mut item = self.item(
             chave,
             estado,
