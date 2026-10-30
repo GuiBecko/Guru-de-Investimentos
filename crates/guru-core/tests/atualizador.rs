@@ -5,7 +5,7 @@ use std::time::Duration;
 use chrono::NaiveDate;
 use guru_core::{
     Baixador, BaixadorHttp, BaixadorPasta, Db, ErroFonte, Gravacao, NovoInvestimento, Origem,
-    StatusFonte, atualizar, titulo_tesouro,
+    StatusFonte, atualizar, titulo_tesouro, valorizar,
 };
 
 fn data(a: i32, m: u32, d: u32) -> NaiveDate {
@@ -337,15 +337,31 @@ fn aplicacao_de_2014_pede_o_cdi_em_janelas_de_ate_10_anos() {
 }
 
 #[test]
-fn sem_tesouro_nem_renda_variavel_nao_baixa_tesouro_nem_b3() {
+fn sem_renda_variavel_a_b3_baixa_so_as_referencias() {
     let (_d, db) = abrir();
     criar(&db, cdb("2025-03-15"));
     let falso = Falso::novo();
     let esperas = Esperas::novo();
     atualizar(&db, &falso, hoje(), &esperas.fecha()).unwrap();
     assert!(falso.com("PrecoTaxaTesouroDireto").is_empty());
-    assert!(falso.com("COTAHIST").is_empty());
     assert_eq!(status(&db, "tesouro").atualizado_em, None);
+    // BOVA11 e XFIX11 são os benchmarks do painel: vêm mesmo sem ação nem FII.
+    assert!(!falso.com("COTAHIST").is_empty());
+    assert_eq!(status(&db, "b3").erro, None);
+    assert!(status(&db, "b3").atualizado_em.is_some());
+    assert!(db.cotacao_em("BOVA11", hoje()).unwrap().is_some());
+    assert!(db.cotacao_em("XFIX11", hoje()).unwrap().is_some());
+    assert!(db.cotacao_em("ITUB4", hoje()).unwrap().is_none());
+}
+
+#[test]
+fn sem_nenhum_investimento_nao_baixa_tesouro_nem_b3() {
+    let (_d, db) = abrir();
+    let falso = Falso::novo();
+    let esperas = Esperas::novo();
+    atualizar(&db, &falso, hoje(), &esperas.fecha()).unwrap();
+    assert!(falso.com("PrecoTaxaTesouroDireto").is_empty());
+    assert!(falso.com("COTAHIST").is_empty());
     assert_eq!(status(&db, "b3").atualizado_em, None);
 }
 
@@ -560,6 +576,37 @@ fn titulo_novo_do_tesouro_baixa_o_csv_no_mesmo_dia() {
             .unwrap()
             .is_some()
     );
+}
+
+#[test]
+fn tesouro_com_vencimento_inexistente_nao_baixa_o_csv_a_cada_rodada() {
+    let (_d, db) = abrir();
+    criar(
+        &db,
+        NovoInvestimento {
+            vencimento: s("2031-07-15"),
+            ..tesouro_selic()
+        },
+    );
+    let esperas = Esperas::novo();
+
+    let primeira = Falso::novo();
+    atualizar(&db, &primeira, hoje(), &esperas.fecha()).unwrap();
+    assert_eq!(primeira.com("PrecoTaxaTesouroDireto").len(), 1);
+
+    let segunda = Falso::novo();
+    atualizar(&db, &segunda, hoje(), &esperas.fecha()).unwrap();
+    assert!(segunda.com("PrecoTaxaTesouroDireto").is_empty());
+    let inv = db.listar_investimentos(hoje()).unwrap().remove(0);
+    assert_eq!(
+        valorizar(&db, &inv, hoje()).unwrap().origem,
+        Origem::SemDados
+    );
+
+    let amanha = hoje().succ_opt().unwrap();
+    let terceira = Falso::novo();
+    atualizar(&db, &terceira, amanha, &esperas.fecha()).unwrap();
+    assert_eq!(terceira.com("PrecoTaxaTesouroDireto").len(), 1);
 }
 
 #[test]

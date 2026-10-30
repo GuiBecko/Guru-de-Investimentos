@@ -17,7 +17,7 @@ const ANOS_POR_CONSULTA: u32 = 10;
 const FOLGA_TESOURO_DIAS: u64 = 10;
 const TENTATIVAS_B3: u32 = 7;
 const MESES_DE_HISTORICO: u32 = 12;
-/// Referências usadas pela fase 3b, gravadas junto com os tickers da carteira.
+/// Referências do painel (fase 3b), sempre baixadas, junto com os tickers da carteira.
 const TICKERS_REFERENCIA: [&str; 2] = ["BOVA11", "XFIX11"];
 
 const MSG_BCB: &str = "O Banco Central não respondeu. Tente de novo mais tarde.";
@@ -59,6 +59,10 @@ pub fn titulo_tesouro(inv: &Investimento) -> Option<(String, NaiveDate)> {
     }
     let vencimento = NaiveDate::parse_from_str(inv.vencimento.as_deref()?, "%Y-%m-%d").ok()?;
     Some((inv.tipo_rotulo.clone(), vencimento))
+}
+
+fn chave_tesouro(tipo: &str, vencimento: NaiveDate) -> String {
+    format!("tesouro:{tipo}:{}", iso(vencimento))
 }
 
 fn iso(d: NaiveDate) -> String {
@@ -171,7 +175,9 @@ pub fn atualizar(
         novos += ctx.fechar("tesouro", r, MSG_TESOURO, |_| Ok(ultima.map(iso)))?;
     }
 
-    if carteira.iter().any(|i| i.tipo.starts_with("rv-")) {
+    // BOVA11 e XFIX11 são benchmarks do painel: a B3 roda com qualquer carteira, mesmo sem
+    // renda variável. Sem nenhum investimento não há o que comparar.
+    if !carteira.is_empty() {
         let mut tickers: HashSet<String> = carteira
             .iter()
             .filter(|i| i.tipo.starts_with("rv-"))
@@ -222,9 +228,9 @@ impl Contexto<'_> {
             .unwrap_or(self.inicio)
     }
 
-    /// Algum título da carteira não tem nenhum preço guardado (até hoje). Um título que o CSV
-    /// não conhece (vencimento digitado errado) fica `sem_dados`; sem preço guardado ele continua
-    /// "incompleto", então o CSV é baixado de novo a cada rodada (sem registro do que já foi tentado).
+    /// Algum título da carteira não tem nenhum preço guardado (até hoje) e ainda não foi
+    /// procurado no CSV de hoje. Um título que o CSV não conhece (vencimento digitado errado)
+    /// fica `sem_dados`; a marca `tesouro:<tipo>:<vencimento>` diz que ele já foi procurado hoje.
     fn tesouro_incompleto(
         &self,
         titulos: &HashSet<(String, NaiveDate)>,
@@ -234,11 +240,19 @@ impl Contexto<'_> {
                 .db
                 .preco_tesouro_em(tipo, *vencimento, self.hoje)?
                 .is_none()
+                && !self.procurado_hoje(tipo, *vencimento)?
             {
                 return Ok(true);
             }
         }
         Ok(false)
+    }
+
+    fn procurado_hoje(&self, tipo: &str, vencimento: NaiveDate) -> Result<bool, CoreError> {
+        Ok(self
+            .db
+            .cobertura_desde(&chave_tesouro(tipo, vencimento))?
+            .is_some_and(|d| d >= self.hoje))
     }
 
     /// Registra o status da fonte. Sucesso: `ultima_data` guardada e `atualizado_em` agora.
@@ -386,7 +400,12 @@ impl Contexto<'_> {
             })
             .collect();
         *ultima = da_carteira.iter().map(|p| p.data).max();
-        Ok(self.db.gravar_tesouro(&da_carteira)?)
+        let novos = self.db.gravar_tesouro(&da_carteira)?;
+        for (tipo, vencimento) in titulos {
+            self.db
+                .gravar_marca_recente(&chave_tesouro(tipo, *vencimento), self.hoje)?;
+        }
+        Ok(novos)
     }
 
     /// Último dia de cada um dos 12 meses anteriores a hoje.

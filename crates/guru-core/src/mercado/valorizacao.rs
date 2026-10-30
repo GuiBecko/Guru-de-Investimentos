@@ -77,6 +77,20 @@ impl Series {
             ipca: db.ipca_meses("0000-00", &mes_de(ate))?,
         })
     }
+
+    /// Pontos diários de `"cdi"` ou `"selic"`, em ordem; outra série não tem pontos.
+    pub(crate) fn diaria(&self, serie: &str) -> &[PontoDiario] {
+        match serie {
+            "cdi" => &self.cdi,
+            "selic" => &self.selic,
+            _ => &[],
+        }
+    }
+
+    /// Meses do IPCA guardados (`AAAA-MM`, valor), em ordem.
+    pub(crate) fn ipca(&self) -> &[(String, Decimal)] {
+        &self.ipca
+    }
 }
 
 fn mes_de(d: NaiveDate) -> String {
@@ -113,6 +127,78 @@ pub(crate) fn valorizar_com(
         None
     };
     Ok(calculado.unwrap_or_else(|| sem_dados(aplicado)))
+}
+
+/// Valor de `inv` em cada uma de `datas` (em ordem crescente), igual a chamar `valorizar_com`
+/// data a data. O pós-fixado, que domina o custo, percorre o fator diário uma vez só.
+pub(crate) fn valorizar_datas(
+    db: &Db,
+    series: &Series,
+    inv: &Investimento,
+    datas: &[NaiveDate],
+) -> Result<Vec<Valor>, CoreError> {
+    if datas.is_sorted()
+        && let Some(v) = pos_fixado_datas(series, inv, datas)?
+    {
+        return Ok(v);
+    }
+    datas
+        .iter()
+        .map(|&d| valorizar_com(db, series, inv, d))
+        .collect()
+}
+
+/// `renda_fixa` do pós-fixado em várias datas, acumulando o fator na mesma ordem dos dias.
+/// `None` quando o investimento não é um pós-fixado com taxa e série que o cubram.
+fn pos_fixado_datas(
+    series: &Series,
+    inv: &Investimento,
+    datas: &[NaiveDate],
+) -> Result<Option<Vec<Valor>>, CoreError> {
+    if !inv.tipo.starts_with("rf-") || inv.indexador != Some(Indexador::Pos) {
+        return Ok(None);
+    }
+    let (Some(benchmark), Some(taxa)) = (
+        inv.benchmark,
+        inv.taxa.as_deref().and_then(|t| Decimal::from_str(t).ok()),
+    ) else {
+        return Ok(None);
+    };
+    let aplicacao = NaiveDate::parse_from_str(&inv.data_aplicacao, "%Y-%m-%d")
+        .map_err(|_| CoreError::DbInvalid("investimento com data inválida no banco".into()))?;
+    let pontos = match benchmark {
+        Benchmark::Cdi => &series.cdi,
+        Benchmark::Selic => &series.selic,
+    };
+    if !cobre(pontos, aplicacao) {
+        return Ok(None);
+    }
+    let cem = Decimal::from(100);
+    let aplicado = inv.valor_aplicado_centavos;
+    // `None` depois de um estouro: dali em diante o fator não existe mais, como em `renda_fixa`.
+    let mut fator = Some(Decimal::ONE);
+    let mut ref_ = None;
+    let mut ate = aplicacao;
+    let mut out = Vec::with_capacity(datas.len());
+    for &d in datas {
+        if d < aplicacao {
+            out.push(sem_dados(aplicado));
+            continue;
+        }
+        for p in dias_entre(pontos, ate, d) {
+            fator = fator.and_then(|f| f.checked_mul(Decimal::ONE + p.valor / cem * taxa / cem));
+            ref_ = Some(p.data);
+        }
+        ate = d;
+        let atual = fator
+            .and_then(|f| Decimal::from(aplicado).checked_mul(f))
+            .and_then(centavos);
+        out.push(match atual {
+            Some(a) => com_atual(aplicado, a, Origem::Calculo, ref_),
+            None => sem_dados(aplicado),
+        });
+    }
+    Ok(Some(out))
 }
 
 fn sem_dados(aplicado: i64) -> Valor {
@@ -311,6 +397,69 @@ mod testes {
         assert_eq!(rentabilidade(1_000_000, 800_000), -200);
         assert_eq!(rentabilidade(1_000_000, 999_500), 0);
         assert_eq!(rentabilidade(1_000_000, 999_499), -1);
+    }
+
+    #[test]
+    fn valorizar_datas_e_igual_a_valorizar_data_a_data() {
+        use crate::investimento::{Gravacao, NovoInvestimento};
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path()).unwrap();
+        let d = |a, m, dia| NaiveDate::from_ymd_opt(a, m, dia).unwrap();
+        let hoje = d(2026, 10, 28);
+        let mut cdi = Vec::new();
+        let mut x = d(2026, 1, 1);
+        while x <= hoje {
+            if x.weekday().num_days_from_monday() < 5 {
+                cdi.push(PontoDiario {
+                    data: x,
+                    valor: Decimal::new(55_131 + i64::from(x.ordinal()), 6),
+                });
+            }
+            x = x.succ_opt().unwrap();
+        }
+        db.gravar_indice("cdi", &cdi).unwrap();
+        let s = |v: &str| Some(v.to_string());
+        for (indexador, taxa, benchmark) in [
+            ("pos", "103.5", Some("cdi")),
+            ("pos", "100", Some("selic")), // sem série: sem dados em todas as datas
+            ("pre", "12.4", None),
+        ] {
+            let n = NovoInvestimento {
+                tipo: "rf-cdb".into(),
+                instituicao: "Inter".into(),
+                emissor: s("Inter"),
+                indexador: s(indexador),
+                taxa: s(taxa),
+                benchmark: benchmark.and_then(s),
+                data_aplicacao: s("2026-03-17"),
+                vencimento: s("2030-03-15"),
+                valor_aplicado_centavos: Some(1_234_567),
+                liquidez: s("vencimento"),
+                ir: s("regressiva"),
+                ..Default::default()
+            };
+            assert!(matches!(
+                db.criar_investimento(&n, hoje).unwrap(),
+                Gravacao::Ok(_)
+            ));
+        }
+        let series = Series::carregar(&db, hoje).unwrap();
+        let datas = [
+            d(2026, 2, 28),
+            d(2026, 3, 17),
+            d(2026, 3, 31),
+            d(2026, 7, 31),
+            d(2026, 9, 30),
+            hoje,
+        ];
+        for inv in db.listar_investimentos(hoje).unwrap() {
+            let juntos = valorizar_datas(&db, &series, &inv, &datas).unwrap();
+            let um_a_um: Vec<Valor> = datas
+                .iter()
+                .map(|&x| valorizar_com(&db, &series, &inv, x).unwrap())
+                .collect();
+            assert_eq!(juntos, um_a_um, "{:?}", inv.indexador);
+        }
     }
 
     #[test]

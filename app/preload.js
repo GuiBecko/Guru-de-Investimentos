@@ -12,7 +12,10 @@ contextBridge.exposeInMainWorld("guru", {
     atualizar: (id, dados) => ipcRenderer.invoke("investimentos:atualizar", id, dados),
     apagar: (id) => ipcRenderer.invoke("investimentos:apagar", id),
   },
-  carteira: { resumo: () => ipcRenderer.invoke("carteira:resumo") },
+  carteira: {
+    resumo: () => ipcRenderer.invoke("carteira:resumo"),
+    painel: (meses, classe) => ipcRenderer.invoke("carteira:painel", meses, classe),
+  },
   perfil: {
     questionario: () => ipcRenderer.invoke("perfil:questionario"),
     registrar: (respostas) => ipcRenderer.invoke("perfil:registrar", respostas),

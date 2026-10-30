@@ -16,6 +16,8 @@ pub enum CoreError {
     NaoEncontrado(i64),
     #[error("Esta meta não existe mais. Atualize a lista.")]
     MetaNaoEncontrada(i64),
+    #[error("Período inválido: use 6 ou 12 meses.")]
+    PeriodoInvalido(u32),
 }
 
 impl CoreError {
@@ -26,6 +28,7 @@ impl CoreError {
             CoreError::Io(_) => "IO",
             CoreError::Sqlite(_) => "SQLITE",
             CoreError::NaoEncontrado(_) | CoreError::MetaNaoEncontrada(_) => "NAO_ENCONTRADO",
+            CoreError::PeriodoInvalido(_) => "PERIODO_INVALIDO",
         }
     }
 }

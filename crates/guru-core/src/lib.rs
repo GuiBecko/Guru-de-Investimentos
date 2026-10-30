@@ -3,6 +3,7 @@ mod error;
 mod investimento;
 mod mercado;
 mod metas;
+mod painel;
 mod perfil;
 
 pub use db::{Db, SCHEMA_VERSION};
@@ -26,4 +27,9 @@ pub use mercado::{
     B3Alvo, Baixador, BaixadorHttp, BaixadorPasta, Cotacao, ErroFonte, Origem, PontoDiario,
     PrecoTesouro, ResultadoAtualizacao, StatusFonte, Valor, atualizar, ler_cotahist_txt,
     ler_cotahist_zip, ler_sgs, ler_tesouro, titulo_tesouro, valorizar,
+};
+
+pub use painel::{
+    Historico, Instituicao, Numeros, Painel, PontoHistorico, Referencia, Variacao, Vencimento,
+    acumulado_benchmark, benchmark_padrao, datas_painel, historico, painel,
 };

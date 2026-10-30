@@ -80,7 +80,7 @@ test("carteira mostra total e um card por classe, e o card abre o detalhe", asyn
       window.location.hash = "#/carteira";
     });
     const main = page.locator("main");
-    await expect(main.getByText("Total aplicado")).toBeVisible();
+    await expect(main.locator(".numeros").getByText("Total aportado", { exact: true })).toBeVisible();
     await expect(main).toContainText("R$ 42.713,00");
     await expect(main).toContainText("Valores brutos, antes do IR. Dados de mercado de");
 
@@ -110,7 +110,7 @@ test("carteira mostra total e um card por classe, e o card abre o detalhe", asyn
     ]);
 
     await main.getByRole("link", { name: "Carteira ›" }).click();
-    await expect(main.getByText("Total aplicado")).toBeVisible();
+    await expect(main.locator(".numeros").getByText("Total aportado", { exact: true })).toBeVisible();
   } finally {
     await app.close();
   }
@@ -242,6 +242,97 @@ test("só com alvo e sem investimentos a carteira continua vazia", async () => {
     const main = page.locator("main");
     await expect(main).toContainText("Sua carteira está vazia.");
     await expect(main.getByRole("link", { name: "Lançar o primeiro investimento" })).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
+// Aplicados antes de um fim de mês do período das fixtures, para a classe ter retorno em outubro.
+const CDB_COM_HISTORICO = { ...CDB, dataAplicacao: "2026-08-31" };
+const ITUB4_COM_HISTORICO = { ...ITUB4, dataAplicacao: "2026-08-03" };
+
+test("detalhe da classe sem histórico mostra o aviso no lugar do seletor e do gráfico", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    // Aplicado no dia dos dados de mercado: nenhum dia aplicado, nenhum retorno.
+    await criar(page, { ...CDB, dataAplicacao: "2026-10-28" });
+    await page.evaluate(() => {
+      window.location.hash = "#/carteira/rf";
+    });
+    const main = page.locator("main");
+    await expect(main.getByRole("heading", { name: "Renda fixa" })).toBeVisible();
+    await expect(main).toContainText("Ainda não há histórico para comparar.");
+    // O período começa no aporte e, sem histórico, não tem valor.
+    const periodo = main.locator(".numeros-classe .total").nth(1);
+    await expect(periodo.locator("small")).toHaveText("Desde 10/26");
+    await expect(periodo.locator(".mid")).toHaveText("—");
+    await expect(main.getByRole("group", { name: "Benchmark" })).toHaveCount(0);
+    await expect(main.getByRole("img", { name: /Rentabilidade acumulada da classe/ })).toHaveCount(0);
+    await expect(main.locator("tbody tr")).toHaveCount(1);
+    await expect(main).not.toContainText("NaN");
+  } finally {
+    await app.close();
+  }
+});
+
+test("detalhe da classe: cabeçalho, benchmark padrão e troca sem refazer a chamada", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await criar(page, CDB_COM_HISTORICO);
+    await criar(page, SELIC);
+    await criar(page, ITUB4_COM_HISTORICO);
+    const main = page.locator("main");
+    const grupo = main.getByRole("group", { name: "Benchmark" });
+    const chamadas = () => page.evaluate(() => window.__chamadasPainel ?? 0);
+    const abrir = async (hash) => {
+      await page.evaluate((h) => {
+        window.location.hash = h;
+      }, hash);
+    };
+
+    await abrir("#/carteira/acoes");
+    await expect(grupo.getByRole("button", { name: "BOVA11" })).toHaveAttribute("aria-pressed", "true");
+    await expect(main.getByText("Suas ações")).toBeVisible();
+    await expect(main.locator(".numeros-classe .total").nth(1).locator("small")).toHaveText("Desde 08/26");
+
+    await abrir("#/carteira/rf");
+    await expect(main.getByRole("heading", { name: "Renda fixa" })).toBeVisible();
+    await expect(main.getByText("Em 12 meses")).toBeVisible();
+    await expect(main.getByText("Valor", { exact: true })).toBeVisible();
+    await expect(grupo.getByRole("button")).toHaveText(["CDI", "Selic", "IPCA", "BOVA11", "XFIX11"]);
+    await expect(grupo.getByRole("button", { name: "CDI" })).toHaveAttribute("aria-pressed", "true");
+    await expect(main.getByText("Sua renda fixa")).toBeVisible();
+    await expect(main.getByRole("img", { name: "Rentabilidade acumulada da classe contra o benchmark" })).toBeVisible();
+    await expect(main.locator("tbody tr")).toHaveCount(2);
+
+    // Conta as chamadas a partir daqui: trocar de benchmark não pode chamar a API de novo.
+    await page.evaluate(async () => {
+      const { api } = await import("./js/api.js");
+      const original = api.carteira.painel;
+      window.__chamadasPainel = 0;
+      api.carteira.painel = (...args) => {
+        window.__chamadasPainel += 1;
+        return original(...args);
+      };
+    });
+    await grupo.getByRole("button", { name: "IPCA" }).click();
+    await expect(grupo.getByRole("button", { name: "IPCA" })).toHaveAttribute("aria-pressed", "true");
+    await expect(grupo.getByRole("button", { name: "CDI" })).toHaveAttribute("aria-pressed", "false");
+    await expect(main.locator(".legenda")).toContainText("IPCA");
+    await expect(main.locator(".legenda")).not.toContainText("CDI");
+    // IPCA tem dados no período: a linha do benchmark é desenhada (classe + benchmark = 2 séries).
+    await expect(main).not.toContainText("sem dados no período.");
+    await expect(main.locator("svg.chart path.serie")).toHaveCount(2);
+
+    await grupo.getByRole("button", { name: "BOVA11" }).click();
+    await expect(grupo.getByRole("button", { name: "BOVA11" })).toBeEnabled();
+    await expect(main).toContainText("BOVA11 (Ibovespa): sem dados no período.");
+    await expect(main.locator("svg.chart path.serie")).toHaveCount(1);
+    await grupo.getByRole("button", { name: "CDI" }).click();
+    await expect(grupo.getByRole("button", { name: "CDI" })).toHaveAttribute("aria-pressed", "true");
+    expect(await chamadas()).toBe(0);
   } finally {
     await app.close();
   }

@@ -67,7 +67,10 @@ test("a ponte expõe só os canais do app e nada do Electron ou do Node", async 
       "atualizar",
       "apagar",
     ]);
-    expect(await page.evaluate(() => Object.keys(window.guru.carteira))).toEqual(["resumo"]);
+    expect(await page.evaluate(() => Object.keys(window.guru.carteira))).toEqual([
+      "resumo",
+      "painel",
+    ]);
     expect(await page.evaluate(() => Object.keys(window.guru.perfil))).toEqual([
       "questionario",
       "registrar",
@@ -153,6 +156,29 @@ test("metas e perfil pelo api: NAO_ENCONTRADO e questionário sem pontos", async
     );
     expect(q.perguntas).toHaveLength(12);
     expect(typeof q.perguntas[0].opcoes[0]).toBe("string");
+  } finally {
+    await app.close();
+  }
+});
+
+test("painel pelo api: 12 meses responde e 3 meses dá PERIODO_INVALIDO", async () => {
+  const app = await lancar(novoDataDir());
+  try {
+    const page = await app.firstWindow();
+    const painel = await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) => api.carteira.painel(12)),
+    );
+    expect(painel.datas).toHaveLength(13);
+    expect(painel.benchmarks.map((b) => b.codigo)).toEqual(["cdi", "ipca", "bova11"]);
+    const erro = await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) =>
+        api.carteira.painel(3).then(
+          () => null,
+          (e) => ({ code: e.code }),
+        ),
+      ),
+    );
+    expect(erro).toEqual({ code: "PERIODO_INVALIDO" });
   } finally {
     await app.close();
   }

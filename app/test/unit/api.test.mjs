@@ -25,7 +25,7 @@ test("api.investimentos e api.carteira repassam à ponte e desembrulham", async 
       investimentos: Object.fromEntries(
         ["catalogo", "listar", "ler", "criar", "atualizar", "apagar"].map((n) => [n, canal(n)]),
       ),
-      carteira: { resumo: canal("resumo") },
+      carteira: { resumo: canal("resumo"), painel: canal("painel") },
       perfil: Object.fromEntries(["questionario", "registrar", "atual"].map((n) => [n, canal(n)])),
       alocacao: Object.fromEntries(["ler", "salvar"].map((n) => [n, canal(n)])),
       objetivo: Object.fromEntries(["ler", "salvar"].map((n) => [n, canal(n)])),
@@ -44,6 +44,8 @@ test("api.investimentos e api.carteira repassam à ponte e desembrulham", async 
     assert.equal(await api.investimentos.listar(), "listar");
     assert.equal(await api.investimentos.catalogo(), "catalogo");
     assert.equal(await api.carteira.resumo(), "resumo");
+    assert.equal(await api.carteira.painel(12, "rf"), "painel");
+    assert.deepEqual(chamadas.at(-1), ["painel", 12, "rf"]);
     assert.deepEqual(chamadas[1], ["atualizar", 2, { b: 2 }]);
     assert.equal(await api.perfil.questionario(), "questionario");
     assert.equal(await api.perfil.registrar([0]), "registrar");

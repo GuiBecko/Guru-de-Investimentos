@@ -58,6 +58,10 @@ a.card:hover, a.card:focus-visible { border-color: var(--accent); }
 a.card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mid { font-size: 18px; font-weight: 500; }
 .total { display: grid; gap: 2px; }
+.numeros-classe { display: flex; gap: 28px; text-align: right; }
+.bloco-benchmark { margin-bottom: 14px; }
+.bloco-benchmark .seletor { margin-bottom: 8px; }
+.bloco-benchmark svg.chart { max-height: 240px; }
 .total small { color: var(--muted); }
 .migalha { font-size: 12px; color: var(--muted); text-decoration: none; }
 .migalha:hover, .migalha:focus-visible { color: var(--accent); }
@@ -149,3 +153,107 @@ textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
 .side .mercado .btn.ghost:hover:not(:disabled) { border-color: var(--side-ink); background: rgba(255, 255, 255, 0.1); }
 .side .mercado .btn.ghost:disabled { opacity: 0.75; color: var(--side-muted); }
 .side .falhas-marca:hover { color: var(--side-ink); }
+
+/* Gráficos em SVG (graficos.js): cores e tracejados só por classe, com tokens que já têm versão escura. */
+svg.chart .grade { stroke: var(--chart-grid); stroke-width: 1; stroke-dasharray: 1 3; }
+svg.chart .zero { stroke: var(--line-strong); stroke-width: 1; }
+svg.chart .guia { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 3; }
+svg.chart .eixo { fill: var(--muted); font: 10px var(--f-mono); }
+svg.chart .alvo { fill: transparent; }
+svg.chart .serie, svg.mini .serie { fill: none; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+svg.chart .serie.tracejada { stroke-width: 1.2; stroke-dasharray: 5 4; }
+.serie.s-carteira { stroke: var(--accent); }
+.serie.s-bench { stroke: var(--bench); }
+.serie.s-c1 { stroke: var(--c1); }
+.serie.s-c2 { stroke: var(--c2); }
+.serie.s-c3 { stroke: var(--c3); }
+.serie.s-c4 { stroke: var(--c4); }
+.serie.s-c5 { stroke: var(--c5); }
+.serie.s-up { stroke: var(--up); }
+.serie.s-down { stroke: var(--down); }
+svg.chart .barra.up { fill: var(--up); }
+svg.chart .barra.down { fill: var(--down); }
+svg.chart .fatia { stroke: var(--surface); stroke-width: 1; }
+.fatia.f-c1 { fill: var(--c1); }
+.fatia.f-c2 { fill: var(--c2); }
+.fatia.f-c3 { fill: var(--c3); }
+.fatia.f-c4 { fill: var(--c4); }
+.fatia.f-c5 { fill: var(--c5); }
+.fatia.f-accent { fill: var(--accent); }
+svg.chart .rosca-texto { fill: var(--ink); font: 600 12px var(--f-body); }
+svg.chart .dica-fundo { fill: var(--surface); stroke: var(--line-strong); stroke-width: 1; }
+svg.chart .dica-titulo { fill: var(--ink); font: 600 11px var(--f-mono); }
+svg.chart .dica-texto { fill: var(--muted); font: 11px var(--f-mono); }
+svg.mini { width: 80px; height: 24px; display: block; }
+svg.chart .ponto { stroke: none; }
+svg.chart .ponto.s-carteira { fill: var(--accent); }
+svg.chart .ponto.s-bench { fill: var(--bench); }
+svg.chart .ponto.s-c1 { fill: var(--c1); }
+svg.chart .ponto.s-c2 { fill: var(--c2); }
+svg.chart .ponto.s-c3 { fill: var(--c3); }
+svg.chart .ponto.s-c4 { fill: var(--c4); }
+svg.chart .ponto.s-c5 { fill: var(--c5); }
+svg.chart .ponto.s-up { fill: var(--up); }
+svg.chart .ponto.s-down { fill: var(--down); }
+
+/* Painel da carteira (tela 5 do protótipo). */
+.topo-painel { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.saudacao-texto { display: grid; gap: 4px; min-width: 0; }
+.saudacao-texto small::first-letter { text-transform: uppercase; }
+.main h1.frase { font-size: 22px; text-transform: none; }
+.acoes-topo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.seletor { display: flex; }
+.seletor .btn { margin: 0; }
+.seletor .btn[aria-pressed="true"] { background: var(--accent); color: var(--surface); }
+.painel-corpo { display: grid; gap: 14px; min-width: 0; container-type: inline-size; }
+/* Cards dos números: uma linha de cinco, como no protótipo (o maior com o dobro da largura).
+   Se algum valor não couber (painel.js mede e põe .apertado), vira 3 + 2. */
+.numeros { display: grid; grid-template-columns: minmax(0, 2fr) repeat(4, minmax(0, 1fr)); gap: 12px; }
+.numeros.apertado { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.numeros.apertado > :nth-child(-n + 3) { grid-column: span 2; }
+.numeros.apertado > :nth-child(n + 4) { grid-column: span 3; }
+.numeros .card { min-width: 0; }
+.numeros .hero { border-left: 3px solid var(--accent); }
+.numeros .mid { font-size: clamp(14px, 1.3vw, 16px); white-space: nowrap; min-width: 0; }
+.numeros .hero .mid { font-size: clamp(20px, 2.2vw, 28px); }
+.numeros .card b { font: 500 10.5px var(--f-mono); text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.numeros .card small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.graficos { display: grid; gap: 12px; min-width: 0; }
+.graficos.g1 { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+.graficos.g2 { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
+/* Duas colunas na janela normal (1280 × 800: ~1009 px de conteúdo) e na mínima (1100: ~829 px);
+   uma só quando o conteúdo fica mais estreito que isso. */
+@container (max-width: 780px) {
+  .graficos.g1, .graficos.g2 { grid-template-columns: minmax(0, 1fr); }
+}
+.grafico { min-width: 0; }
+.card-title h2 { font: 500 10.5px var(--f-mono); text-transform: uppercase; letter-spacing: 0.08em; }
+.bloco-titulo { font: 500 10.5px var(--f-mono); text-transform: uppercase; letter-spacing: 0.08em; }
+.bloco svg.chart, .bloco svg.mini { display: block; width: 100%; height: auto; }
+.bloco svg.rosca { width: 160px; max-width: 160px; flex: none; }
+svg.mini { width: 100%; max-width: 120px; height: 24px; }
+.rosca-corpo { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.rosca-corpo .legenda { flex-direction: column; flex-wrap: nowrap; gap: 6px; }
+.legenda { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; }
+.legenda li { display: flex; align-items: center; gap: 6px; }
+.legenda small { color: var(--muted); }
+.legenda .marca { display: inline-block; width: 10px; height: 10px; background: var(--muted); }
+.legenda .marca.tracejada { height: 0; border-top: 2px dashed var(--muted); background: none; }
+.legenda .marca.s-carteira { background: var(--accent); }
+.legenda .marca.s-bench { border-top-color: var(--bench); }
+.legenda .marca.s-c1.tracejada { border-top-color: var(--c1); }
+.legenda .marca.s-c2.tracejada { border-top-color: var(--c2); }
+.legenda .marca.s-c3.tracejada { border-top-color: var(--c3); }
+.legenda .marca.s-c4.tracejada { border-top-color: var(--c4); }
+.legenda .marca.f-c1 { background: var(--c1); }
+.legenda .marca.f-c2 { background: var(--c2); }
+.legenda .marca.f-c3 { background: var(--c3); }
+.legenda .marca.f-c4 { background: var(--c4); }
+.legenda .marca.f-c5 { background: var(--c5); }
+.legenda .marca.f-accent { background: var(--accent); }
+.listas { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.lista li { border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+.lista a { color: var(--accent); }
+.main .numeros .mid.up, .main .numeros .mid.down { font-weight: 500; }
+.graficos.g2 > :only-child { grid-column: 1 / -1; }

@@ -1,7 +1,10 @@
 import { api } from "../api.js";
-import { formatarData, formatarDecimos, formatarDiferenca, formatarReais } from "../formato.js";
+import { formatarCentesimos, formatarData, formatarReais } from "../formato.js";
+import { ajustavel, graficoLinhas } from "../graficos.js";
 import { caixaTabela, cabecalho, celulasValor, el } from "./_tabela.js";
 import { dataDoMercado, textoNota } from "../mercado.js";
+import { legenda, painel, secao, temHistorico } from "./carteira/painel.js";
+import { rotuloDaClasse, rotulosPeriodo } from "./carteira/periodo.js";
 
 const COLUNAS = [
   ["Investimento"],
@@ -26,59 +29,6 @@ function erro(elemento, titulo) {
   elemento.replaceChildren(el("h1", titulo), p);
 }
 
-function card(c) {
-  // Classe sem investimento não tem tela de detalhe: o card não é link.
-  const temDetalhe = c.quantidade > 0;
-  const a = temDetalhe ? el("a", undefined, "card click") : el("div", undefined, "card");
-  if (temDetalhe) a.href = `#/carteira/${c.classe}`;
-  const n = c.quantidade === 1 ? "1 investimento" : `${c.quantidade} investimentos`;
-  const base = el("div", undefined, "row");
-  base.append(el("small", n), el("span", formatarDecimos(c.percentualDecimos), "mono"));
-  a.append(el("b", c.rotulo), el("span", formatarReais(c.totalAtualCentavos), "mid mono"), base);
-  if (c.alvoPercentual !== null && c.alvoPercentual !== undefined) {
-    const alvo = el("div", undefined, "row");
-    alvo.append(el("small", `alvo ${c.alvoPercentual}%`), el("span", formatarDiferenca(c.percentualDecimos, c.alvoPercentual), "mono"));
-    a.append(alvo);
-  }
-  return a;
-}
-
-async function painel(elemento, vigente) {
-  let resumo;
-  try {
-    resumo = await api.carteira.resumo();
-  } catch (e) {
-    if (!vigente()) return;
-    console.error("Falha ao carregar a carteira:", e);
-    erro(elemento, "Carteira");
-    return;
-  }
-  if (!vigente()) return;
-
-  const partes = [el("h1", "Carteira")];
-  if (resumo.totalAplicadoCentavos === 0) {
-    const vazio = el("div", undefined, "vazio");
-    const novo = el("a", "Lançar o primeiro investimento", "btn");
-    novo.href = "#/investimentos/novo";
-    vazio.append(el("p", "Sua carteira está vazia."), novo);
-    partes.push(vazio);
-  } else {
-    const patrimonio = el("div", undefined, "total");
-    patrimonio.append(el("small", "Patrimônio"), el("div", formatarReais(resumo.totalAtualCentavos), "mid mono"));
-    const aplicado = el("div", undefined, "total");
-    aplicado.append(el("small", "Total aplicado"), el("div", formatarReais(resumo.totalAplicadoCentavos), "mono"));
-    const total = el("div", undefined, "patrimonio");
-    total.append(patrimonio, aplicado);
-    const cards = el("div", undefined, "classes");
-    cards.append(...resumo.classes.map(card));
-    partes.push(total, cards);
-  }
-  const data = await dataDoMercado();
-  if (!vigente()) return;
-  partes.push(el("p", textoNota(data), "hint"));
-  elemento.replaceChildren(...partes);
-}
-
 function linha(inv) {
   const tr = el("tr");
   const celulas = [
@@ -94,6 +44,52 @@ function linha(inv) {
     if (i === 3) tr.append(...celulasValor(inv));
   });
   return tr;
+}
+
+function seletorBenchmark(benchmarks, escolhido, aoEscolher) {
+  const grupo = el("div", undefined, "seletor");
+  grupo.setAttribute("role", "group");
+  grupo.setAttribute("aria-label", "Benchmark");
+  const botoes = benchmarks.map((b) => {
+    const botao = el("button", b.codigo === "bova11" || b.codigo === "xfix11" ? b.codigo.toUpperCase() : b.rotulo, "btn ghost sm");
+    botao.type = "button";
+    botao.setAttribute("aria-pressed", String(b.codigo === escolhido));
+    botao.addEventListener("click", () => {
+      botoes.forEach((x) => x.setAttribute("aria-pressed", String(x === botao)));
+      aoEscolher(b);
+    });
+    return botao;
+  });
+  grupo.append(...botoes);
+  return grupo;
+}
+
+// Card do gráfico: a classe contra o benchmark escolhido. Os cinco benchmarks já vêm no painel,
+// então trocar de um para outro só redesenha.
+function cartaoBenchmark(p, classe) {
+  if (!temHistorico(p)) {
+    const vazio = secao("Rentabilidade acumulada", undefined, el("p", "Ainda não há histórico para comparar.", "hint"));
+    vazio.classList.add("bloco-benchmark");
+    return vazio;
+  }
+  const grafico = el("div");
+  const legendaDoGrafico = el("div");
+  const desenhar = (b) => {
+    const sua = rotuloDaClasse(classe);
+    const series = [{ rotulo: sua, valores: p.pontos.map((x) => x.acumuladoCentesimos), classe: "s-carteira" }];
+    const itens = [{ rotulo: sua, classe: "s-carteira" }];
+    itens.push({ rotulo: b.rotulo, classe: "s-bench", tracejada: true, texto: b.valores ? "" : "sem dados" });
+    if (b.valores) series.push({ rotulo: b.rotulo, valores: b.valores, classe: "s-bench", tracejada: true });
+    grafico.replaceChildren(ajustavel((w) => graficoLinhas(p.datas, series, formatarCentesimos, "Rentabilidade acumulada da classe contra o benchmark", w)));
+    const nova = [legenda(itens)];
+    if (!b.valores) nova.push(el("p", `${b.rotulo}: sem dados no período.`, "hint"));
+    legendaDoGrafico.replaceChildren(...nova);
+  };
+  const inicial = p.benchmarks.find((b) => b.codigo === p.benchmarkPadrao) ?? p.benchmarks[0];
+  desenhar(inicial);
+  const cartao = secao("Rentabilidade acumulada", undefined, seletorBenchmark(p.benchmarks, inicial.codigo, desenhar), grafico, legendaDoGrafico);
+  cartao.classList.add("bloco-benchmark");
+  return cartao;
 }
 
 async function detalhe(elemento, classe, vigente) {
@@ -118,12 +114,35 @@ async function detalhe(elemento, classe, vigente) {
     return;
   }
 
+  // O painel da classe só existe para classe com investimento: por isso vem depois da checagem acima.
+  let p;
+  try {
+    p = await api.carteira.painel(12, classe);
+  } catch (e) {
+    if (!vigente()) return;
+    console.error("Falha ao carregar o histórico da classe:", e);
+    erro(elemento, "Carteira");
+    return;
+  }
+  if (!vigente()) return;
+
   const topo = el("div", undefined, "row");
   const titulo = el("div");
   titulo.append(voltar(), el("h1", info.rotulo));
   const valor = el("div", undefined, "total");
-  valor.append(el("small", "Total da classe"), el("div", formatarReais(info.totalAtualCentavos), "mid mono"));
-  topo.append(titulo, valor);
+  valor.append(el("small", "Valor"), el("div", formatarReais(info.totalAtualCentavos), "mid mono"));
+  const periodo = el("div", undefined, "total");
+  // Sem histórico não há período a mostrar; com `desde`, ele começa no primeiro aporte.
+  const comHistorico = temHistorico(p);
+  const centesimos = p.numeros.periodoCentesimos;
+  const sinal = !comHistorico ? "" : centesimos > 0 ? " up" : centesimos < 0 ? " down" : "";
+  periodo.append(
+    el("small", rotulosPeriodo(p.numeros.desde, 12).periodo),
+    el("div", comHistorico ? formatarCentesimos(centesimos) : "—", `mid mono${sinal}`),
+  );
+  const numeros = el("div", undefined, "numeros-classe");
+  numeros.append(valor, periodo);
+  topo.append(titulo, numeros);
 
   const tbody = el("tbody");
   tbody.append(...doClasse.map(linha));
@@ -142,10 +161,10 @@ async function detalhe(elemento, classe, vigente) {
   tfoot.append(rodape);
   const data = await dataDoMercado();
   if (!vigente()) return;
-  elemento.replaceChildren(topo, caixaTabela(cabecalho(COLUNAS), tbody, tfoot), el("p", textoNota(data), "hint"));
+  elemento.replaceChildren(topo, cartaoBenchmark(p, classe), caixaTabela(cabecalho(COLUNAS), tbody, tfoot), el("p", textoNota(data), "hint"));
 }
 
 export function render(elemento, parametros = [], vigente = () => true) {
   if (parametros.length > 0) return detalhe(elemento, parametros[0], vigente);
-  return painel(elemento, vigente);
+  return painel(elemento, vigente, erro);
 }

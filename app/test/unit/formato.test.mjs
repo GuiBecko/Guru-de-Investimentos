@@ -88,3 +88,24 @@ test("formatarRentabilidade", async () => {
   assert.equal(formatarRentabilidade(-32), "−3,2%");
   assert.equal(formatarRentabilidade(-5), "−0,5%");
 });
+
+test("formatarCentesimos", async () => {
+  const { formatarCentesimos } = await import("../../renderer/js/formato.js");
+  assert.equal(formatarCentesimos(107), "+1,07%");
+  assert.equal(formatarCentesimos(-2350), "−23,5%");
+  assert.equal(formatarCentesimos(0), "0,00%");
+  assert.equal(formatarCentesimos(null), "—");
+  assert.equal(formatarCentesimos(-5), "−0,05%");
+  assert.equal(formatarCentesimos(999), "+9,99%");
+  assert.equal(formatarCentesimos(1005), "+10,1%");
+});
+
+test("formatadores arredondam entrada fracionária", async () => {
+  const { formatarCentesimos, formatarReais } = await import("../../renderer/js/formato.js");
+  assert.equal(formatarCentesimos(166.666666666667), "+1,67%");
+  assert.equal(formatarCentesimos(-1666.67), "−16,7%");
+  assert.equal(formatarCentesimos(NaN), "—");
+  assert.equal(formatarReais(1234.5), "R$ 12,35");
+  assert.equal(formatarReais(100.4), "R$ 1,00");
+  assert.equal(formatarReais(-166.67), "-R$ 1,67");
+});

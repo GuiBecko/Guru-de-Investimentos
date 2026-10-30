@@ -8,6 +8,7 @@ use napi_derive::napi;
 mod investimentos;
 mod mercado;
 mod metas;
+mod painel;
 mod perfil;
 use investimentos::{
     Catalogo, ErroCampoJs, InvestimentoJs, NovoInvestimentoJs, ResultadoGravacao, ResumoJs,
@@ -15,6 +16,7 @@ use investimentos::{
 };
 use mercado::{AtualizarMercado, ModoTeste, OpcoesCore, StatusFonteJs};
 use metas::{MetaJs, NovaMetaJs};
+use painel::CalcularPainel;
 use perfil::{AlocacaoClasseJs, PercentualClasseJs, PerfilJs, QuestionarioJs, ResultadoPerfilJs};
 
 #[napi(object)]
@@ -137,6 +139,12 @@ impl Core {
             .resumo_carteira(self.data_mercado())
             .map_err(to_js)?;
         Ok(investimentos::resumo(r))
+    }
+
+    /// Assíncrono (`Promise`): calcula numa thread do libuv, com conexão própria.
+    #[napi]
+    pub fn painel(&self, meses: u32, classe: Option<String>) -> AsyncTask<CalcularPainel> {
+        painel::tarefa(self.pasta_dados.clone(), self.data_mercado(), meses, classe)
     }
 
     #[napi]
