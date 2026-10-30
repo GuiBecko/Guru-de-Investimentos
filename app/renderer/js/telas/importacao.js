@@ -305,7 +305,8 @@ function criarItem(item, n, catalogo, nomes) {
         soltos.push(mensagem);
         continue;
       }
-      c.erro.textContent = mensagem;
+      const primeiraCompra = campo === "dataAplicacao" && tipoAtual()?.forma === "renda_variavel" && mensagem === "Informe a data da aplicação.";
+      c.erro.textContent = primeiraCompra ? "Informe a data da primeira compra." : mensagem;
       c.erro.hidden = false;
       c.controle.setAttribute("aria-invalid", "true");
       c.controle.setAttribute("aria-describedby", c.erro.id);
@@ -323,7 +324,7 @@ function criarItem(item, n, catalogo, nomes) {
   // Dados completos para o `Adicionar`: a sugestão com o que o usuário digitou por cima.
   function dados() {
     const t = tipoAtual();
-    if (!t) return { dados: { ...sugestao }, erros: [] };
+    if (!t) return { dados: { ...sugestao }, erros: [{ campo: "tipo", mensagem: "Escolha o tipo." }] };
     const v = textosDaSugestao(sugestao);
     const le = (nome, alvo) => {
       if (campos[nome]?.controle) v[alvo ?? nome] = campos[nome].controle.value;
@@ -458,8 +459,11 @@ export async function render(raiz, _parametros = [], vigente = () => true) {
 
     const contar = () => linhas.filter((l) => MUDAM.has(l.acao().codigo)).length;
     const atualizarBotao = () => {
-      aplicar.textContent = `Aplicar ${alteracoes(contar())}`;
+      const n = contar();
+      aplicar.textContent = `Aplicar ${alteracoes(n)}`;
+      aplicar.disabled = n === 0;
     };
+    aplicar.refrescar = atualizarBotao;
     for (const l of linhas) l.aoMudar(atualizarBotao);
     atualizarBotao();
     aplicar.addEventListener("click", () => aplicarTudo(aplicar));
@@ -525,7 +529,7 @@ export async function render(raiz, _parametros = [], vigente = () => true) {
       }
     } finally {
       ocupado = false;
-      botao.disabled = false;
+      botao.refrescar();
     }
   }
 

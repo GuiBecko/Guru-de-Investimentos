@@ -119,6 +119,7 @@ test("novo incompleto mostra o erro no campo e não grava nada", async () => {
     await page.getByRole("button", { name: "Aplicar 9 alterações", exact: true }).click();
     const itub = item(page, "ITUB4");
     await expect(itub.locator(".erro", { hasText: "Informe o preço médio." })).toBeVisible();
+    await expect(itub.locator(".erro", { hasText: "Informe a data da primeira compra." })).toBeVisible();
     await expect(itub.getByLabel("Preço médio")).toHaveAttribute("aria-invalid", "true");
     await expect(page.getByRole("heading", { name: "Importar da B3" })).toBeVisible();
     await page.evaluate(() => {
@@ -163,7 +164,9 @@ test("planilha com aba desconhecida mostra a mensagem de arquivo inválido", asy
     const page = await app.firstWindow();
     await irParaImportar(page);
     await escolher(page);
-    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveText(
+      "Não encontrei nenhuma aba da posição da B3 neste arquivo. Aba Aluguel de Ações não reconhecida. Aba Renda Fixa: falta a coluna Vencimento.",
+    );
     await expect(page.getByRole("button", { name: "Escolher planilha" })).toBeVisible();
   } finally {
     await app.close();
@@ -179,6 +182,19 @@ test("cancelar o diálogo mantém a tela inicial", async () => {
     await expect(page.getByRole("button", { name: "Escolher planilha" })).toBeVisible();
     await expect(page.getByRole("alert")).toHaveCount(0);
     await expect(page.locator("tbody.item")).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test("com tudo em Ignorar o botão Aplicar fica desabilitado", async () => {
+  const app = await abrir(COMPLETA);
+  try {
+    const page = await app.firstWindow();
+    await irParaImportar(page);
+    await escolher(page);
+    await ignorarTodosExceto(page, "NENHUM");
+    await expect(page.getByRole("button", { name: "Aplicar 0 alterações", exact: true })).toBeDisabled();
   } finally {
     await app.close();
   }
