@@ -14,8 +14,9 @@ pub use benchmark::{Referencia, acumulado_benchmark, benchmark_padrao};
 pub use historico::{Historico, PontoHistorico, datas_painel, historico};
 pub use listas::{Instituicao, Variacao, Vencimento};
 
-use benchmark::{Fatores, fatores_benchmark, para_centesimos};
-use historico::em_centesimos;
+use crate::mercado::Series;
+use benchmark::{fatores_benchmark, para_centesimos};
+use historico::{com_aplicacao, em_centesimos, historico_com};
 
 /// Números do topo do painel. Percentuais em centésimos de ponto percentual.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,11 +26,15 @@ pub struct Numeros {
     /// Retorno do último intervalo.
     pub mes_centesimos: Option<i64>,
     pub mes_cdi_centesimos: Option<i64>,
-    /// Acumulado no último ponto.
+    /// Acumulado no último ponto, desde o começo do histórico (`Historico::inicio`).
     pub periodo_centesimos: i64,
+    /// CDI do mesmo trecho do período que a carteira.
     pub periodo_cdi_centesimos: Option<i64>,
     /// `V_último − V₀ − Σ F` do período.
     pub rendeu_centavos: i64,
+    /// Data do primeiro aporte considerado, só quando é posterior ao primeiro ponto: o período
+    /// comparado começa nela, não 6/12 meses antes.
+    pub desde: Option<NaiveDate>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,8 +50,8 @@ pub struct Painel {
 
 fn numeros(
     h: &Historico,
-    cdi: Option<&Fatores>,
-    cdi_ultimo_mes: Option<&Fatores>,
+    periodo_cdi: Option<i64>,
+    mes_cdi: Option<i64>,
 ) -> Result<Numeros, CoreError> {
     let (Some(primeiro), Some(ultimo)) = (h.pontos.first(), h.pontos.last()) else {
         return Err(CoreError::DbInvalid("histórico sem pontos".into()));
@@ -60,10 +65,6 @@ fn numeros(
         .zip(fluxo)
         .and_then(|(v, f)| v.checked_sub(f))
         .ok_or_else(|| CoreError::DbInvalid("rendimento da carteira excede o limite".into()))?;
-    let periodo_cdi = cdi
-        .and_then(|f| f.last().copied().flatten())
-        .map(em_centesimos);
-    let mes_cdi = cdi_ultimo_mes.and_then(|f| f[1]).map(em_centesimos);
     Ok(Numeros {
         patrimonio_centavos: ultimo.patrimonio_centavos,
         aportado_centavos: ultimo.aportado_centavos,
@@ -72,12 +73,13 @@ fn numeros(
         periodo_centesimos: ultimo.acumulado_centesimos,
         periodo_cdi_centesimos: periodo_cdi,
         rendeu_centavos: rendeu,
+        desde: h.desde,
     })
 }
 
 /// Tudo que o painel mostra. Sem `classe`, os benchmarks são CDI, IPCA e BOVA11 (o gráfico
 /// do protótipo); com `classe`, vêm os cinco, para o seletor do detalhe, e as listas só
-/// consideram aquela classe.
+/// consideram aquela classe. As séries e os investimentos são lidos uma vez só.
 pub fn painel(
     db: &Db,
     hoje: NaiveDate,
@@ -85,26 +87,34 @@ pub fn painel(
     classe: Option<Classe>,
 ) -> Result<Painel, CoreError> {
     let datas = datas_painel(hoje, meses)?;
-    let historico = historico(db, hoje, meses, classe)?;
+    let series = Series::carregar(db, hoje)?;
+    let investimentos = com_aplicacao(db.listar_investimentos(hoje)?, classe)?;
+    let historico = historico_com(db, &series, &investimentos, &datas)?;
     let referencias: &[Referencia] = if classe.is_some() {
         Referencia::TODOS
     } else {
         &[Referencia::Cdi, Referencia::Ipca, Referencia::Bova11]
     };
+    // Os benchmarks partem do começo do histórico da carteira, para comparar o mesmo trecho.
+    let base = historico.inicio.unwrap_or(0);
     let benchmarks = referencias
         .iter()
-        .map(|&r| Ok((r, para_centesimos(fatores_benchmark(db, r, &datas)?))))
+        .map(|&r| {
+            let f = fatores_benchmark(db, &series, r, &datas[base..])?;
+            Ok((r, para_centesimos(f, base)))
+        })
         .collect::<Result<Vec<_>, CoreError>>()?;
-    let cdi = fatores_benchmark(db, Referencia::Cdi, &datas)?;
-    // O CDI do último intervalo não depende de haver dado no primeiro ponto do período.
-    let cdi_ultimo_mes = fatores_benchmark(db, Referencia::Cdi, &datas[datas.len() - 2..])?;
-    let numeros = numeros(&historico, cdi.as_ref(), cdi_ultimo_mes.as_ref())?;
+    let periodo_cdi = benchmarks
+        .iter()
+        .find(|(r, _)| *r == Referencia::Cdi)
+        .and_then(|(_, v)| v.as_ref()?.last().copied().flatten());
+    // O CDI do último intervalo não depende de haver dado no começo do período.
+    let mes_cdi = fatores_benchmark(db, &series, Referencia::Cdi, &datas[datas.len() - 2..])?
+        .and_then(|f| f[1])
+        .map(em_centesimos);
+    let numeros = numeros(&historico, periodo_cdi, mes_cdi)?;
 
-    let investimentos: Vec<_> = db
-        .listar_investimentos(hoje)?
-        .into_iter()
-        .filter(|i| classe.is_none_or(|c| i.classe == c))
-        .collect();
+    let investimentos: Vec<_> = investimentos.into_iter().map(|(i, _)| i).collect();
     Ok(Painel {
         instituicoes: listas::instituicoes(&investimentos)?,
         vencimentos: listas::vencimentos(&investimentos, hoje),

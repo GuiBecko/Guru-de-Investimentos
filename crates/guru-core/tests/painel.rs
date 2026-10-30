@@ -104,17 +104,6 @@ fn acao_aplicada_em_outubro_so_aparece_hoje() {
 }
 
 #[test]
-fn carteira_nova_nao_tem_retorno_nem_acumulado() {
-    let (_d, db) = banco();
-    criar(&db, itub4("2026-10-01"));
-    let h = historico(&db, hoje(), 6, None).unwrap();
-    for p in &h.pontos {
-        assert_eq!(p.retorno_centesimos, None);
-        assert_eq!(p.acumulado_centesimos, 0);
-    }
-}
-
-#[test]
 fn carteira_vazia_nao_quebra() {
     let (_d, db) = banco();
     let h = historico(&db, hoje(), 6, None).unwrap();
@@ -528,4 +517,232 @@ fn ipca_com_o_ultimo_mes_fechado_ainda_nao_publicado_mantem_o_ponto() {
     assert_eq!(r[0], Some(0));
     assert!(r[1].is_some_and(|v| v > 0));
     assert_eq!(r[2], r[1]);
+}
+
+// ---- Revisão final: Dietz por dias, mudança de origem e período comparável ----
+
+/// Banco só com um CDI sintético (0,055131% a.d. nos dias úteis desde 2024), para comparar a
+/// carteira com o CDI num período inteiro; a fixture do CDI só começa em setembro de 2026.
+fn banco_cdi_sintetico() -> (tempfile::TempDir, Db) {
+    use chrono::{Datelike, Weekday};
+    let dir = tempfile::tempdir().unwrap();
+    let db = Db::open(dir.path()).unwrap();
+    let mut d = data(2024, 1, 1);
+    let mut cdi = Vec::new();
+    while d <= hoje() {
+        if d.weekday() != Weekday::Sat && d.weekday() != Weekday::Sun {
+            cdi.push(PontoDiario {
+                data: d,
+                valor: Decimal::new(55_131, 6),
+            });
+        }
+        d = d.succ_opt().unwrap();
+    }
+    db.gravar_indice("cdi", &cdi).unwrap();
+    (dir, db)
+}
+
+fn perto_de(a: i64, b: i64, tolerancia: i64, o_que: &str) {
+    assert!((a - b).abs() <= tolerancia, "{o_que}: {a} contra {b}");
+}
+
+#[test]
+fn aporte_grande_no_comeco_do_mes_acompanha_o_cdi() {
+    let (_d, db) = banco_cdi_sintetico();
+    criar(&db, cdb("2025-10-31", 100_000));
+    criar(&db, cdb("2026-10-01", 1_000_000));
+    let p = painel(&db, hoje(), 12, None).unwrap();
+    let n = &p.numeros;
+    perto_de(
+        n.mes_centesimos.unwrap(),
+        n.mes_cdi_centesimos.unwrap(),
+        2,
+        "no mês",
+    );
+    perto_de(
+        n.periodo_centesimos,
+        n.periodo_cdi_centesimos.unwrap(),
+        2,
+        "no período",
+    );
+}
+
+#[test]
+fn carteira_nova_tem_retorno_no_primeiro_mes() {
+    let (_d, db) = banco_cdi_sintetico();
+    criar(&db, cdb("2026-10-01", 1_000_000));
+    let p = painel(&db, hoje(), 6, None).unwrap();
+    let pts = &p.historico.pontos;
+    assert!(pts[..6].iter().all(|x| x.retorno_centesimos.is_none()));
+    let r = pts[6]
+        .retorno_centesimos
+        .expect("o primeiro mês tem retorno");
+    perto_de(r, p.numeros.mes_cdi_centesimos.unwrap(), 2, "no mês");
+    assert_eq!(pts[6].acumulado_centesimos, r);
+}
+
+#[test]
+fn acao_a_custo_que_ganha_cotacao_hoje_nao_salta_no_mes() {
+    let (_d, db) = banco();
+    criar(&db, itub4("2026-02-01")); // sem cotação até 28/10: a custo nos fins de mês
+    let p = painel(&db, hoje(), 6, None).unwrap();
+    // O patrimônio do ponto continua real; só o retorno ignora a troca de origem.
+    assert_eq!(p.historico.pontos[5].patrimonio_centavos, 150 * 3500);
+    assert_eq!(p.historico.pontos[6].patrimonio_centavos, 150 * 3978);
+    assert_eq!(p.numeros.mes_centesimos, Some(0));
+    assert_eq!(p.numeros.periodo_centesimos, 0);
+}
+
+#[test]
+fn pontos_passados_usam_cotacao_e_pu_guardados_ate_a_data() {
+    let (_d, db) = banco();
+    criar(&db, itub4("2026-02-01"));
+    cotacao(&db, "ITUB4", data(2026, 8, 31), 3600);
+    cotacao(&db, "ITUB4", data(2026, 9, 15), 3700);
+    criar(
+        &db,
+        NovoInvestimento {
+            tipo: "td-ipca".into(),
+            instituicao: "Rico".into(),
+            taxa: s("7.5"),
+            data_aplicacao: s("2025-03-10"),
+            vencimento: s("2035-05-15"),
+            valor_aplicado_centavos: Some(1_000_000),
+            ir: s("regressiva"),
+            ..Default::default()
+        },
+    );
+    let td = |d: NaiveDate| {
+        db.preco_tesouro_em("Tesouro IPCA+", data(2035, 5, 15), d)
+            .unwrap()
+            .unwrap()
+    };
+    let compra = td(data(2025, 3, 10)).pu_compra;
+    let valor_td = |d: NaiveDate| {
+        use rust_decimal::prelude::ToPrimitive;
+        (Decimal::from(1_000_000) / compra * td(d).pu_base)
+            .floor()
+            .to_i64()
+            .unwrap()
+    };
+    let h = historico(&db, hoje(), 6, None).unwrap();
+    let em = |d: NaiveDate| h.pontos.iter().find(|p| p.data == d).unwrap();
+    // 31/07: ITUB4 ainda a custo; o Tesouro usa o último PU guardado (março de 2025).
+    assert_eq!(
+        em(data(2026, 7, 31)).patrimonio_centavos,
+        150 * 3500 + valor_td(data(2026, 7, 31))
+    );
+    assert_eq!(
+        em(data(2026, 8, 31)).patrimonio_centavos,
+        150 * 3600 + valor_td(data(2026, 8, 31))
+    );
+    // 30/09 enxerga a cotação de 15/09, não a de 28/10.
+    assert_eq!(
+        em(data(2026, 9, 30)).patrimonio_centavos,
+        150 * 3700 + valor_td(data(2026, 9, 30))
+    );
+    assert_eq!(
+        em(hoje()).patrimonio_centavos,
+        150 * 3978 + valor_td(hoje())
+    );
+    assert_ne!(valor_td(data(2026, 9, 30)), valor_td(hoje()));
+}
+
+#[test]
+fn carteira_iniciada_em_abril_compara_o_periodo_desde_o_comeco() {
+    let (_d, db) = banco_cdi_sintetico();
+    criar(&db, cdb("2026-04-15", 1_000_000));
+    criar(&db, cdb("2026-06-10", 500_000));
+    criar(&db, cdb("2026-09-01", 300_000));
+    let p = painel(&db, hoje(), 12, None).unwrap();
+    perto_de(
+        p.numeros.periodo_centesimos,
+        p.numeros.periodo_cdi_centesimos.unwrap(),
+        2,
+        "no período",
+    );
+    // O primeiro intervalo com retorno é (31/03, 30/04]: tudo parte de 31/03.
+    assert_eq!(p.datas[5], data(2026, 3, 31));
+    assert_eq!(p.historico.inicio, Some(5));
+    assert_eq!(p.numeros.desde, Some(data(2026, 4, 15)));
+    let cdi = p.benchmarks[0].1.as_ref().unwrap();
+    assert!(cdi[..5].iter().all(Option::is_none));
+    assert_eq!(cdi[5], Some(0));
+    assert_eq!(cdi[12], p.numeros.periodo_cdi_centesimos);
+    assert!(
+        p.historico.pontos[..=5]
+            .iter()
+            .all(|x| x.acumulado_centesimos == 0)
+    );
+}
+
+#[test]
+fn benchmarks_partem_do_comeco_do_historico() {
+    let (_d, db) = banco();
+    // Com o CDI da fixture (só de setembro em diante), 12 meses antes não teriam CDI.
+    criar(&db, cdb("2026-09-30", 1_000_000));
+    let p = painel(&db, hoje(), 12, None).unwrap();
+    assert_eq!(p.historico.inicio, Some(11));
+    assert_eq!(p.numeros.desde, Some(data(2026, 9, 30)));
+    let cdi = p.benchmarks[0].1.as_ref().expect("CDI desde 30/09");
+    assert_eq!(cdi.len(), 13);
+    assert!(cdi[..11].iter().all(Option::is_none));
+    assert_eq!(cdi[11], Some(0));
+    let mes = acumulado_benchmark(&db, Referencia::Cdi, &[data(2026, 9, 30), hoje()])
+        .unwrap()
+        .unwrap()[1];
+    assert_eq!(cdi[12], mes);
+    assert_eq!(p.numeros.periodo_cdi_centesimos, mes);
+    // BOVA11 não tem cotação em 30/09: ausente inteiro.
+    assert_eq!(p.benchmarks[2].0, Referencia::Bova11);
+    assert_eq!(p.benchmarks[2].1, None);
+}
+
+#[test]
+fn sem_historico_nao_ha_inicio_nem_desde_anterior_ao_periodo() {
+    let (_d, db) = banco();
+    let vazio = painel(&db, hoje(), 6, None).unwrap();
+    assert_eq!(vazio.historico.inicio, None);
+    assert_eq!(vazio.numeros.desde, None);
+    // Carteira anterior ao período: compara os 6 meses inteiros, sem "desde".
+    criar(&db, itub4("2026-02-01"));
+    let p = painel(&db, hoje(), 6, None).unwrap();
+    assert_eq!(p.historico.inicio, Some(0));
+    assert_eq!(p.numeros.desde, None);
+}
+
+/// Meta: 300 CDBs de uns 3,5 anos em menos de 250 ms em release. Rode com
+/// `cargo test --release -p guru-core --test painel desempenho -- --ignored --nocapture`.
+#[test]
+#[ignore = "desempenho: rode à mão em release"]
+fn desempenho_de_300_cdbs_em_doze_meses() {
+    use chrono::{Datelike, Weekday};
+    let dir = tempfile::tempdir().unwrap();
+    let db = Db::open(dir.path()).unwrap();
+    let mut d = data(2019, 1, 1);
+    let mut cdi = Vec::new();
+    while d <= hoje() {
+        if d.weekday() != Weekday::Sat && d.weekday() != Weekday::Sun {
+            cdi.push(PontoDiario {
+                data: d,
+                valor: Decimal::new(55_131, 6),
+            });
+        }
+        d = d.succ_opt().unwrap();
+    }
+    db.gravar_indice("cdi", &cdi).unwrap();
+    db.gravar_indice("selic", &cdi).unwrap();
+    for i in 0..300u64 {
+        let aplicacao = data(2019, 2, 1) + chrono::Days::new((i * 7) % 2700);
+        let mut n = cdb(&aplicacao.to_string(), 100_000);
+        n.instituicao = format!("Banco {}", i % 7);
+        n.taxa = s("102");
+        criar(&db, n);
+    }
+    let t = std::time::Instant::now();
+    let p = painel(&db, hoje(), 12, None).unwrap();
+    let tempo = t.elapsed();
+    eprintln!("painel(12) com 300 CDBs: {tempo:?}");
+    assert_eq!(p.historico.pontos.len(), 13);
+    assert!(tempo.as_millis() < 250, "{tempo:?}");
 }

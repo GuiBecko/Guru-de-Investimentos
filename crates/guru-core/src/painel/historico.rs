@@ -8,7 +8,7 @@ use rust_decimal::prelude::ToPrimitive;
 use crate::db::Db;
 use crate::error::CoreError;
 use crate::investimento::{Classe, Investimento};
-use crate::mercado::{Series, valorizar_com};
+use crate::mercado::{Series, Valor, valorizar_datas};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PontoHistorico {
@@ -27,6 +27,11 @@ pub struct Historico {
     pub pontos: Vec<PontoHistorico>,
     /// Patrimônio por ponto, só das classes com algum investimento, na ordem de `Classe`.
     pub por_classe: Vec<(Classe, Vec<i64>)>,
+    /// Índice do ponto onde começa o primeiro intervalo com retorno válido; `None` sem nenhum.
+    /// Benchmarks e o CDI do período partem dele.
+    pub inicio: Option<usize>,
+    /// Data do primeiro aporte considerado, só quando é posterior ao primeiro ponto.
+    pub desde: Option<NaiveDate>,
 }
 
 /// O último dia de cada um dos `meses` meses anteriores ao de `hoje`, em ordem crescente,
@@ -63,19 +68,33 @@ pub(super) fn dividir_arredondando(num: i128, den: i128) -> i128 {
     (2 * num + den).div_euclid(2 * den)
 }
 
-/// Dietz simples: `r = (V1 − V0 − F) / (V0 + F/2)` em centésimos. `None` sem patrimônio
-/// no começo ou com denominador não positivo.
-fn retorno_dietz(v0: i64, fluxo: i64, v1: i64) -> Option<i64> {
-    if v0 <= 0 {
+/// Dietz modificado, ponderado por dias corridos, no intervalo `(d0, d1]`, em centésimos:
+/// `r = (V1 − V0 − ΣFᵢ) / (V0 + Σ wᵢFᵢ)` com `wᵢ = (d1 − tᵢ) / (d1 − d0)`. Ausente só com
+/// denominador não positivo (sem patrimônio no começo e sem aporte que tenha ficado aplicado).
+fn retorno_dietz(
+    (d0, d1): (NaiveDate, NaiveDate),
+    v0: i64,
+    fluxos: &[(NaiveDate, i64)],
+    v1: i64,
+) -> Option<i64> {
+    let dias = i128::from((d1 - d0).num_days());
+    if dias <= 0 {
         return None;
     }
-    let (v0, f, v1) = (i128::from(v0), i128::from(fluxo), i128::from(v1));
-    let den = 2 * v0 + f;
+    let mut soma = 0i128;
+    let mut ponderado = 0i128;
+    for &(t, f) in fluxos {
+        let f = i128::from(f);
+        soma = soma.checked_add(f)?;
+        ponderado = ponderado.checked_add(f.checked_mul(i128::from((d1 - t).num_days()))?)?;
+    }
+    let (v0, v1) = (i128::from(v0), i128::from(v1));
+    let den = v0.checked_mul(dias)?.checked_add(ponderado)?;
     if den <= 0 {
         return None;
     }
-    let r = dividir_arredondando(2 * (v1 - v0 - f) * 10_000, den);
-    i64::try_from(r).ok()
+    let num = (v1 - v0 - soma).checked_mul(dias)?.checked_mul(10_000)?;
+    i64::try_from(dividir_arredondando(num, den)).ok()
 }
 
 /// `Π(1 + r_k) − 1` em centésimos; retorno ausente conta como fator 1.
@@ -89,6 +108,18 @@ pub(super) fn em_centesimos(fator: Decimal) -> i64 {
     c.floor().to_i64().unwrap_or(0)
 }
 
+/// Investimentos considerados, com a data de aplicação já lida.
+pub(super) fn com_aplicacao(
+    investimentos: Vec<Investimento>,
+    classe: Option<Classe>,
+) -> Result<Vec<(Investimento, NaiveDate)>, CoreError> {
+    investimentos
+        .into_iter()
+        .filter(|i| classe.is_none_or(|c| i.classe == c))
+        .map(|i| data_aplicacao(&i).map(|d| (i, d)))
+        .collect()
+}
+
 /// Patrimônio e aportado em cada data do painel, e os retornos entre elas. Com `classe`,
 /// só entram os investimentos daquela classe.
 pub fn historico(
@@ -99,11 +130,20 @@ pub fn historico(
 ) -> Result<Historico, CoreError> {
     let datas = datas_painel(hoje, meses)?;
     let series = Series::carregar(db, hoje)?;
-    let investimentos: Vec<(Investimento, NaiveDate)> = db
-        .listar_investimentos(hoje)?
-        .into_iter()
-        .filter(|i| classe.is_none_or(|c| i.classe == c))
-        .map(|i| data_aplicacao(&i).map(|d| (i, d)))
+    let investimentos = com_aplicacao(db.listar_investimentos(hoje)?, classe)?;
+    historico_com(db, &series, &investimentos, &datas)
+}
+
+/// O mesmo que `historico`, com as séries, os investimentos e as datas já em mãos.
+pub(super) fn historico_com(
+    db: &Db,
+    series: &Series,
+    investimentos: &[(Investimento, NaiveDate)],
+    datas: &[NaiveDate],
+) -> Result<Historico, CoreError> {
+    let valores: Vec<Vec<Valor>> = investimentos
+        .iter()
+        .map(|(inv, _)| valorizar_datas(db, series, inv, datas))
         .collect::<Result<_, _>>()?;
 
     let classes: Vec<Classe> = Classe::TODOS
@@ -112,37 +152,54 @@ pub fn historico(
         .filter(|c| investimentos.iter().any(|(i, _)| i.classe == *c))
         .collect();
     let mut por_classe: Vec<(Classe, Vec<i64>)> =
-        classes.iter().map(|c| (*c, Vec::new())).collect();
+        classes.iter().map(|c| (*c, vec![0; datas.len()])).collect();
 
     let mut pontos: Vec<PontoHistorico> = Vec::with_capacity(datas.len());
     let mut acumulado = Decimal::ONE;
+    let mut inicio = None;
     for (idx, &d) in datas.iter().enumerate() {
-        let (mut patrimonio, mut aportado, mut fluxo) = (0i64, 0i64, 0i64);
-        for (_, v) in &mut por_classe {
-            v.push(0);
-        }
-        for (inv, aplicacao) in &investimentos {
+        let (mut patrimonio, mut aportado) = (0i64, 0i64);
+        // Pontas do intervalo `(datas[idx-1], d]` para o retorno.
+        let (mut v0, mut v1) = (0i64, 0i64);
+        let mut fluxos: Vec<(NaiveDate, i64)> = Vec::new();
+        for ((inv, aplicacao), vals) in investimentos.iter().zip(&valores) {
             if *aplicacao > d {
                 continue;
             }
-            let atual = valorizar_com(db, &series, inv, d)?.atual_centavos;
+            let atual = vals[idx].atual_centavos;
+            let aplicado = inv.valor_aplicado_centavos;
             patrimonio = somar(patrimonio, atual)?;
-            aportado = somar(aportado, inv.valor_aplicado_centavos)?;
-            if idx > 0 && *aplicacao > datas[idx - 1] {
-                fluxo = somar(fluxo, inv.valor_aplicado_centavos)?;
+            aportado = somar(aportado, aplicado)?;
+            if let Some((_, v)) = por_classe.iter_mut().find(|(c, _)| *c == inv.classe) {
+                v[idx] = somar(v[idx], atual)?;
             }
-            if let Some(ultimo) = por_classe
-                .iter_mut()
-                .find(|(c, _)| *c == inv.classe)
-                .and_then(|(_, v)| v.last_mut())
-            {
-                *ultimo = somar(*ultimo, atual)?;
+            if idx == 0 {
+                continue;
+            }
+            if *aplicacao > datas[idx - 1] {
+                fluxos.push((*aplicacao, aplicado));
+                v1 = somar(v1, atual)?;
+            } else {
+                let antes = &vals[idx - 1];
+                // Mudou de origem (ganhou ou perdeu preço) no intervalo: a custo nas duas
+                // pontas, para o ganho que não é do mês não virar rendimento dele.
+                let (a, b) = if antes.origem == vals[idx].origem {
+                    (antes.atual_centavos, atual)
+                } else {
+                    (aplicado, aplicado)
+                };
+                v0 = somar(v0, a)?;
+                v1 = somar(v1, b)?;
             }
         }
-        let retorno = match pontos.last() {
-            Some(anterior) => retorno_dietz(anterior.patrimonio_centavos, fluxo, patrimonio),
-            None => None,
+        let retorno = if idx == 0 {
+            None
+        } else {
+            retorno_dietz((datas[idx - 1], d), v0, &fluxos, v1)
         };
+        if retorno.is_some() && inicio.is_none() {
+            inicio = Some(idx - 1);
+        }
         if idx > 0 {
             acumulado = encadear(acumulado, retorno)
                 .ok_or_else(|| CoreError::DbInvalid("retorno acumulado excede o limite".into()))?;
@@ -155,7 +212,18 @@ pub fn historico(
             acumulado_centesimos: em_centesimos(acumulado),
         });
     }
-    Ok(Historico { pontos, por_classe })
+    let desde = investimentos
+        .iter()
+        .map(|(_, a)| *a)
+        .filter(|a| *a <= datas[datas.len() - 1])
+        .min()
+        .filter(|a| datas.first().is_some_and(|d0| a > d0));
+    Ok(Historico {
+        pontos,
+        por_classe,
+        inicio,
+        desde,
+    })
 }
 
 #[cfg(test)]
@@ -191,22 +259,52 @@ mod testes {
         assert_eq!(e.code(), "PERIODO_INVALIDO");
     }
 
+    /// Intervalo de 30 dias corridos: 31/08 a 30/09.
+    const MES: (NaiveDate, NaiveDate) = (
+        NaiveDate::from_ymd_opt(2026, 8, 31).unwrap(),
+        NaiveDate::from_ymd_opt(2026, 9, 30).unwrap(),
+    );
+
     #[test]
-    fn dietz_do_caso_sintetico() {
-        assert_eq!(retorno_dietz(100_000, 20_000, 121_000), Some(91));
+    fn dietz_do_caso_sintetico_com_aporte_no_meio_do_mes() {
+        // Aporte em 15/09: ficou 15 de 30 dias, peso 1/2 → r = 1000 / 110000.
+        let f = [(data(2026, 9, 15), 20_000)];
+        assert_eq!(retorno_dietz(MES, 100_000, &f, 121_000), Some(91));
     }
 
     #[test]
-    fn dietz_ausente_sem_patrimonio_ou_denominador() {
-        assert_eq!(retorno_dietz(0, 20_000, 21_000), None);
-        assert_eq!(retorno_dietz(100, -500, 0), None);
+    fn dietz_pesa_o_aporte_pelos_dias_aplicado() {
+        // No primeiro dia (peso 29/30) quase todo o aporte rende; no último (peso 0), nada.
+        let cedo = [(data(2026, 9, 1), 20_000)];
+        assert_eq!(retorno_dietz(MES, 100_000, &cedo, 121_000), Some(84));
+        let tarde = [(data(2026, 9, 30), 20_000)];
+        assert_eq!(retorno_dietz(MES, 100_000, &tarde, 121_000), Some(100));
+    }
+
+    #[test]
+    fn dietz_com_carteira_nova_tem_retorno() {
+        // V0 = 0 e aporte em 01/09 (peso 29/30): 200 / (20000 × 29/30) = 1,03%.
+        let f = [(data(2026, 9, 1), 20_000)];
+        assert_eq!(retorno_dietz(MES, 0, &f, 20_200), Some(103));
+    }
+
+    #[test]
+    fn dietz_ausente_so_com_denominador_nao_positivo() {
+        assert_eq!(retorno_dietz(MES, 0, &[], 0), None);
+        // Aporte no último dia não ficou aplicado: denominador 0.
+        let f = [(data(2026, 9, 30), 20_000)];
+        assert_eq!(retorno_dietz(MES, 0, &f, 21_000), None);
+        assert_eq!(
+            retorno_dietz(MES, 100, &[(data(2026, 9, 1), -500)], 0),
+            None
+        );
     }
 
     #[test]
     fn dietz_negativo_arredonda_meio_para_cima() {
         // -0,005 → -0,5 centésimo: meio para cima dá 0 (não -1).
-        assert_eq!(retorno_dietz(20_000, 0, 19_999), Some(0));
-        assert_eq!(retorno_dietz(100_000, 0, 90_000), Some(-1000));
+        assert_eq!(retorno_dietz(MES, 20_000, &[], 19_999), Some(0));
+        assert_eq!(retorno_dietz(MES, 100_000, &[], 90_000), Some(-1000));
     }
 
     #[test]

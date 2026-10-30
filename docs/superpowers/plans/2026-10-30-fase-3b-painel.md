@@ -43,17 +43,21 @@ O detalhe da classe ganha o gráfico contra um benchmark à escolha.
   - Exemplo: `hoje = 2026-10-28`, `meses = 12` → `2025-10-31, 2025-11-30, …, 2026-09-30, 2026-10-28`, 13 pontos.
   - `meses` só pode ser 6 ou 12; outro valor → `CoreError` de validação com código `PERIODO_INVALIDO`.
 - **Patrimônio em D** = soma de `valorizar(inv, D).atual` dos investimentos com `data_aplicacao ≤ D`. **Aportado em D** = soma do aplicado desses mesmos investimentos. Investimento aplicado depois de D não entra em nenhum dos dois.
-- **Retorno do intervalo** `(D₀, D₁]` (método de Dietz simples):
-  - `F` = aplicado dos investimentos com `D₀ < data_aplicacao ≤ D₁`.
+- **Retorno do intervalo** `(D₀, D₁]` (método de Dietz modificado, ponderado por dias corridos; decisão da revisão final, no lugar do Dietz simples):
+  - Cada aporte `Fᵢ` aplicado em `tᵢ`, com `D₀ < tᵢ ≤ D₁`, pesa `wᵢ = (D₁ − tᵢ) / (D₁ − D₀)`.
   - `V₀` = patrimônio em D₀, `V₁` = patrimônio em D₁.
-  - `r = (V₁ − V₀ − F) / (V₀ + F/2)`.
-  - `V₀ = 0` (não havia patrimônio no começo do intervalo) ou denominador ≤ 0 → retorno ausente (`None`), nunca divisão por zero. Com `V₀ = 0` a fórmula daria o dobro do rendimento do dinheiro novo, por isso o primeiro mês de uma carteira nova fica sem retorno.
-- **Acumulado da carteira** no ponto i = `Π(1 + r_k) − 1` para k ≤ i. Retorno ausente conta como fator 1. O ponto 0 vale 0.
-- **Benchmarks acumulados** de D₀ (primeiro ponto) até cada Dᵢ:
-  - CDI e Selic: `Π(1 + t_d/100)` para d em `(D₀, Dᵢ]`.
-  - IPCA: `Π(1 + ipca_m/100)` dos meses cujo último dia está em `(D₀, Dᵢ]` e que estão guardados.
-  - BOVA11 e XFIX11: `cotacao_em(t, Dᵢ) / cotacao_em(t, D₀) − 1`.
-  - Sem dado em D₀, o benchmark inteiro fica ausente. Sem dado num ponto, só aquele ponto fica ausente.
+  - `r = (V₁ − V₀ − ΣFᵢ) / (V₀ + Σ wᵢFᵢ)`, em inteiros.
+  - Retorno ausente (`None`) só quando o denominador é ≤ 0, nunca divisão por zero. Com `V₀ = 0` e um aporte que ficou aplicado parte do intervalo, a carteira nova já tem retorno no primeiro mês.
+  - **Mudança de origem:** um investimento que já existia em D₀ e muda de origem dentro do intervalo (por exemplo `sem_dados` a custo em D₀ e `cotacao` em D₁, ou o inverso) entra a custo em `V₀` e em `V₁` naquele intervalo, para o ganho que não é do mês não virar salto. O patrimônio do ponto continua sendo o valor real; a regra vale só para o retorno.
+- **Começo do histórico** (`Historico::inicio`): o índice do ponto onde começa o primeiro intervalo com retorno válido, ou `None`.
+- **Acumulado da carteira** no ponto i = `Π(1 + r_k) − 1` para k ≤ i. Retorno ausente conta como fator 1. Antes do começo do histórico (e nele) vale 0.
+- **Benchmarks acumulados** do começo do histórico `D_b` (ou de D₀, sem histórico) até cada Dᵢ:
+  - CDI e Selic: `Π(1 + t_d/100)` para d em `(D_b, Dᵢ]`.
+  - IPCA: `Π(1 + ipca_m/100)` dos meses cujo último dia está em `(D_b, Dᵢ]` e que estão guardados.
+  - BOVA11 e XFIX11: `cotacao_em(t, Dᵢ) / cotacao_em(t, D_b) − 1`.
+  - Antes de `D_b`, os valores são `null`; em `D_b` valem 0. Sem dado em `D_b`, o benchmark inteiro fica ausente. Sem dado num ponto, só aquele ponto fica ausente.
+  - `periodo_cdi_centesimos` é o CDI desse mesmo trecho.
+- **`Numeros::desde`**: a data do primeiro aporte considerado, só quando é posterior a `datas[0]`. A interface troca "Em 12 meses" por "Desde mm/aa".
 - Percentuais trafegam em **centésimos de ponto percentual** `i64`, arredondados meio para cima: `+1,07%` → `107`. A interface formata com 2 casas quando |x| < 10% e 1 casa acima disso.
 - **Benchmark padrão por classe** no detalhe:
   - `rf` → CDI;
@@ -69,7 +73,7 @@ O detalhe da classe ganha o gráfico contra um benchmark à escolha.
 ## Review Focus
 
 1. **Carteira nova** (tudo aplicado este mês, ou um investimento só): nenhum ponto anterior tem patrimônio.
-   - Esperado: retornos ausentes, acumulado 0, gráficos sem `NaN` e sem quebrar.
+   - Esperado: retornos ausentes antes do primeiro aporte, acumulado 0, gráficos sem `NaN` e sem quebrar. Pelo Dietz modificado (revisão final), o mês do primeiro aporte já tem retorno.
    - O texto "Ainda não há histórico para comparar." aparece no lugar dos gráficos de rentabilidade.
    - Teste na Tarefa 1 e na Tarefa 6.
 2. **Benchmark sem dado no início** (BOVA11 sem cotação no primeiro fim de mês, IPCA atrasado).

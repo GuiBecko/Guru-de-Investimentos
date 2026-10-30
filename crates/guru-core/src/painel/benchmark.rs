@@ -6,6 +6,7 @@ use rust_decimal::Decimal;
 use crate::db::Db;
 use crate::error::CoreError;
 use crate::investimento::Classe;
+use crate::mercado::{PontoDiario, Series};
 
 use super::historico::em_centesimos;
 
@@ -66,18 +67,21 @@ fn estouro() -> CoreError {
     CoreError::DbInvalid("benchmark acumulado excede o limite".into())
 }
 
+/// Fatores de `r` de `datas[0]` até cada data. CDI, Selic e IPCA saem das séries já
+/// carregadas (até a última data, pelo menos); as cotações vêm do banco.
 pub(super) fn fatores_benchmark(
     db: &Db,
+    series: &Series,
     r: Referencia,
     datas: &[NaiveDate],
 ) -> Result<Option<Fatores>, CoreError> {
-    let (Some(&inicio), Some(&fim)) = (datas.first(), datas.last()) else {
+    let Some(&inicio) = datas.first() else {
         return Ok(None);
     };
     match r {
-        Referencia::Cdi => diario(db, "cdi", datas, inicio, fim),
-        Referencia::Selic => diario(db, "selic", datas, inicio, fim),
-        Referencia::Ipca => ipca(db, datas, inicio, fim),
+        Referencia::Cdi => diario(series.diaria("cdi"), datas, inicio),
+        Referencia::Selic => diario(series.diaria("selic"), datas, inicio),
+        Referencia::Ipca => ipca(series.ipca(), datas, inicio),
         Referencia::Bova11 => cotacoes(db, "BOVA11", datas, inicio),
         Referencia::Xfix11 => cotacoes(db, "XFIX11", datas, inicio),
     }
@@ -85,22 +89,16 @@ pub(super) fn fatores_benchmark(
 
 /// `Π(1 + t_d/100)` para d em `(D₀, Dᵢ]`. Sem dado em `D₀` (a série começa depois dele), ausente.
 fn diario(
-    db: &Db,
-    serie: &str,
+    pontos: &[PontoDiario],
     datas: &[NaiveDate],
     inicio: NaiveDate,
-    fim: NaiveDate,
 ) -> Result<Option<Fatores>, CoreError> {
-    if db.primeira_data_indice(serie)?.is_none_or(|p| p > inicio) {
+    if pontos.first().is_none_or(|p| p.data > inicio) {
         return Ok(None);
     }
-    let Some(primeiro_dia) = inicio.succ_opt() else {
-        return Ok(None);
-    };
-    let pontos = db.indice_entre(serie, primeiro_dia, fim)?;
     let cem = Decimal::from(100);
     let mut fator = Decimal::ONE;
-    let mut proximo = 0;
+    let mut proximo = pontos.partition_point(|p| p.data <= inicio);
     let mut out = Vec::with_capacity(datas.len());
     for &d in datas {
         while let Some(p) = pontos.get(proximo).filter(|p| p.data <= d) {
@@ -131,16 +129,14 @@ fn ultimo_mes_fechado(d: NaiveDate) -> Option<String> {
 /// Mês ainda não publicado ou faltando simplesmente não entra no produto. Sem nenhum mês
 /// guardado até o de `D₀`, o benchmark inteiro fica ausente.
 fn ipca(
-    db: &Db,
+    meses: &[(String, Decimal)],
     datas: &[NaiveDate],
     inicio: NaiveDate,
-    fim: NaiveDate,
 ) -> Result<Option<Fatores>, CoreError> {
     let mes_inicio = mes(inicio);
-    if db.ipca_meses("0000-01", &mes_inicio)?.is_empty() {
+    if !meses.iter().any(|(m, _)| *m <= mes_inicio) {
         return Ok(None);
     }
-    let meses = db.ipca_meses(&mes_inicio, &mes(fim))?;
     let cem = Decimal::from(100);
     let mut out = Vec::with_capacity(datas.len());
     for &d in datas {
@@ -149,7 +145,7 @@ fn ipca(
             continue;
         };
         let mut fator = Decimal::ONE;
-        for (m, v) in &meses {
+        for (m, v) in meses {
             if *m > mes_inicio && *m <= ate {
                 fator = fator
                     .checked_mul(Decimal::ONE + *v / cem)
@@ -186,8 +182,14 @@ fn cotacoes(
     Ok(Some(out))
 }
 
-pub(super) fn para_centesimos(f: Option<Fatores>) -> Option<Vec<Option<i64>>> {
-    f.map(|v| v.into_iter().map(|x| x.map(em_centesimos)).collect())
+/// Em centésimos, com `antes` pontos `None` na frente: o benchmark começa no ponto `antes`
+/// do painel (o começo do histórico da carteira).
+pub(super) fn para_centesimos(f: Option<Fatores>, antes: usize) -> Option<Vec<Option<i64>>> {
+    f.map(|v| {
+        std::iter::repeat_n(None, antes)
+            .chain(v.into_iter().map(|x| x.map(em_centesimos)))
+            .collect()
+    })
 }
 
 /// Retorno acumulado do benchmark de `datas[0]` até cada data, em centésimos de ponto
@@ -197,7 +199,14 @@ pub fn acumulado_benchmark(
     r: Referencia,
     datas: &[NaiveDate],
 ) -> Result<Option<Vec<Option<i64>>>, CoreError> {
-    Ok(para_centesimos(fatores_benchmark(db, r, datas)?))
+    let Some(&fim) = datas.iter().max() else {
+        return Ok(None);
+    };
+    let series = Series::carregar(db, fim)?;
+    Ok(para_centesimos(
+        fatores_benchmark(db, &series, r, datas)?,
+        0,
+    ))
 }
 
 #[cfg(test)]
