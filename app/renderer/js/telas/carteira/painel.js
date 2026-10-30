@@ -8,7 +8,7 @@ import { rotulosPeriodo } from "./periodo.js";
 import { altasEQuedas } from "./variacoes.js";
 
 // Cor por classe (tokens em telas.css) e dos benchmarks do gráfico de rentabilidade.
-const COR_CLASSE = { rf: "c1", acoes: "c2", fii: "c3", ext: "c4", outros: "c5" };
+export const COR_CLASSE = { rf: "c1", acoes: "c2", fii: "c3", ext: "c4", outros: "c5" };
 // BOVA11 em âmbar (c4): o verde (c3) se confundia com a linha da carteira.
 const COR_BENCH = { cdi: "s-c1", ipca: "s-c2", bova11: "s-c4" };
 const MESES = [12, 6];
