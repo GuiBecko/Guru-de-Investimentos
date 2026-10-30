@@ -15,7 +15,9 @@ pub use investimento::{
     TipoInfo, nome, rendimento, tipo, tipos, validar,
 };
 
-pub use importacao::{Aba, Celula, ler_xlsx};
+pub use importacao::{
+    Aba, AbaRv, Celula, LinhaB3, Posicao, ler_posicao, ler_posicao_abas, ler_xlsx,
+};
 
 pub use perfil::{
     AVISO_FIXO, Opcao, Perfil, PerfilGravado, Pergunta, ResultadoPerfil, alocacao_sugerida,
