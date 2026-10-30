@@ -1,7 +1,7 @@
 use chrono::NaiveDate;
 use guru_core::{
-    Acao, Comparacao, Db, Estado, Gravacao, Item, NovoInvestimento, SCHEMA_VERSION, comparar,
-    ler_posicao,
+    AbaRv, Acao, Comparacao, Db, Estado, Gravacao, Item, LinhaB3, NovoInvestimento, Posicao,
+    SCHEMA_VERSION, comparar, ler_posicao,
 };
 
 const COMPLETA: &[u8] = include_bytes!("fixtures/b3/posicao-completa.xlsx");
@@ -341,4 +341,118 @@ fn migra_banco_da_versao_4() {
     let lista = db.listar_investimentos(hoje()).unwrap();
     assert_eq!(lista.len(), 1);
     assert_eq!(lista[0].codigo_b3, None);
+}
+
+fn rv_b3(ticker: &str, instituicao: &str, quantidade: i64) -> LinhaB3 {
+    LinhaB3::RendaVariavel {
+        aba: AbaRv::Acao,
+        ticker: ticker.into(),
+        produto: format!("{ticker} - EMPRESA"),
+        instituicao: instituicao.into(),
+        quantidade,
+        preco_fechamento: None,
+        valor_atualizado: None,
+    }
+}
+
+fn cdb_b3(codigo: &str, prefixo: &str, vencimento: NaiveDate) -> LinhaB3 {
+    LinhaB3::RendaFixa {
+        produto: format!("{prefixo} - BANCO FICTICIO S/A"),
+        tipo: match prefixo {
+            "CDB" => Some("rf-cdb".to_string()),
+            _ => None,
+        },
+        instituicao: "Corretora".into(),
+        emissor: "BANCO FICTICIO S/A".into(),
+        codigo: codigo.into(),
+        indexador: None,
+        benchmark: None,
+        emissao: None,
+        vencimento,
+        quantidade: 1.into(),
+        valor_curva: None,
+    }
+}
+
+fn posicao(linhas: Vec<LinhaB3>) -> Posicao {
+    Posicao {
+        linhas_lidas: linhas.len(),
+        linhas,
+        avisos: Vec::new(),
+    }
+}
+
+#[test]
+fn mesmo_ticker_em_duas_corretoras_soma_e_vira_um_item() {
+    let (_d, db) = abrir();
+    criar(&db, rv("rv-acao", "ITUB4", 150));
+    let p = posicao(vec![rv_b3("ITUB4", "A", 100), rv_b3("itub4", "B", 50)]);
+    let c = comparar(&db, &p, hoje()).unwrap();
+    assert_eq!(c.itens.len(), 1);
+    assert_eq!(c.itens[0].estado, Estado::Igual);
+    assert_eq!(c.itens[0].instituicao, "A, B");
+    assert_eq!(c.itens[0].na_b3.as_deref(), Some("150 ações"));
+}
+
+#[test]
+fn mesmo_ticker_em_duas_corretoras_divergente_pela_soma() {
+    let (_d, db) = abrir();
+    criar(&db, rv("rv-acao", "ITUB4", 100));
+    let p = posicao(vec![rv_b3("ITUB4", "A", 100), rv_b3("ITUB4", "B", 50)]);
+    let c = comparar(&db, &p, hoje()).unwrap();
+    assert_eq!(c.itens.len(), 1);
+    assert_eq!(c.itens[0].estado, Estado::Divergente);
+    assert_eq!(c.itens[0].no_app.as_deref(), Some("100 ações"));
+    assert_eq!(c.itens[0].na_b3.as_deref(), Some("150 ações"));
+}
+
+#[test]
+fn investimento_casado_nao_serve_a_uma_segunda_linha() {
+    let (_d, db) = abrir();
+    let id = criar(&db, cdb("Banco Fictício SA", "2029-03-15"));
+    let venc = NaiveDate::from_ymd_opt(2029, 3, 15).unwrap();
+    let p = posicao(vec![cdb_b3("X1", "CDB", venc), cdb_b3("X2", "CDB", venc)]);
+    let c = comparar(&db, &p, hoje()).unwrap();
+    let primeiro = c.itens.iter().find(|i| i.chave == "b3:0").unwrap();
+    let segundo = c.itens.iter().find(|i| i.chave == "b3:1").unwrap();
+    assert_eq!(primeiro.estado, Estado::Igual);
+    assert_eq!(primeiro.investimentos, vec![id]);
+    assert_eq!(segundo.estado, Estado::Novo);
+    assert!(c.itens.iter().all(|i| i.estado != Estado::ForaDaB3));
+}
+
+#[test]
+fn prefixo_desconhecido_deixa_o_tipo_em_branco() {
+    let (_d, db) = abrir();
+    let venc = NaiveDate::from_ymd_opt(2029, 3, 15).unwrap();
+    let p = posicao(vec![cdb_b3("X1", "XYZ", venc)]);
+    let c = comparar(&db, &p, hoje()).unwrap();
+    let i = &c.itens[0];
+    assert_eq!(i.estado, Estado::Novo);
+    assert_eq!(i.sugestao.as_ref().unwrap().tipo, "");
+    assert!(i.faltando.iter().any(|e| e.campo == "tipo"));
+}
+
+#[test]
+fn tesouro_tolera_um_centavo() {
+    let tesouro_b3 = |centavos: i64| LinhaB3::Tesouro {
+        produto: "Tesouro Selic 2029".into(),
+        tipo: "td-selic".into(),
+        isin: None,
+        instituicao: "Rico".into(),
+        vencimento: NaiveDate::from_ymd_opt(2029, 3, 1).unwrap(),
+        valor_aplicado: Some(rust_decimal::Decimal::new(centavos, 2)),
+        valor_atualizado: None,
+    };
+    let (_d, db) = abrir();
+    criar(&db, selic(800_000));
+    let estado = |c: i64| {
+        comparar(&db, &posicao(vec![tesouro_b3(c)]), hoje())
+            .unwrap()
+            .itens[0]
+            .estado
+    };
+    assert_eq!(estado(800_001), Estado::Igual);
+    assert_eq!(estado(799_999), Estado::Igual);
+    assert_eq!(estado(800_002), Estado::Divergente);
 }

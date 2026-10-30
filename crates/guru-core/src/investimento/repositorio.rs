@@ -415,8 +415,6 @@ impl Db {
         Ok(inv)
     }
 
-    /// Ordenada pela classe (ordem do catálogo) e depois pelo nome, sem diferenciar maiúsculas.
-    /// O valor atual de cada um é o de `hoje`; as séries são lidas uma vez só.
     /// Investimentos como gravados, sem valorização (`valor_atual_centavos` = aplicado).
     pub(crate) fn listar_investimentos_brutos(&self) -> Result<Vec<Investimento>, CoreError> {
         let mut stmt = self.conn.prepare(SELECT).map_err(classifica)?;
@@ -428,6 +426,8 @@ impl Db {
         linhas.into_iter().map(montar).collect()
     }
 
+    /// Ordenada pela classe (ordem do catálogo) e depois pelo nome, sem diferenciar maiúsculas.
+    /// O valor atual de cada um é o de `hoje`; as séries são lidas uma vez só.
     pub fn listar_investimentos(&self, hoje: NaiveDate) -> Result<Vec<Investimento>, CoreError> {
         let mut lista = self.listar_investimentos_brutos()?;
         let series = Series::carregar(self, hoje)?;

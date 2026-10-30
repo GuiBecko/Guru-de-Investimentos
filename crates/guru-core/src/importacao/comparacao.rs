@@ -183,7 +183,9 @@ fn ids(pares: &[&Investimento]) -> Vec<i64> {
 }
 
 fn total_aplicado(pares: &[&Investimento]) -> i64 {
-    pares.iter().map(|i| i.valor_aplicado_centavos).sum()
+    pares
+        .iter()
+        .fold(0i64, |a, i| a.saturating_add(i.valor_aplicado_centavos))
 }
 
 struct Contexto<'a> {
@@ -268,7 +270,10 @@ impl Contexto<'_> {
                 Some(sugestao),
             );
         }
-        let soma: i64 = pares.iter().filter_map(|i| i.quantidade).sum();
+        let soma = pares
+            .iter()
+            .filter_map(|i| i.quantidade)
+            .fold(0i64, i64::saturating_add);
         let (estado, acoes) = com_pares(&pares, soma == quantidade);
         self.item(
             chave,
@@ -312,7 +317,7 @@ impl Contexto<'_> {
             self.investimentos
                 .iter()
                 .filter(rf)
-                .filter(|i| i.codigo_b3.is_none())
+                .filter(|i| i.codigo_b3.is_none() && !self.usados.contains(&i.id))
                 .filter(|i| i.vencimento.as_deref() == Some(venc.as_str()))
                 .filter(|i| {
                     !emissor_norm.is_empty()
@@ -436,7 +441,7 @@ impl Contexto<'_> {
             ));
         }
         let soma = total_aplicado(&pares);
-        let igual = aplicado_b3.is_some_and(|b| (b - soma).abs() <= 1);
+        let igual = aplicado_b3.is_some_and(|b| b.abs_diff(soma) <= 1);
         let (estado, acoes) = com_pares(&pares, igual);
         Some(self.item(
             chave,
@@ -477,16 +482,47 @@ pub fn comparar(db: &Db, posicao: &Posicao, hoje: NaiveDate) -> Result<Comparaca
         usados: HashSet::new(),
     };
     let mut itens = Vec::new();
+    // Linhas de renda variável com o mesmo ticker (corretoras diferentes) valem como um item só.
+    let mut grupos: Vec<(String, usize, AbaRv, i64, Vec<&str>)> = Vec::new();
+    for (n, linha) in posicao.linhas.iter().enumerate() {
+        if let LinhaB3::RendaVariavel {
+            aba,
+            ticker,
+            instituicao,
+            quantidade,
+            ..
+        } = linha
+        {
+            let chave = ticker.to_uppercase();
+            match grupos.iter_mut().find(|g| g.0 == chave) {
+                Some(g) => {
+                    g.3 = g.3.saturating_add(*quantidade);
+                    if !g.4.contains(&instituicao.as_str()) {
+                        g.4.push(instituicao);
+                    }
+                }
+                None => grupos.push((chave, n, *aba, *quantidade, vec![instituicao])),
+            }
+        }
+    }
     for (n, linha) in posicao.linhas.iter().enumerate() {
         let chave = format!("b3:{n}");
         let item = match linha {
-            LinhaB3::RendaVariavel {
-                aba,
-                ticker,
-                instituicao,
-                quantidade,
-                ..
-            } => Some(ctx.renda_variavel(chave, *aba, ticker, instituicao, *quantidade)),
+            LinhaB3::RendaVariavel { ticker, .. } => {
+                let ticker_maiusculo = ticker.to_uppercase();
+                grupos
+                    .iter()
+                    .find(|g| g.0 == ticker_maiusculo && g.1 == n)
+                    .map(|(_, _, aba, quantidade, instituicoes)| {
+                        ctx.renda_variavel(
+                            chave,
+                            *aba,
+                            ticker,
+                            &instituicoes.join(", "),
+                            *quantidade,
+                        )
+                    })
+            }
             LinhaB3::RendaFixa { .. } => ctx.renda_fixa(chave, linha),
             LinhaB3::Tesouro { .. } => ctx.tesouro(chave, linha),
         };
@@ -503,4 +539,21 @@ pub fn comparar(db: &Db, posicao: &Posicao, hoje: NaiveDate) -> Result<Comparaca
         avisos: posicao.avisos.clone(),
         linhas_lidas: posicao.linhas_lidas,
     })
+}
+
+#[cfg(test)]
+mod testes {
+    use super::*;
+
+    #[test]
+    fn emissor_sem_sufixos_nem_acentos() {
+        assert_eq!(normalizar_emissor("Banco Fictício S/A"), "BANCO FICTICIO");
+        assert_eq!(normalizar_emissor("BANCO FICTICIO S.A."), "BANCO FICTICIO");
+        assert_eq!(normalizar_emissor("Banco Fictício SA"), "BANCO FICTICIO");
+        assert_eq!(
+            normalizar_emissor("Financeira  Exemplo Ltda."),
+            "FINANCEIRA EXEMPLO"
+        );
+        assert_eq!(normalizar_emissor("Sá Crédito"), "SA CREDITO");
+    }
 }
