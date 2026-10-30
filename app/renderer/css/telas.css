@@ -268,7 +268,8 @@ svg.mini { width: 100%; max-width: 120px; height: 24px; }
 .marcas { display: flex; flex-wrap: wrap; gap: 6px; }
 .avisos { margin: 0; padding-left: 18px; }
 .tbl tbody.item tr:last-child td { border-bottom: 1px solid var(--line); }
-.tbl tbody.item tr.detalhe td { background: var(--accent-soft); display: grid; gap: 10px; }
+.tbl tbody.item tr.detalhe td { background: var(--accent-soft); padding: 10px 12px; }
+.detalhe-corpo { display: grid; gap: 10px; }
 .tbl tbody.item tr.detalhe[hidden] { display: none; }
 .tbl tbody.item[hidden], .tbl tbody.iguais-linha[hidden] { display: none; }
 .tbl td select { font: 400 12.5px var(--f-body); color: var(--ink); background: var(--app-card); border: 1px solid var(--line-strong); padding: 5px 8px; max-width: 220px; }

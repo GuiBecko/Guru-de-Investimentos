@@ -264,7 +264,9 @@ function criarItem(item, n, catalogo, nomes) {
     detalhe.addEventListener("input", ajustar);
     detalhe.addEventListener("change", ajustar);
     ajustar();
-    celula.append(resumo, grade, geral);
+    const corpoDetalhe = el("div", undefined, "detalhe-corpo");
+    corpoDetalhe.append(resumo, grade, geral);
+    celula.append(corpoDetalhe);
   }
 
   tbody.append(tr, detalhe);
