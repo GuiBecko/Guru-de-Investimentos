@@ -916,3 +916,143 @@ fn valor_enorme_vira_aviso_e_nao_derruba_a_comparacao() {
         "{ativos:?}"
     );
 }
+
+// ---- Renda fixa ambígua ----
+
+fn cdb_taxa(taxa: &str) -> NovoInvestimento {
+    NovoInvestimento {
+        taxa: s(taxa),
+        ..cdb("Banco Fictício S/A", "2029-03-15")
+    }
+}
+
+fn venc_2029() -> NaiveDate {
+    NaiveDate::from_ymd_opt(2029, 3, 15).unwrap()
+}
+
+#[test]
+fn rf_ambigua_oferece_os_dois_candidatos_as_duas_linhas() {
+    let (_d, db) = abrir();
+    let a = criar(&db, cdb_taxa("102"));
+    let b = criar(&db, cdb_taxa("110"));
+    let p = posicao(vec![
+        cdb_b3("CDB1", "CDB", venc_2029()),
+        cdb_b3("CDB2", "CDB", venc_2029()),
+    ]);
+    let c = comparar(&db, &p, hoje()).unwrap();
+    for chave in ["b3:0", "b3:1"] {
+        let i = c.itens.iter().find(|i| i.chave == chave).unwrap();
+        assert_eq!(i.estado, Estado::Divergente, "{chave}");
+        assert!(
+            i.acoes.contains(&Acao::Vincular(a)),
+            "{chave}: {:?}",
+            i.acoes
+        );
+        assert!(
+            i.acoes.contains(&Acao::Vincular(b)),
+            "{chave}: {:?}",
+            i.acoes
+        );
+    }
+    // Ninguém casou os dois de forma única: continuam em "fora da B3".
+    let fora: Vec<i64> = c
+        .itens
+        .iter()
+        .filter(|i| i.estado == Estado::ForaDaB3)
+        .flat_map(|i| i.investimentos.clone())
+        .collect();
+    assert_eq!(fora, vec![a, b]);
+
+    // Vincular uma linha a cada um funciona e a próxima comparação casa pelo código.
+    let r = aplicar(
+        &db,
+        &c,
+        &[
+            decisao("b3:0", Acao::Vincular(a)),
+            decisao("b3:1", Acao::Vincular(b)),
+        ],
+    );
+    assert_eq!((r.aplicadas, r.erros.len()), (2, 0));
+    assert_eq!(
+        db.investimento(a, hoje()).unwrap().codigo_b3.as_deref(),
+        Some("CDB1")
+    );
+    assert_eq!(
+        db.investimento(b, hoje()).unwrap().codigo_b3.as_deref(),
+        Some("CDB2")
+    );
+    let c2 = comparar(&db, &p, hoje()).unwrap();
+    assert!(
+        c2.itens.iter().all(|i| i.estado == Estado::Igual),
+        "{:?}",
+        c2.itens
+    );
+}
+
+#[test]
+fn rf_ambigua_vincular_o_mesmo_investimento_duas_vezes_e_decisao_invalida() {
+    let (_d, db) = abrir();
+    let a = criar(&db, cdb_taxa("102"));
+    let _b = criar(&db, cdb_taxa("110"));
+    let p = posicao(vec![
+        cdb_b3("CDB1", "CDB", venc_2029()),
+        cdb_b3("CDB2", "CDB", venc_2029()),
+    ]);
+    let c = comparar(&db, &p, hoje()).unwrap();
+    let duas = [
+        decisao("b3:0", Acao::Vincular(a)),
+        decisao("b3:1", Acao::Vincular(a)),
+    ];
+    let e = aplicar_importacao(&db, &c, &duas, "x.xlsx", hoje()).unwrap_err();
+    assert_eq!(e.code(), "DECISAO_INVALIDA");
+
+    // Vincular e remover o mesmo investimento também não vale.
+    let fora = format!("app:{a}");
+    let conflito = [
+        decisao("b3:0", Acao::Vincular(a)),
+        decisao(&fora, Acao::Remover),
+    ];
+    let e = aplicar_importacao(&db, &c, &conflito, "x.xlsx", hoje()).unwrap_err();
+    assert_eq!(e.code(), "DECISAO_INVALIDA");
+    assert_eq!(db.investimento(a, hoje()).unwrap().codigo_b3, None);
+}
+
+#[test]
+fn vincular_o_que_outra_linha_casou_de_forma_unica_e_decisao_invalida() {
+    let (_d, db) = abrir();
+    let a = criar(&db, cdb_taxa("102"));
+    let mut lci = cdb_taxa("95");
+    lci.tipo = "rf-lci".into();
+    lci.ir = s("isento");
+    let b = criar(&db, lci);
+    // A linha de prefixo desconhecido vê os dois; a de CDB, depois, casa só com o CDB.
+    let p = posicao(vec![
+        cdb_b3("X1", "XYZ", venc_2029()),
+        cdb_b3("CDB1", "CDB", venc_2029()),
+    ]);
+    let c = comparar(&db, &p, hoje()).unwrap();
+    let ambigua = c.itens.iter().find(|i| i.chave == "b3:0").unwrap();
+    assert!(ambigua.acoes.contains(&Acao::Vincular(a)));
+    assert!(ambigua.acoes.contains(&Acao::Vincular(b)));
+    let unica = c.itens.iter().find(|i| i.chave == "b3:1").unwrap();
+    assert_eq!(
+        (unica.estado, unica.investimentos.clone()),
+        (Estado::Igual, vec![a])
+    );
+
+    let e = aplicar_importacao(
+        &db,
+        &c,
+        &[decisao("b3:0", Acao::Vincular(a))],
+        "x.xlsx",
+        hoje(),
+    )
+    .unwrap_err();
+    assert_eq!(e.code(), "DECISAO_INVALIDA");
+    let r = aplicar(&db, &c, &[decisao("b3:0", Acao::Vincular(b))]);
+    assert_eq!((r.aplicadas, r.erros.len()), (1, 0));
+    assert_eq!(
+        db.investimento(b, hoje()).unwrap().codigo_b3.as_deref(),
+        Some("X1")
+    );
+}

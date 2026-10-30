@@ -407,7 +407,11 @@ impl Contexto<'_> {
         } else {
             por_codigo
         };
-        self.marcar(&pares);
+        // Com dois ou mais candidatos nenhum fica casado: as outras linhas com a mesma chave
+        // também os oferecem para vincular, e eles continuam em "fora da B3".
+        if pares.len() < 2 {
+            self.marcar(&pares);
+        }
         let ativo = produto.replacen(" - ", " ", 1);
         let na_b3 = valor_curva
             .and_then(centavos)

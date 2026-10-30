@@ -114,7 +114,8 @@ function criarItem(item, n, catalogo, nomes) {
   };
   const acao = el("select");
   acao.id = `i${n}-acao`;
-  for (const codigo of item.acoes) {
+  // O núcleo lista um "vincular" por candidato; os candidatos são `item.investimentos`.
+  for (const codigo of new Set(item.acoes)) {
     if (codigo === "vincular") {
       for (const id of item.investimentos) acao.append(opcao(`vincular:${id}`, `Vincular a ${nomes.get(id) ?? `investimento ${id}`}`));
     } else {
@@ -353,6 +354,15 @@ function criarItem(item, n, catalogo, nomes) {
 
 // --- Tela ---
 
+// Nome do investimento no "Vincular a …": candidatos do mesmo emissor e vencimento têm o mesmo
+// nome, então vão junto o rendimento e o valor aplicado.
+function descreverVinculo(i) {
+  const partes = [i.nome];
+  if (i.rendimento) partes.push(i.rendimento);
+  partes.push(`aplicado ${formatarReais(i.valorAplicadoCentavos)}`);
+  return partes.join(" · ");
+}
+
 function marcas(itens) {
   const contagem = {};
   for (const i of itens) contagem[i.estado] = (contagem[i.estado] ?? 0) + 1;
@@ -523,6 +533,8 @@ export async function render(raiz, _parametros = [], vigente = () => true) {
       if (e.code === "IMPORTACAO_EXPIRADA") {
         inicial();
         dizer(MENSAGEM_EXPIRADA);
+      } else if (e.code === "DECISAO_INVALIDA") {
+        dizer(e.message);
       } else {
         console.error("Falha ao aplicar a importação:", e);
         dizer("Não foi possível aplicar as alterações.");
@@ -545,7 +557,7 @@ export async function render(raiz, _parametros = [], vigente = () => true) {
       const [catalogo, lista] = await Promise.all([api.investimentos.catalogo(), precisaNomes ? api.investimentos.listar() : []]);
       if (!vigente()) return;
       dizer(null);
-      desenhar(r, catalogo, new Map(lista.map((i) => [i.id, i.nome])));
+      desenhar(r, catalogo, new Map(lista.map((i) => [i.id, descreverVinculo(i)])));
     } catch (e) {
       if (!vigente()) return;
       if (e.code === "ARQUIVO_INVALIDO") {

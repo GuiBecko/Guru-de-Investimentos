@@ -212,3 +212,57 @@ test("Cancelar volta para a lista", async () => {
     await app.close();
   }
 });
+
+async function criarCdb(page, taxa) {
+  const r = await page.evaluate(
+    (t) =>
+      import("./js/api.js").then(({ api }) =>
+        api.investimentos.criar({
+          tipo: "rf-cdb",
+          instituicao: "Banco Inter",
+          emissor: "Banco Fictício S/A",
+          indexador: "pos",
+          taxa: t,
+          benchmark: "cdi",
+          dataAplicacao: "2025-03-15",
+          vencimento: "2029-03-15",
+          valorAplicadoCentavos: 2000000,
+          liquidez: "vencimento",
+          ir: "regressiva",
+        }),
+      ),
+    taxa,
+  );
+  expect(r.erros).toEqual([]);
+}
+
+test("dois CDBs do mesmo banco e vencimento: vincular um à linha da B3 grava o código", async () => {
+  const app = await abrir(COMPLETA);
+  try {
+    const page = await app.firstWindow();
+    await criarCdb(page, "102");
+    await criarCdb(page, "110");
+    await irParaImportar(page);
+    await escolher(page);
+    const cdb = item(page, "CDB BANCO FICTICIO S/A");
+    await expect(cdb).toContainText("divergente");
+    const acao = cdb.getByRole("combobox", { name: "O que fazer" });
+    await expect(acao.locator("option", { hasText: "Vincular a" })).toHaveCount(2);
+    // Os dois candidatos ainda não foram casados: continuam em "fora da B3".
+    await expect(page.locator(".marcas").getByText("2 fora da B3")).toBeVisible();
+    await ignorarTodosExceto(page, "Banco Fictício S/A");
+    await acao.selectOption({ label: "Vincular a CDB Banco Fictício S/A · 110% do CDI · aplicado R$ 20.000,00" });
+    await page.getByRole("button", { name: "Aplicar 1 alteração", exact: true }).click();
+    await expect(page.getByText("1 alteração aplicada.")).toBeVisible();
+
+    // Na próxima importação a linha casa pelo código com o CDB de 110%; o de 102% fica fora da B3.
+    await irParaImportar(page);
+    await escolher(page);
+    await expect(page.locator(".marcas").getByText("1 igual")).toBeVisible();
+    await expect(page.locator(".marcas").getByText("1 fora da B3")).toBeVisible();
+    await page.getByRole("button", { name: "1 igual" }).click();
+    await expect(item(page, "CDB BANCO FICTICIO S/A")).toContainText("igual");
+  } finally {
+    await app.close();
+  }
+});

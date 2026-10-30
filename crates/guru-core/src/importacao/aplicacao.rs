@@ -255,6 +255,39 @@ fn executar(conn: &Connection, op: &Operacao, contar: bool) -> Result<bool, Core
     Ok(alterou && contar)
 }
 
+/// Um investimento só pode ser ligado a uma linha: dois `Vincular` para o mesmo id, ou um
+/// `Vincular` para um id que outro item já confirma (igual ou `UsarB3`) ou que vai ser removido,
+/// é `DECISAO_INVALIDA`.
+fn conferir_vinculos(comparacao: &Comparacao, decisoes: &[Decisao]) -> Result<(), CoreError> {
+    let acao_de = |item: &Item| {
+        decisoes
+            .iter()
+            .find(|d| d.chave == item.chave)
+            .map(|d| d.acao)
+    };
+    let mut ocupados = HashSet::new();
+    for item in &comparacao.itens {
+        let acao = acao_de(item);
+        let ocupa =
+            item.estado == Estado::Igual || matches!(acao, Some(Acao::UsarB3 | Acao::Remover));
+        if let ([id], true) = (item.investimentos.as_slice(), ocupa) {
+            ocupados.insert(*id);
+        }
+    }
+    let mut vinculados = HashSet::new();
+    for d in decisoes {
+        if let Acao::Vincular(id) = d.acao
+            && (ocupados.contains(&id) || !vinculados.insert(id))
+        {
+            return Err(invalida(
+                "Cada investimento só pode ser vinculado a uma linha da planilha, e não pode ser \
+                 vinculado e removido ao mesmo tempo.",
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Aplica as decisões de uma vez: ou grava tudo, ou nada. `hoje` é a data da importação.
 ///
 /// Decisão para chave desconhecida, ação fora de `item.acoes` ou repetida é `DECISAO_INVALIDA`.
@@ -284,6 +317,7 @@ pub fn aplicar_importacao(
             return Err(invalida(format!("Mais de uma decisão para {}.", d.chave)));
         }
     }
+    conferir_vinculos(comparacao, decisoes)?;
 
     // Dropar a transação sem `commit` desfaz tudo, inclusive nos retornos antecipados.
     let tx = db.conn.unchecked_transaction().map_err(classifica)?;
