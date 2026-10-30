@@ -1,4 +1,5 @@
-const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { origemPermitida } = require("./main/origem.js");
@@ -64,6 +65,35 @@ function nucleo() {
   return core;
 }
 
+const LIMITE_ARQUIVO_B3 = 20 * 1024 * 1024;
+
+// Escolhe a planilha da B3 (diálogo, ou o caminho de teste fora do app empacotado), confere o
+// tamanho ANTES de ler e devolve a comparação ou `{ cancelado: true }`. O núcleo recebe só o nome
+// do arquivo, nunca o caminho.
+async function escolherPlanilhaB3() {
+  let arquivo;
+  const teste = !app.isPackaged ? process.env.GURU_TESTE_ARQUIVO_B3 : undefined;
+  if (teste) {
+    if (teste === "cancelar") return { cancelado: true };
+    arquivo = teste;
+  } else {
+    const r = await dialog.showOpenDialog(janela, {
+      properties: ["openFile"],
+      filters: [{ name: "Planilha do Excel", extensions: ["xlsx"] }],
+    });
+    if (r.canceled || r.filePaths.length === 0) return { cancelado: true };
+    arquivo = r.filePaths[0];
+  }
+  const { size } = await fs.promises.stat(arquivo);
+  if (size > LIMITE_ARQUIVO_B3) {
+    const erro = new Error("O arquivo é grande demais para uma planilha de posição.");
+    erro.code = "ARQUIVO_INVALIDO";
+    throw erro;
+  }
+  const bytes = await fs.promises.readFile(arquivo);
+  return nucleo().compararImportacao(bytes, path.basename(arquivo));
+}
+
 const canais = {
   "investimentos:catalogo": () => nucleo().catalogo(),
   "investimentos:listar": () => nucleo().listarInvestimentos(),
@@ -87,6 +117,9 @@ const canais = {
   "metas:apagar": (id) => nucleo().apagarMeta(id),
   "mercado:atualizar": () => nucleo().atualizarMercado(),
   "mercado:status": () => nucleo().statusMercado(),
+  "importacao:escolher": () => escolherPlanilhaB3(),
+  "importacao:aplicar": (token, decisoes) => nucleo().aplicarImportacao(token, decisoes),
+  "importacao:ultima": () => nucleo().ultimaImportacao(),
 };
 for (const [canal, handler] of Object.entries(canais)) {
   ipcMain.handle(canal, tratar(handler));

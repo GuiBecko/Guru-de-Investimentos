@@ -2,14 +2,16 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
 use guru_core::{CORE_VERSION, CoreError, Db, Gravacao};
-use napi::bindgen_prelude::AsyncTask;
+use napi::bindgen_prelude::{AsyncTask, Buffer};
 use napi_derive::napi;
 
+mod importacao;
 mod investimentos;
 mod mercado;
 mod metas;
 mod painel;
 mod perfil;
+use importacao::{ComparacaoGuardada, ComparacaoJs, DecisaoJs, ResultadoImportacaoJs};
 use investimentos::{
     Catalogo, ErroCampoJs, InvestimentoJs, NovoInvestimentoJs, ResultadoGravacao, ResumoJs,
     entrada, erros,
@@ -32,6 +34,8 @@ pub struct Core {
     pasta_dados: PathBuf,
     /// Só existe nos testes (ver `OpcoesCore`).
     modo_teste: Option<ModoTeste>,
+    /// Última comparação de importação; só ela pode ser aplicada.
+    importacao: Mutex<Option<ComparacaoGuardada>>,
 }
 
 fn to_js(e: CoreError) -> napi::Error<String> {
@@ -48,6 +52,7 @@ impl Core {
             db: Mutex::new(db),
             pasta_dados: PathBuf::from(data_dir),
             modo_teste,
+            importacao: Mutex::new(None),
         })
     }
 
@@ -62,6 +67,15 @@ impl Core {
 
     fn db(&self) -> napi::Result<MutexGuard<'_, Db>, String> {
         self.db.lock().map_err(|_| {
+            napi::Error::new(
+                "LOCK_POISONED".to_string(),
+                "Estado interno do núcleo corrompido.".to_string(),
+            )
+        })
+    }
+
+    fn importacao(&self) -> napi::Result<MutexGuard<'_, Option<ComparacaoGuardada>>, String> {
+        self.importacao.lock().map_err(|_| {
             napi::Error::new(
                 "LOCK_POISONED".to_string(),
                 "Estado interno do núcleo corrompido.".to_string(),
@@ -266,6 +280,57 @@ impl Core {
     #[napi]
     pub fn apagar_meta(&self, id: i64) -> napi::Result<(), String> {
         self.db()?.apagar_meta(id).map_err(to_js)
+    }
+
+    /// Compara a planilha da B3 com a carteira e guarda o resultado (descartando o anterior).
+    #[napi]
+    pub fn comparar_importacao(
+        &self,
+        bytes: Buffer,
+        arquivo: String,
+    ) -> napi::Result<ComparacaoJs, String> {
+        let posicao = guru_core::ler_posicao(&bytes).map_err(to_js)?;
+        let c = guru_core::comparar(&*self.db()?, &posicao, hoje_real()).map_err(to_js)?;
+        let token = importacao::novo_token();
+        let js = importacao::comparacao(&token, &arquivo, &c);
+        *self.importacao()? = Some(ComparacaoGuardada {
+            token,
+            arquivo,
+            comparacao: c,
+        });
+        Ok(js)
+    }
+
+    #[napi]
+    pub fn aplicar_importacao(
+        &self,
+        token: String,
+        decisoes: Vec<DecisaoJs>,
+    ) -> napi::Result<ResultadoImportacaoJs, String> {
+        let decisoes = decisoes
+            .into_iter()
+            .map(importacao::decisao)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(to_js)?;
+        let guardada = self.importacao()?;
+        let g = guardada
+            .as_ref()
+            .filter(|g| g.token == token)
+            .ok_or_else(importacao::expirada)?;
+        let r = guru_core::aplicar_importacao(
+            &*self.db()?,
+            &g.comparacao,
+            &decisoes,
+            &g.arquivo,
+            hoje_real(),
+        )
+        .map_err(to_js)?;
+        Ok(importacao::resultado(r.aplicadas, r.erros))
+    }
+
+    #[napi]
+    pub fn ultima_importacao(&self) -> napi::Result<Option<String>, String> {
+        guru_core::ultima_importacao(&*self.db()?).map_err(to_js)
     }
 }
 

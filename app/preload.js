@@ -40,4 +40,9 @@ contextBridge.exposeInMainWorld("guru", {
     atualizar: () => ipcRenderer.invoke("mercado:atualizar"),
     status: () => ipcRenderer.invoke("mercado:status"),
   },
+  importacao: {
+    escolher: () => ipcRenderer.invoke("importacao:escolher"),
+    aplicar: (token, decisoes) => ipcRenderer.invoke("importacao:aplicar", token, decisoes),
+    ultima: () => ipcRenderer.invoke("importacao:ultima"),
+  },
 });
