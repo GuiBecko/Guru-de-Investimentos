@@ -29,4 +29,7 @@ pub use mercado::{
     ler_cotahist_zip, ler_sgs, ler_tesouro, titulo_tesouro, valorizar,
 };
 
-pub use painel::{Historico, PontoHistorico, datas_painel, historico};
+pub use painel::{
+    Historico, Instituicao, Numeros, Painel, PontoHistorico, Referencia, Variacao, Vencimento,
+    acumulado_benchmark, benchmark_padrao, datas_painel, historico, painel,
+};

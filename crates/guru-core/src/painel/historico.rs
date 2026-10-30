@@ -59,7 +59,7 @@ fn somar(a: i64, b: i64) -> Result<i64, CoreError> {
 }
 
 /// `round(num / den)` meio para cima, com `den > 0`.
-fn dividir_arredondando(num: i128, den: i128) -> i128 {
+pub(super) fn dividir_arredondando(num: i128, den: i128) -> i128 {
     (2 * num + den).div_euclid(2 * den)
 }
 
@@ -84,7 +84,7 @@ fn encadear(acumulado: Decimal, retorno: Option<i64>) -> Option<Decimal> {
     acumulado.checked_mul(Decimal::ONE + r)
 }
 
-fn em_centesimos(fator: Decimal) -> i64 {
+pub(super) fn em_centesimos(fator: Decimal) -> i64 {
     let c = (fator - Decimal::ONE) * Decimal::from(10_000) + Decimal::new(5, 1);
     c.floor().to_i64().unwrap_or(0)
 }
