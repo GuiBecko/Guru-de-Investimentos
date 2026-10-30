@@ -456,3 +456,83 @@ fn tesouro_tolera_um_centavo() {
     assert_eq!(estado(799_999), Estado::Igual);
     assert_eq!(estado(800_002), Estado::Divergente);
 }
+
+fn tesouro_b3(instituicao: &str, centavos: i64) -> LinhaB3 {
+    LinhaB3::Tesouro {
+        produto: "Tesouro Selic 2029".into(),
+        tipo: "td-selic".into(),
+        isin: None,
+        instituicao: instituicao.into(),
+        vencimento: NaiveDate::from_ymd_opt(2029, 3, 1).unwrap(),
+        valor_aplicado: Some(rust_decimal::Decimal::new(centavos, 2)),
+        valor_atualizado: None,
+    }
+}
+
+#[test]
+fn tesouro_em_duas_corretoras_soma_e_vira_um_item() {
+    let (_d, db) = abrir();
+    criar(&db, selic(800_000));
+    let p = posicao(vec![tesouro_b3("A", 500_000), tesouro_b3("B", 300_000)]);
+    let c = comparar(&db, &p, hoje()).unwrap();
+    assert_eq!(c.itens.len(), 1);
+    assert_eq!(c.itens[0].estado, Estado::Igual);
+    assert_eq!(c.itens[0].instituicao, "A, B");
+
+    let (_d2, vazio) = abrir();
+    let c = comparar(&vazio, &p, hoje()).unwrap();
+    assert_eq!(c.itens.len(), 1);
+    let sug = c.itens[0].sugestao.as_ref().unwrap();
+    assert_eq!(sug.instituicao, "A");
+    assert_eq!(sug.valor_aplicado_centavos, Some(800_000));
+}
+
+#[test]
+fn sugestao_de_renda_variavel_usa_so_a_primeira_corretora() {
+    let (_d, db) = abrir();
+    let p = posicao(vec![rv_b3("ITUB4", "A", 100), rv_b3("ITUB4", "B", 50)]);
+    let c = comparar(&db, &p, hoje()).unwrap();
+    assert_eq!(c.itens[0].instituicao, "A, B");
+    assert_eq!(c.itens[0].sugestao.as_ref().unwrap().instituicao, "A");
+}
+
+#[test]
+fn mesmo_ticker_em_abas_diferentes_nao_depende_da_ordem() {
+    let (_d, db) = abrir();
+    let etf = |q| LinhaB3::RendaVariavel {
+        aba: AbaRv::Etf,
+        ticker: "BOVA11".into(),
+        produto: "BOVA11".into(),
+        instituicao: "A".into(),
+        quantidade: q,
+        preco_fechamento: None,
+        valor_atualizado: None,
+    };
+    let acao = |q| rv_b3("BOVA11", "A", q);
+    let c1 = comparar(&db, &posicao(vec![etf(1), acao(2)]), hoje()).unwrap();
+    assert_eq!(c1.itens.len(), 2);
+    assert!(
+        c1.itens
+            .iter()
+            .any(|i| i.na_b3.as_deref() == Some("1 cota"))
+    );
+    assert!(
+        c1.itens
+            .iter()
+            .any(|i| i.na_b3.as_deref() == Some("2 ações"))
+    );
+}
+
+#[test]
+fn rf_ligado_por_codigo_nao_serve_a_duas_linhas() {
+    let (d, db) = abrir();
+    let id = criar(&db, cdb("Banco Fictício SA", "2029-03-15"));
+    marcar_importado(&d, id, "X1");
+    let venc = NaiveDate::from_ymd_opt(2029, 3, 15).unwrap();
+    let p = posicao(vec![cdb_b3("X1", "CDB", venc), cdb_b3("X1", "CDB", venc)]);
+    let c = comparar(&db, &p, hoje()).unwrap();
+    let primeiro = c.itens.iter().find(|i| i.chave == "b3:0").unwrap();
+    let segundo = c.itens.iter().find(|i| i.chave == "b3:1").unwrap();
+    assert_eq!(primeiro.estado, Estado::Igual);
+    assert_eq!(segundo.estado, Estado::Novo);
+}

@@ -188,6 +188,32 @@ fn total_aplicado(pares: &[&Investimento]) -> i64 {
         .fold(0i64, |a, i| a.saturating_add(i.valor_aplicado_centavos))
 }
 
+/// Linhas de renda variável do mesmo ticker e da mesma aba (corretoras diferentes).
+struct GrupoRv<'a> {
+    ticker: String,
+    aba: AbaRv,
+    primeira_linha: usize,
+    quantidade: i64,
+    instituicoes: Vec<&'a str>,
+}
+
+/// Linhas do Tesouro do mesmo título e vencimento (corretoras diferentes).
+struct GrupoTesouro<'a> {
+    tipo: String,
+    vencimento: NaiveDate,
+    produto: String,
+    primeira_linha: usize,
+    /// `None` se alguma linha do grupo não traz o valor aplicado.
+    aplicado: Option<i64>,
+    instituicoes: Vec<&'a str>,
+}
+
+fn juntar<'a>(lista: &mut Vec<&'a str>, instituicao: &'a str) {
+    if !lista.contains(&instituicao) {
+        lista.push(instituicao);
+    }
+}
+
 struct Contexto<'a> {
     investimentos: &'a [Investimento],
     hoje: NaiveDate,
@@ -235,10 +261,12 @@ impl Contexto<'_> {
         chave: String,
         aba: AbaRv,
         ticker: &str,
-        instituicao: &str,
+        instituicoes: &[&str],
         quantidade: i64,
     ) -> Item {
         let tipo_codigo = tipo_da_aba(aba);
+        let instituicao = instituicoes.join(", ");
+        let primeira = instituicoes.first().copied().unwrap_or_default();
         let pares: Vec<&Investimento> = self
             .investimentos
             .iter()
@@ -254,7 +282,7 @@ impl Contexto<'_> {
         if pares.is_empty() {
             let sugestao = NovoInvestimento {
                 tipo: tipo_codigo.to_string(),
-                instituicao: instituicao.to_string(),
+                instituicao: primeira.to_string(),
                 ticker: Some(ticker.to_uppercase()),
                 quantidade: Some(quantidade),
                 ..Default::default()
@@ -263,7 +291,7 @@ impl Contexto<'_> {
                 chave,
                 Estado::Novo,
                 ticker.to_string(),
-                instituicao.to_string(),
+                instituicao,
                 (None, na_b3),
                 Vec::new(),
                 vec![Acao::Adicionar, Acao::Ignorar],
@@ -279,7 +307,7 @@ impl Contexto<'_> {
             chave,
             estado,
             ticker.to_string(),
-            instituicao.to_string(),
+            instituicao,
             (Some(quantidade_texto(tipo_codigo, soma)), na_b3),
             ids(&pares),
             acoes,
@@ -309,7 +337,11 @@ impl Contexto<'_> {
             .investimentos
             .iter()
             .filter(rf)
-            .filter(|i| !codigo.is_empty() && i.codigo_b3.as_deref() == Some(codigo))
+            .filter(|i| {
+                !codigo.is_empty()
+                    && i.codigo_b3.as_deref() == Some(codigo)
+                    && !self.usados.contains(&i.id)
+            })
             .collect();
         let pares = if por_codigo.is_empty() {
             let emissor_norm = normalizar_emissor(emissor);
@@ -393,32 +425,27 @@ impl Contexto<'_> {
         })
     }
 
-    fn tesouro(&mut self, chave: String, linha: &LinhaB3) -> Option<Item> {
-        let LinhaB3::Tesouro {
-            produto,
-            tipo: tipo_td,
-            instituicao,
-            vencimento,
-            valor_aplicado,
-            ..
-        } = linha
-        else {
-            return None;
-        };
-        let venc = vencimento.to_string();
+    fn tesouro(&mut self, chave: String, grupo: &GrupoTesouro) -> Item {
+        let venc = grupo.vencimento.to_string();
+        let instituicao = grupo.instituicoes.join(", ");
+        let primeira = grupo.instituicoes.first().copied().unwrap_or_default();
         let pares: Vec<&Investimento> = self
             .investimentos
             .iter()
-            .filter(|i| i.tipo == *tipo_td && i.vencimento.as_deref() == Some(venc.as_str()))
+            .filter(|i| {
+                i.tipo == grupo.tipo
+                    && i.vencimento.as_deref() == Some(venc.as_str())
+                    && !self.usados.contains(&i.id)
+            })
             .collect();
         self.marcar(&pares);
-        let aplicado_b3 = valor_aplicado.and_then(centavos);
+        let aplicado_b3 = grupo.aplicado;
         let na_b3 = aplicado_b3.map(formatar_reais);
         if pares.is_empty() {
-            let info = tipo(tipo_td);
+            let info = tipo(&grupo.tipo);
             let sugestao = NovoInvestimento {
-                tipo: tipo_td.clone(),
-                instituicao: instituicao.clone(),
+                tipo: grupo.tipo.clone(),
+                instituicao: primeira.to_string(),
                 vencimento: Some(venc),
                 valor_aplicado_centavos: aplicado_b3,
                 liquidez: info
@@ -429,30 +456,30 @@ impl Contexto<'_> {
                     .map(|i| i.codigo().to_string()),
                 ..Default::default()
             };
-            return Some(self.item(
+            return self.item(
                 chave,
                 Estado::Novo,
-                produto.clone(),
-                instituicao.clone(),
+                grupo.produto.clone(),
+                instituicao,
                 (None, na_b3),
                 Vec::new(),
                 vec![Acao::Adicionar, Acao::Ignorar],
                 Some(sugestao),
-            ));
+            );
         }
         let soma = total_aplicado(&pares);
         let igual = aplicado_b3.is_some_and(|b| b.abs_diff(soma) <= 1);
         let (estado, acoes) = com_pares(&pares, igual);
-        Some(self.item(
+        self.item(
             chave,
             estado,
-            produto.clone(),
-            instituicao.clone(),
+            grupo.produto.clone(),
+            instituicao,
             (Some(formatar_reais(soma)), na_b3),
             ids(&pares),
             acoes,
             None,
-        ))
+        )
     }
 
     fn fora_da_b3(&self, inv: &Investimento) -> Item {
@@ -482,49 +509,80 @@ pub fn comparar(db: &Db, posicao: &Posicao, hoje: NaiveDate) -> Result<Comparaca
         usados: HashSet::new(),
     };
     let mut itens = Vec::new();
-    // Linhas de renda variável com o mesmo ticker (corretoras diferentes) valem como um item só.
-    let mut grupos: Vec<(String, usize, AbaRv, i64, Vec<&str>)> = Vec::new();
+    let mut rv: Vec<GrupoRv> = Vec::new();
+    let mut td: Vec<GrupoTesouro> = Vec::new();
     for (n, linha) in posicao.linhas.iter().enumerate() {
-        if let LinhaB3::RendaVariavel {
-            aba,
-            ticker,
-            instituicao,
-            quantidade,
-            ..
-        } = linha
-        {
-            let chave = ticker.to_uppercase();
-            match grupos.iter_mut().find(|g| g.0 == chave) {
-                Some(g) => {
-                    g.3 = g.3.saturating_add(*quantidade);
-                    if !g.4.contains(&instituicao.as_str()) {
-                        g.4.push(instituicao);
+        match linha {
+            LinhaB3::RendaVariavel {
+                aba,
+                ticker,
+                instituicao,
+                quantidade,
+                ..
+            } => {
+                let chave = ticker.to_uppercase();
+                match rv.iter_mut().find(|g| g.ticker == chave && g.aba == *aba) {
+                    Some(g) => {
+                        g.quantidade = g.quantidade.saturating_add(*quantidade);
+                        juntar(&mut g.instituicoes, instituicao);
                     }
+                    None => rv.push(GrupoRv {
+                        ticker: chave,
+                        aba: *aba,
+                        primeira_linha: n,
+                        quantidade: *quantidade,
+                        instituicoes: vec![instituicao],
+                    }),
                 }
-                None => grupos.push((chave, n, *aba, *quantidade, vec![instituicao])),
             }
+            LinhaB3::Tesouro {
+                produto,
+                tipo,
+                instituicao,
+                vencimento,
+                valor_aplicado,
+                ..
+            } => {
+                let valor = valor_aplicado.and_then(centavos);
+                match td
+                    .iter_mut()
+                    .find(|g| g.tipo == *tipo && g.vencimento == *vencimento)
+                {
+                    Some(g) => {
+                        g.aplicado = g.aplicado.zip(valor).map(|(a, b)| a.saturating_add(b));
+                        juntar(&mut g.instituicoes, instituicao);
+                    }
+                    None => td.push(GrupoTesouro {
+                        tipo: tipo.clone(),
+                        vencimento: *vencimento,
+                        produto: produto.clone(),
+                        primeira_linha: n,
+                        aplicado: valor,
+                        instituicoes: vec![instituicao],
+                    }),
+                }
+            }
+            LinhaB3::RendaFixa { .. } => {}
         }
     }
     for (n, linha) in posicao.linhas.iter().enumerate() {
         let chave = format!("b3:{n}");
         let item = match linha {
-            LinhaB3::RendaVariavel { ticker, .. } => {
+            LinhaB3::RendaVariavel { ticker, aba, .. } => {
                 let ticker_maiusculo = ticker.to_uppercase();
-                grupos
-                    .iter()
-                    .find(|g| g.0 == ticker_maiusculo && g.1 == n)
-                    .map(|(_, _, aba, quantidade, instituicoes)| {
-                        ctx.renda_variavel(
-                            chave,
-                            *aba,
-                            ticker,
-                            &instituicoes.join(", "),
-                            *quantidade,
-                        )
+                rv.iter()
+                    .find(|g| {
+                        g.ticker == ticker_maiusculo && g.aba == *aba && g.primeira_linha == n
+                    })
+                    .map(|g| {
+                        ctx.renda_variavel(chave, g.aba, ticker, &g.instituicoes, g.quantidade)
                     })
             }
             LinhaB3::RendaFixa { .. } => ctx.renda_fixa(chave, linha),
-            LinhaB3::Tesouro { .. } => ctx.tesouro(chave, linha),
+            LinhaB3::Tesouro { .. } => td
+                .iter()
+                .find(|g| g.primeira_linha == n)
+                .map(|g| ctx.tesouro(chave, g)),
         };
         itens.extend(item);
     }
