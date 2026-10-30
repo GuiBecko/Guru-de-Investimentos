@@ -1,5 +1,6 @@
 mod db;
 mod error;
+mod importacao;
 mod investimento;
 mod mercado;
 mod metas;
@@ -13,6 +14,8 @@ pub use investimento::{
     InvestimentoValido, Ir, Liquidez, MAX_CENTAVOS, NovoInvestimento, Resumo, ResumoClasse,
     TipoInfo, nome, rendimento, tipo, tipos, validar,
 };
+
+pub use importacao::{Aba, Celula, ler_xlsx};
 
 pub use perfil::{
     AVISO_FIXO, Opcao, Perfil, PerfilGravado, Pergunta, ResultadoPerfil, alocacao_sugerida,
