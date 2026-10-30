@@ -45,6 +45,9 @@ pub fn modo_teste(opcoes: Option<OpcoesCore>) -> napi::Result<Option<ModoTeste>,
     match (o.pasta_fixtures, o.hoje) {
         (None, None) => Ok(None),
         (None, Some(_)) => Err(invalido("`hoje` só vale junto com `pastaFixtures`.")),
+        (Some(pasta), _) if pasta.trim().is_empty() => {
+            Err(invalido("`pastaFixtures` não pode ser vazia."))
+        }
         (Some(pasta), hoje) => {
             let hoje = hoje
                 .map(|h| NaiveDate::parse_from_str(&h, "%Y-%m-%d"))

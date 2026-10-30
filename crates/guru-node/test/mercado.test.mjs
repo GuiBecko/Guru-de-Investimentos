@@ -1,8 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { createRequire } from "node:module";
 const { Core } = createRequire(import.meta.url)("../index.js");
 
@@ -77,8 +78,31 @@ test("hoje inválido, ou sem pastaFixtures, é recusado", () => {
 test("falha de banco na atualização rejeita com o code do núcleo", async () => {
   const dir = mkdtempSync(join(tmpdir(), "guru-"));
   const core = Core.open(dir, { pastaFixtures, hoje: "2026-10-28" });
-  // Sem o -wal/-shm da conexão aberta, o arquivo de texto é tudo o que a tarefa encontra.
-  for (const f of readdirSync(dir)) rmSync(join(dir, f));
-  writeFileSync(join(dir, "guru.db"), "isto não é um banco");
-  await assert.rejects(core.atualizarMercado(), { code: "DB_INVALID" });
+  // Outra conexão marca o banco como de versão mais nova, sem apagar arquivos abertos:
+  // a conexão própria da tarefa (Db::open) passa a falhar.
+  const outra = new DatabaseSync(join(dir, "guru.db"));
+  outra.exec("PRAGMA user_version = 99");
+  outra.close();
+  await assert.rejects(core.atualizarMercado(), { code: "SCHEMA_TOO_NEW" });
+});
+
+test("pastaFixtures vazia é recusada", () => {
+  const dir = mkdtempSync(join(tmpdir(), "guru-"));
+  assert.throws(() => Core.open(dir, { pastaFixtures: "" }), {
+    code: "MERCADO_CONFIG_INVALIDA",
+  });
+});
+
+test("com hoje fixo, gravar com a data real continua valendo; o valor usa a data de mercado", async () => {
+  const core = abrir();
+  await core.atualizarMercado();
+  const d = new Date();
+  const real = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const r = core.criarInvestimento({ ...cdb, dataAplicacao: real });
+  assert.deepEqual(r.erros, []);
+  const i = core.investimento(r.id);
+  assert.equal(i.valorAtualCentavos, i.valorAplicadoCentavos);
+  assert.equal(i.origemValor, "sem_dados");
+  const meta = core.criarMeta({ nome: "Viagem", valorAlvoCentavos: 1000000, prazo: `${d.getFullYear() + 5}-12` });
+  assert.deepEqual(meta.erros, []);
 });

@@ -49,12 +49,13 @@ impl Core {
         })
     }
 
-    /// Hoje; nos testes, a data fixa recebida em `Core.open`.
-    fn hoje(&self) -> chrono::NaiveDate {
+    /// Data de mercado: a fixa recebida em `Core.open` nos testes, senão a real. Vale só para o
+    /// atualizador e a valorização (leituras); validações e gravações usam `hoje_real`.
+    fn data_mercado(&self) -> chrono::NaiveDate {
         self.modo_teste
             .as_ref()
             .and_then(|m| m.hoje)
-            .unwrap_or_else(|| chrono::Local::now().date_naive())
+            .unwrap_or_else(hoje_real)
     }
 
     fn db(&self) -> napi::Result<MutexGuard<'_, Db>, String> {
@@ -85,14 +86,17 @@ impl Core {
     pub fn listar_investimentos(&self) -> napi::Result<Vec<InvestimentoJs>, String> {
         let lista = self
             .db()?
-            .listar_investimentos(self.hoje())
+            .listar_investimentos(self.data_mercado())
             .map_err(to_js)?;
         Ok(lista.into_iter().map(investimentos::investimento).collect())
     }
 
     #[napi]
     pub fn investimento(&self, id: i64) -> napi::Result<InvestimentoJs, String> {
-        let i = self.db()?.investimento(id, self.hoje()).map_err(to_js)?;
+        let i = self
+            .db()?
+            .investimento(id, self.data_mercado())
+            .map_err(to_js)?;
         Ok(investimentos::investimento(i))
     }
 
@@ -103,7 +107,7 @@ impl Core {
     ) -> napi::Result<ResultadoGravacao, String> {
         let g = self
             .db()?
-            .criar_investimento(&entrada(dados), self.hoje())
+            .criar_investimento(&entrada(dados), hoje_real())
             .map_err(to_js)?;
         Ok(resultado(g))
     }
@@ -116,7 +120,7 @@ impl Core {
     ) -> napi::Result<ResultadoGravacao, String> {
         let g = self
             .db()?
-            .atualizar_investimento(id, &entrada(dados), self.hoje())
+            .atualizar_investimento(id, &entrada(dados), hoje_real())
             .map_err(to_js)?;
         Ok(resultado(g))
     }
@@ -128,7 +132,10 @@ impl Core {
 
     #[napi]
     pub fn resumo_carteira(&self) -> napi::Result<ResumoJs, String> {
-        let r = self.db()?.resumo_carteira(self.hoje()).map_err(to_js)?;
+        let r = self
+            .db()?
+            .resumo_carteira(self.data_mercado())
+            .map_err(to_js)?;
         Ok(investimentos::resumo(r))
     }
 
@@ -137,7 +144,7 @@ impl Core {
         mercado::tarefa(
             self.pasta_dados.clone(),
             self.modo_teste.clone(),
-            self.hoje(),
+            self.data_mercado(),
         )
     }
 
@@ -161,7 +168,7 @@ impl Core {
             .collect();
         let r = self
             .db()?
-            .registrar_perfil(&respostas, self.hoje())
+            .registrar_perfil(&respostas, hoje_real())
             .map_err(to_js)?;
         Ok(match r {
             Ok(g) => ResultadoPerfilJs {
@@ -177,7 +184,7 @@ impl Core {
 
     #[napi]
     pub fn perfil_atual(&self) -> napi::Result<Option<PerfilJs>, String> {
-        let p = self.db()?.perfil_atual(self.hoje()).map_err(to_js)?;
+        let p = self.db()?.perfil_atual(hoje_real()).map_err(to_js)?;
         Ok(p.map(perfil::perfil))
     }
 
@@ -213,13 +220,16 @@ impl Core {
 
     #[napi]
     pub fn listar_metas(&self) -> napi::Result<Vec<MetaJs>, String> {
-        let l = self.db()?.listar_metas(self.hoje()).map_err(to_js)?;
+        let l = self
+            .db()?
+            .listar_metas(self.data_mercado())
+            .map_err(to_js)?;
         Ok(l.into_iter().map(metas::meta).collect())
     }
 
     #[napi]
     pub fn meta(&self, id: i64) -> napi::Result<MetaJs, String> {
-        let m = self.db()?.meta(id, self.hoje()).map_err(to_js)?;
+        let m = self.db()?.meta(id, self.data_mercado()).map_err(to_js)?;
         Ok(metas::meta(m))
     }
 
@@ -227,7 +237,7 @@ impl Core {
     pub fn criar_meta(&self, dados: NovaMetaJs) -> napi::Result<ResultadoGravacao, String> {
         let r = self
             .db()?
-            .criar_meta(&metas::entrada(dados), self.hoje())
+            .criar_meta(&metas::entrada(dados), hoje_real())
             .map_err(to_js)?;
         Ok(resultado_meta(r))
     }
@@ -240,7 +250,7 @@ impl Core {
     ) -> napi::Result<ResultadoGravacao, String> {
         let r = self
             .db()?
-            .atualizar_meta(id, &metas::entrada(dados), self.hoje())
+            .atualizar_meta(id, &metas::entrada(dados), hoje_real())
             .map_err(to_js)?;
         Ok(resultado_meta(r))
     }
@@ -249,6 +259,10 @@ impl Core {
     pub fn apagar_meta(&self, id: i64) -> napi::Result<(), String> {
         self.db()?.apagar_meta(id).map_err(to_js)
     }
+}
+
+fn hoje_real() -> chrono::NaiveDate {
+    chrono::Local::now().date_naive()
 }
 
 fn resultado_meta(r: Result<i64, Vec<guru_core::ErroCampo>>) -> ResultadoGravacao {
