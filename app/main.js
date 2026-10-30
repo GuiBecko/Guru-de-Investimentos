@@ -129,6 +129,7 @@ const canais = {
   "metas:criar": (dados) => nucleo().criarMeta(dados),
   "metas:atualizar": (id, dados) => nucleo().atualizarMeta(id, dados),
   "metas:apagar": (id) => nucleo().apagarMeta(id),
+  "aporte:dividir": (valorCentavos) => nucleo().proximoAporte(valorCentavos),
   "mercado:atualizar": () => nucleo().atualizarMercado(),
   "mercado:status": () => nucleo().statusMercado(),
   "importacao:escolher": () => escolherPlanilhaB3(),

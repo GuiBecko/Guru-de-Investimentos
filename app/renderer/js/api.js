@@ -43,6 +43,9 @@ export const api = {
     atualizar: (id, dados) => desembrulhar(window.guru.metas.atualizar(id, dados)),
     apagar: (id) => desembrulhar(window.guru.metas.apagar(id)),
   },
+  aporte: {
+    dividir: (valorCentavos) => desembrulhar(window.guru.aporte.dividir(valorCentavos)),
+  },
   mercado: {
     atualizar: () => desembrulhar(window.guru.mercado.atualizar()),
     status: () => desembrulhar(window.guru.mercado.status()),

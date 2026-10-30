@@ -36,6 +36,9 @@ contextBridge.exposeInMainWorld("guru", {
     atualizar: (id, dados) => ipcRenderer.invoke("metas:atualizar", id, dados),
     apagar: (id) => ipcRenderer.invoke("metas:apagar", id),
   },
+  aporte: {
+    dividir: (valorCentavos) => ipcRenderer.invoke("aporte:dividir", valorCentavos),
+  },
   mercado: {
     atualizar: () => ipcRenderer.invoke("mercado:atualizar"),
     status: () => ipcRenderer.invoke("mercado:status"),
