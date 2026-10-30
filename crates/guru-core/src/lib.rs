@@ -1,6 +1,7 @@
 mod aporte;
 mod db;
 mod error;
+mod ia;
 mod importacao;
 mod investimento;
 mod mercado;
@@ -44,4 +45,9 @@ pub use painel::{
 
 pub use aporte::{
     Aporte, ParteAporte, ResultadoAporte, Situacao as SituacaoAporte, dividir_aporte,
+};
+
+pub use ia::{
+    Cofre, CofreMemoria, CofreSistema, ConfigIa, ContextoMontado, FonteInterna, MODELOS,
+    ParteContexto, estimar_tokens, validar_formato_chave,
 };

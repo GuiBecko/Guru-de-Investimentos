@@ -331,13 +331,18 @@ fn migra_banco_da_versao_4() {
         conn.execute_batch(
             "ALTER TABLE investimentos DROP COLUMN codigo_b3;
              DROP TABLE importacao;
+             DROP TABLE ia_uso;
+             DROP TABLE mensagem;
+             DROP TABLE conversa;
+             DROP TABLE ia_contexto_parte;
+             DROP TABLE ia_config;
              PRAGMA user_version = 4;",
         )
         .unwrap();
     }
     let db = Db::open(dir.path()).unwrap();
-    assert_eq!(db.schema_version().unwrap(), 5);
-    assert_eq!(SCHEMA_VERSION, 5);
+    assert_eq!(db.schema_version().unwrap(), 6);
+    assert_eq!(SCHEMA_VERSION, 6);
     let lista = db.listar_investimentos(hoje()).unwrap();
     assert_eq!(lista.len(), 1);
     assert_eq!(lista[0].codigo_b3, None);

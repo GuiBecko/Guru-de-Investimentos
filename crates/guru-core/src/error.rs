@@ -22,6 +22,8 @@ pub enum CoreError {
     ArquivoInvalido(String),
     #[error("{0}")]
     DecisaoInvalida(String),
+    #[error("Não foi possível usar o cofre de senhas do sistema.")]
+    CofreIndisponivel,
 }
 
 impl CoreError {
@@ -35,6 +37,7 @@ impl CoreError {
             CoreError::PeriodoInvalido(_) => "PERIODO_INVALIDO",
             CoreError::ArquivoInvalido(_) => "ARQUIVO_INVALIDO",
             CoreError::DecisaoInvalida(_) => "DECISAO_INVALIDA",
+            CoreError::CofreIndisponivel => "IA_COFRE_INDISPONIVEL",
         }
     }
 }
