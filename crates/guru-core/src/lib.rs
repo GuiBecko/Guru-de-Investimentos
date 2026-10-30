@@ -3,6 +3,7 @@ mod error;
 mod investimento;
 mod mercado;
 mod metas;
+mod painel;
 mod perfil;
 
 pub use db::{Db, SCHEMA_VERSION};
@@ -27,3 +28,5 @@ pub use mercado::{
     PrecoTesouro, ResultadoAtualizacao, StatusFonte, Valor, atualizar, ler_cotahist_txt,
     ler_cotahist_zip, ler_sgs, ler_tesouro, titulo_tesouro, valorizar,
 };
+
+pub use painel::{Historico, PontoHistorico, datas_painel, historico};
