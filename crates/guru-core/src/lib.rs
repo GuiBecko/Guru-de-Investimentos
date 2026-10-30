@@ -1,6 +1,7 @@
 mod db;
 mod error;
 mod investimento;
+mod mercado;
 mod metas;
 mod perfil;
 
@@ -20,3 +21,8 @@ pub use perfil::{
 pub const CORE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub use metas::{Meta, NovaMeta, Progresso, Situacao, formatar_reais, progresso};
+
+pub use mercado::{
+    Cotacao, ErroFonte, PontoDiario, PrecoTesouro, ler_cotahist_txt, ler_cotahist_zip, ler_sgs,
+    ler_tesouro,
+};
