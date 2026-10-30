@@ -109,9 +109,10 @@ function cartaoClasse(c, porClasse) {
   return a;
 }
 
+export const temHistorico = (p) => p.pontos.some((x) => x.retornoCentesimos !== null && x.retornoCentesimos !== undefined);
+
 function graficosRentabilidade(p) {
-  const temHistorico = p.pontos.some((x) => x.retornoCentesimos !== null && x.retornoCentesimos !== undefined);
-  if (!temHistorico) {
+  if (!temHistorico(p)) {
     return [secao("Rentabilidade", undefined, el("p", "Ainda não há histórico para comparar.", "hint"))];
   }
   const series = [{ rotulo: "Carteira", valores: p.pontos.map((x) => x.acumuladoCentesimos), classe: "s-carteira" }];

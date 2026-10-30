@@ -3,7 +3,7 @@ import { formatarCentesimos, formatarData, formatarReais } from "../formato.js";
 import { graficoLinhas } from "../graficos.js";
 import { caixaTabela, cabecalho, celulasValor, el } from "./_tabela.js";
 import { dataDoMercado, textoNota } from "../mercado.js";
-import { legenda, painel, secao } from "./carteira/painel.js";
+import { legenda, painel, secao, temHistorico } from "./carteira/painel.js";
 
 const COLUNAS = [
   ["Investimento"],
@@ -66,6 +66,11 @@ function seletorBenchmark(benchmarks, escolhido, aoEscolher) {
 // Card do gráfico: a classe contra o benchmark escolhido. Os cinco benchmarks já vêm no painel,
 // então trocar de um para outro só redesenha.
 function cartaoBenchmark(p, rotuloClasse) {
+  if (!temHistorico(p)) {
+    const vazio = secao("Rentabilidade acumulada", undefined, el("p", "Ainda não há histórico para comparar.", "hint"));
+    vazio.classList.add("bloco-benchmark");
+    return vazio;
+  }
   const grafico = el("div");
   const legendaDoGrafico = el("div");
   const desenhar = (b) => {

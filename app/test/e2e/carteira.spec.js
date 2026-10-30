@@ -247,13 +247,38 @@ test("só com alvo e sem investimentos a carteira continua vazia", async () => {
   }
 });
 
+// Aplicados antes de um fim de mês do período das fixtures, para a classe ter retorno em outubro.
+const CDB_COM_HISTORICO = { ...CDB, dataAplicacao: "2026-08-31" };
+const ITUB4_COM_HISTORICO = { ...ITUB4, dataAplicacao: "2026-08-03" };
+
+test("detalhe da classe sem histórico mostra o aviso no lugar do seletor e do gráfico", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await criar(page, { ...CDB, dataAplicacao: "2026-10-20" });
+    await page.evaluate(() => {
+      window.location.hash = "#/carteira/rf";
+    });
+    const main = page.locator("main");
+    await expect(main.getByRole("heading", { name: "Renda fixa" })).toBeVisible();
+    await expect(main).toContainText("Ainda não há histórico para comparar.");
+    await expect(main.getByText("Em 12 meses")).toBeVisible();
+    await expect(main.getByRole("group", { name: "Benchmark" })).toHaveCount(0);
+    await expect(main.getByRole("img", { name: /Rentabilidade acumulada da classe/ })).toHaveCount(0);
+    await expect(main.locator("tbody tr")).toHaveCount(1);
+    await expect(main).not.toContainText("NaN");
+  } finally {
+    await app.close();
+  }
+});
+
 test("detalhe da classe: cabeçalho, benchmark padrão e troca sem refazer a chamada", async () => {
   const app = await lancar();
   try {
     const page = await app.firstWindow();
-    await criar(page, CDB);
+    await criar(page, CDB_COM_HISTORICO);
     await criar(page, SELIC);
-    await criar(page, ITUB4);
+    await criar(page, ITUB4_COM_HISTORICO);
     const main = page.locator("main");
     const grupo = main.getByRole("group", { name: "Benchmark" });
     const chamadas = () => page.evaluate(() => window.__chamadasPainel ?? 0);
@@ -291,10 +316,15 @@ test("detalhe da classe: cabeçalho, benchmark padrão e troca sem refazer a cha
     await expect(grupo.getByRole("button", { name: "IPCA" })).toHaveAttribute("aria-pressed", "true");
     await expect(grupo.getByRole("button", { name: "CDI" })).toHaveAttribute("aria-pressed", "false");
     await expect(main.locator(".legenda")).toContainText("IPCA");
+    await expect(main.locator(".legenda")).not.toContainText("CDI");
+    // IPCA tem dados no período: a linha do benchmark é desenhada (classe + benchmark = 2 séries).
+    await expect(main).not.toContainText("sem dados no período.");
+    await expect(main.locator("svg.chart path.serie")).toHaveCount(2);
 
     await grupo.getByRole("button", { name: "BOVA11" }).click();
     await expect(grupo.getByRole("button", { name: "BOVA11" })).toBeEnabled();
     await expect(main).toContainText("BOVA11 (Ibovespa): sem dados no período.");
+    await expect(main.locator("svg.chart path.serie")).toHaveCount(1);
     await grupo.getByRole("button", { name: "CDI" }).click();
     await expect(grupo.getByRole("button", { name: "CDI" })).toHaveAttribute("aria-pressed", "true");
     expect(await chamadas()).toBe(0);
