@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { menorData, diaMes, textoIndicador, precisaAtualizar } from "../../renderer/js/mercado.js";
+import { menorData, diaMes, textoIndicador, precisaAtualizar, deveRedesenhar, textoNota } from "../../renderer/js/mercado.js";
 
 const fontes = [
   { fonte: "cdi", rotulo: "CDI", ultimaData: "2026-10-28" },
@@ -29,4 +29,19 @@ test("precisaAtualizar compara com o dia local", () => {
   assert.equal(precisaAtualizar([{ atualizadoEm: hoje }, { atualizadoEm: hoje }], agora), false);
   assert.equal(precisaAtualizar([{ atualizadoEm: hoje }, { atualizadoEm: ontem }], agora), true);
   assert.equal(precisaAtualizar([{ atualizadoEm: hoje }, {}], agora), true);
+});
+
+test("deveRedesenhar só nas telas de leitura", () => {
+  for (const h of ["", "#", "#/", "#/carteira", "#/carteira/rf", "#/investimentos", "#/investimentos/"]) {
+    assert.equal(deveRedesenhar(h), true, h);
+  }
+  for (const h of ["#/investimentos/novo", "#/investimentos/abc", "#/perfil", "#/perfil/metas", "#/perfil/alocacao",
+    "#/aporte", "#/assistente", "#/ia", "#/xyz"]) {
+    assert.equal(deveRedesenhar(h), false, h);
+  }
+});
+
+test("textoNota", () => {
+  assert.equal(textoNota("28/10"), "Valores brutos, antes do IR. Dados de mercado de 28/10.");
+  assert.equal(textoNota(null), "Valores brutos, antes do IR. Dados de mercado ainda não baixados.");
 });

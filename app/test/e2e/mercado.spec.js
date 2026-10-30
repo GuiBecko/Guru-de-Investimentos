@@ -71,6 +71,7 @@ test("lista mostra atual e rentabilidade com sinal; ticker sem cotação mostra 
     await expect(sem).toContainText("sem cotação");
     await expect(sem.locator("td").nth(6)).toHaveText("—");
     await expect(page.locator("main tfoot")).toContainText("R$ 6.067,00");
+    await expect(page.locator("main")).toContainText("Valores brutos, antes do IR. Dados de mercado de 28/10.");
   } finally {
     await app.close();
   }
@@ -96,6 +97,7 @@ test("carteira mostra o Patrimônio e a nota de dados de mercado", async () => {
       "Investimento", "Instituição", "Rendimento", "Aplicado", "Atual", "Rentab.", "Vencimento", "Liquidez",
     ]);
     await expect(main.locator("tbody tr")).toContainText("+26,6%");
+    await expect(main).toContainText("Valores brutos, antes do IR. Dados de mercado de 28/10.");
   } finally {
     await app.close();
   }
@@ -142,5 +144,29 @@ test("fonte com falha mostra 'com falhas' e o diálogo lista o CDI com a mensage
   } finally {
     await app.close();
     fs.rmSync(pasta, { recursive: true, force: true });
+  }
+});
+
+test("salvar pelo formulário busca o valor atual sem clicar em Atualizar", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await expect(page.getByTestId("mercado")).toContainText("28/10", { timeout: 20000 });
+    await page.evaluate(() => {
+      window.location.hash = "#/investimentos/novo";
+    });
+    await expect(page.getByRole("heading", { name: "Novo investimento" })).toBeVisible();
+    await page.getByLabel("Tipo").selectOption("rv-acao");
+    await page.getByLabel("Ticker").fill("itub4");
+    await page.getByLabel("Quantidade").fill("150");
+    await page.getByLabel("Preço médio").fill("31,42");
+    await page.getByLabel("Data da primeira compra").fill("2026-10-01");
+    await page.getByRole("button", { name: "Salvar", exact: true }).click();
+    const linha = page.locator("main tbody tr").first();
+    await expect(linha).toContainText("ITUB4");
+    await expect(linha).toContainText("R$ 5.967,00", { timeout: 20000 });
+    await expect(linha).toContainText("+26,6%");
+  } finally {
+    await app.close();
   }
 });

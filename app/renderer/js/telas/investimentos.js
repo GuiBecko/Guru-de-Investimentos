@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { render as formulario } from "./formulario-investimento.js";
 import { formatarData, formatarReais } from "../formato.js";
+import { dataDoMercado, textoNota } from "../mercado.js";
 import { caixaTabela, cabecalho, celulasValor, el } from "./_tabela.js";
 
 const COLUNAS = [
@@ -110,6 +111,8 @@ async function lista(el_, vigente) {
     }
 
     if (!vigente()) return;
+    const data = await dataDoMercado();
+    if (!vigente()) return;
 
     async function apagar(inv) {
       if (!(await confirmarApagar(inv)) || !vigente()) return;
@@ -139,7 +142,7 @@ async function lista(el_, vigente) {
       vazio.append(el("p", "Nenhum investimento ainda."));
       partes.push(vazio);
     } else {
-      partes.push(tabela(itens, apagar));
+      partes.push(tabela(itens, apagar), el("p", textoNota(data), "hint"));
     }
     el_.replaceChildren(...partes);
   }

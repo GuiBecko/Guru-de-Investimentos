@@ -27,6 +27,23 @@ export function textoIndicador(fontes) {
   return data ? `Dados de mercado de ${diaMes(data)}` : "Dados de mercado: ainda não baixados";
 }
 
+// Nota visível sob os valores: são brutos e vêm de dados de uma certa data ("dd/mm", ou null).
+export function textoNota(data) {
+  return `Valores brutos, antes do IR. ${data ? `Dados de mercado de ${data}.` : "Dados de mercado ainda não baixados."}`;
+}
+
+// Só as telas de leitura são redesenhadas ao fim de uma atualização; as demais (formulários,
+// questionário, alocação, metas...) podem ter texto digitado ainda não enviado.
+export function deveRedesenhar(hash) {
+  return /^#?\/?(carteira(\/[^/]*)?|investimentos)?\/?$/.test(String(hash ?? ""));
+}
+
+// Aciona a mesma atualização do botão (o indicador mostra "Atualizando…"); sem efeito antes de iniciarMercado.
+let acionar = () => {};
+export function atualizarMercado() {
+  return acionar();
+}
+
 function isoLocal(data) {
   const p = (n) => String(n).padStart(2, "0");
   return `${data.getFullYear()}-${p(data.getMonth() + 1)}-${p(data.getDate())}`;
@@ -109,9 +126,10 @@ export function iniciarMercado(raiz) {
     }
     atualizando = false;
     desenhar();
-    // Redesenha a tela atual com os valores novos, sem pisar num formulário aberto.
-    if (!/^#\/investimentos\/./.test(window.location.hash)) window.dispatchEvent(new Event("hashchange"));
+    // Redesenha a tela atual com os valores novos, sem pisar em texto digitado.
+    if (deveRedesenhar(window.location.hash)) window.dispatchEvent(new Event("hashchange"));
   }
+  acionar = atualizar;
 
   desenhar();
   (async () => {

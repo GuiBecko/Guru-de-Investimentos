@@ -1,7 +1,7 @@
 import { api } from "../api.js";
 import { formatarData, formatarDecimos, formatarDiferenca, formatarReais } from "../formato.js";
 import { caixaTabela, cabecalho, celulasValor, el } from "./_tabela.js";
-import { dataDoMercado } from "../mercado.js";
+import { dataDoMercado, textoNota } from "../mercado.js";
 
 const COLUNAS = [
   ["Investimento"],
@@ -75,7 +75,7 @@ async function painel(elemento, vigente) {
   }
   const data = await dataDoMercado();
   if (!vigente()) return;
-  partes.push(el("p", `Valores brutos, antes do IR. ${data ? `Dados de mercado de ${data}.` : "Dados de mercado ainda não baixados."}`, "hint"));
+  partes.push(el("p", textoNota(data), "hint"));
   elemento.replaceChildren(...partes);
 }
 
@@ -140,7 +140,9 @@ async function detalhe(elemento, classe, vigente) {
   );
   const tfoot = el("tfoot");
   tfoot.append(rodape);
-  elemento.replaceChildren(topo, caixaTabela(cabecalho(COLUNAS), tbody, tfoot));
+  const data = await dataDoMercado();
+  if (!vigente()) return;
+  elemento.replaceChildren(topo, caixaTabela(cabecalho(COLUNAS), tbody, tfoot), el("p", textoNota(data), "hint"));
 }
 
 export function render(elemento, parametros = [], vigente = () => true) {
