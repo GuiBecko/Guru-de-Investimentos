@@ -5,7 +5,7 @@ use std::time::Duration;
 use chrono::NaiveDate;
 use guru_core::{
     Baixador, BaixadorHttp, BaixadorPasta, Db, ErroFonte, Gravacao, NovoInvestimento, Origem,
-    StatusFonte, atualizar, titulo_tesouro,
+    StatusFonte, atualizar, titulo_tesouro, valorizar,
 };
 
 fn data(a: i32, m: u32, d: u32) -> NaiveDate {
@@ -560,6 +560,37 @@ fn titulo_novo_do_tesouro_baixa_o_csv_no_mesmo_dia() {
             .unwrap()
             .is_some()
     );
+}
+
+#[test]
+fn tesouro_com_vencimento_inexistente_nao_baixa_o_csv_a_cada_rodada() {
+    let (_d, db) = abrir();
+    criar(
+        &db,
+        NovoInvestimento {
+            vencimento: s("2031-07-15"),
+            ..tesouro_selic()
+        },
+    );
+    let esperas = Esperas::novo();
+
+    let primeira = Falso::novo();
+    atualizar(&db, &primeira, hoje(), &esperas.fecha()).unwrap();
+    assert_eq!(primeira.com("PrecoTaxaTesouroDireto").len(), 1);
+
+    let segunda = Falso::novo();
+    atualizar(&db, &segunda, hoje(), &esperas.fecha()).unwrap();
+    assert!(segunda.com("PrecoTaxaTesouroDireto").is_empty());
+    let inv = db.listar_investimentos(hoje()).unwrap().remove(0);
+    assert_eq!(
+        valorizar(&db, &inv, hoje()).unwrap().origem,
+        Origem::SemDados
+    );
+
+    let amanha = hoje().succ_opt().unwrap();
+    let terceira = Falso::novo();
+    atualizar(&db, &terceira, amanha, &esperas.fecha()).unwrap();
+    assert_eq!(terceira.com("PrecoTaxaTesouroDireto").len(), 1);
 }
 
 #[test]

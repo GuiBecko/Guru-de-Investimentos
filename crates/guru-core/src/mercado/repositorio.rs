@@ -239,6 +239,19 @@ impl Db {
         Ok(())
     }
 
+    /// Guarda `data` como a marca da chave, mesmo que seja mais nova que a registrada (a
+    /// `gravar_cobertura` mantém a mais antiga; estas marcas dizem "procurado em", não "desde").
+    pub fn gravar_marca_recente(&self, chave: &str, data: NaiveDate) -> Result<(), CoreError> {
+        self.conn
+            .execute(
+                "INSERT INTO cobertura_serie (serie, desde) VALUES (?1, ?2) \
+                 ON CONFLICT (serie) DO UPDATE SET desde = MAX(desde, excluded.desde)",
+                params![chave, iso(data)],
+            )
+            .map_err(classifica)?;
+        Ok(())
+    }
+
     pub fn b3_alvos(&self) -> Result<Vec<B3Alvo>, CoreError> {
         let mut st = self
             .conn
