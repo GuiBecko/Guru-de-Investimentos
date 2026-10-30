@@ -246,3 +246,59 @@ test("só com alvo e sem investimentos a carteira continua vazia", async () => {
     await app.close();
   }
 });
+
+test("detalhe da classe: cabeçalho, benchmark padrão e troca sem refazer a chamada", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await criar(page, CDB);
+    await criar(page, SELIC);
+    await criar(page, ITUB4);
+    const main = page.locator("main");
+    const grupo = main.getByRole("group", { name: "Benchmark" });
+    const chamadas = () => page.evaluate(() => window.__chamadasPainel ?? 0);
+    const abrir = async (hash) => {
+      await page.evaluate((h) => {
+        window.location.hash = h;
+      }, hash);
+    };
+
+    await abrir("#/carteira/acoes");
+    await expect(grupo.getByRole("button", { name: "BOVA11" })).toHaveAttribute("aria-pressed", "true");
+    await expect(main.getByText("Sua ações")).toBeVisible();
+
+    await abrir("#/carteira/rf");
+    await expect(main.getByRole("heading", { name: "Renda fixa" })).toBeVisible();
+    await expect(main.getByText("Em 12 meses")).toBeVisible();
+    await expect(main.getByText("Valor", { exact: true })).toBeVisible();
+    await expect(grupo.getByRole("button")).toHaveText(["CDI", "Selic", "IPCA", "BOVA11", "XFIX11"]);
+    await expect(grupo.getByRole("button", { name: "CDI" })).toHaveAttribute("aria-pressed", "true");
+    await expect(main.getByText("Sua renda fixa")).toBeVisible();
+    await expect(main.getByRole("img", { name: "Rentabilidade acumulada da classe contra o benchmark" })).toBeVisible();
+    await expect(main.locator("tbody tr")).toHaveCount(2);
+
+    // Conta as chamadas a partir daqui: trocar de benchmark não pode chamar a API de novo.
+    await page.evaluate(async () => {
+      const { api } = await import("./js/api.js");
+      const original = api.carteira.painel;
+      window.__chamadasPainel = 0;
+      api.carteira.painel = (...args) => {
+        window.__chamadasPainel += 1;
+        return original(...args);
+      };
+    });
+    await grupo.getByRole("button", { name: "IPCA" }).click();
+    await expect(grupo.getByRole("button", { name: "IPCA" })).toHaveAttribute("aria-pressed", "true");
+    await expect(grupo.getByRole("button", { name: "CDI" })).toHaveAttribute("aria-pressed", "false");
+    await expect(main.locator(".legenda")).toContainText("IPCA");
+
+    await grupo.getByRole("button", { name: "BOVA11" }).click();
+    await expect(grupo.getByRole("button", { name: "BOVA11" })).toBeEnabled();
+    await expect(main).toContainText("BOVA11 (Ibovespa): sem dados no período.");
+    await grupo.getByRole("button", { name: "CDI" }).click();
+    await expect(grupo.getByRole("button", { name: "CDI" })).toHaveAttribute("aria-pressed", "true");
+    expect(await chamadas()).toBe(0);
+  } finally {
+    await app.close();
+  }
+});

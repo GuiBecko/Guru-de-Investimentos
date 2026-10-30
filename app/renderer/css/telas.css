@@ -58,6 +58,10 @@ a.card:hover, a.card:focus-visible { border-color: var(--accent); }
 a.card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mid { font-size: 18px; font-weight: 500; }
 .total { display: grid; gap: 2px; }
+.numeros-classe { display: flex; gap: 28px; text-align: right; }
+.bloco-benchmark { margin-bottom: 14px; }
+.bloco-benchmark .seletor { margin-bottom: 8px; }
+.bloco-benchmark svg.chart { max-height: 240px; }
 .total small { color: var(--muted); }
 .migalha { font-size: 12px; color: var(--muted); text-decoration: none; }
 .migalha:hover, .migalha:focus-visible { color: var(--accent); }

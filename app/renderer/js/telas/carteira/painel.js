@@ -56,7 +56,7 @@ function numeros(p, meses) {
   return caixa;
 }
 
-function secao(titulo, subtitulo, ...filhos) {
+export function secao(titulo, subtitulo, ...filhos) {
   const s = el("section", undefined, "card bloco");
   const cab = el("div", undefined, "card-title");
   cab.append(el("h2", titulo, "bloco-titulo"));
@@ -65,7 +65,7 @@ function secao(titulo, subtitulo, ...filhos) {
   return s;
 }
 
-function legenda(itens) {
+export function legenda(itens) {
   const ul = el("ul", undefined, "legenda");
   for (const { rotulo, classe, texto, tracejada } of itens) {
     const li = el("li");
