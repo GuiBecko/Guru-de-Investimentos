@@ -47,7 +47,7 @@ O detalhe da classe ganha o gráfico contra um benchmark à escolha.
   - `F` = aplicado dos investimentos com `D₀ < data_aplicacao ≤ D₁`.
   - `V₀` = patrimônio em D₀, `V₁` = patrimônio em D₁.
   - `r = (V₁ − V₀ − F) / (V₀ + F/2)`.
-  - Denominador ≤ 0 → retorno ausente (`None`), nunca divisão por zero.
+  - `V₀ = 0` (não havia patrimônio no começo do intervalo) ou denominador ≤ 0 → retorno ausente (`None`), nunca divisão por zero. Com `V₀ = 0` a fórmula daria o dobro do rendimento do dinheiro novo, por isso o primeiro mês de uma carteira nova fica sem retorno.
 - **Acumulado da carteira** no ponto i = `Π(1 + r_k) − 1` para k ≤ i. Retorno ausente conta como fator 1. O ponto 0 vale 0.
 - **Benchmarks acumulados** de D₀ (primeiro ponto) até cada Dᵢ:
   - CDI e Selic: `Π(1 + t_d/100)` para d em `(D₀, Dᵢ]`.
