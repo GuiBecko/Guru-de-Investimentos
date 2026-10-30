@@ -19,7 +19,10 @@ export const api = {
     atualizar: (id, dados) => desembrulhar(window.guru.investimentos.atualizar(id, dados)),
     apagar: (id) => desembrulhar(window.guru.investimentos.apagar(id)),
   },
-  carteira: { resumo: () => desembrulhar(window.guru.carteira.resumo()) },
+  carteira: {
+    resumo: () => desembrulhar(window.guru.carteira.resumo()),
+    painel: (meses, classe) => desembrulhar(window.guru.carteira.painel(meses, classe)),
+  },
   perfil: {
     questionario: () => desembrulhar(window.guru.perfil.questionario()),
     registrar: (respostas) => desembrulhar(window.guru.perfil.registrar(respostas)),

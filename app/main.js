@@ -72,6 +72,7 @@ const canais = {
   "investimentos:atualizar": (id, dados) => nucleo().atualizarInvestimento(id, dados),
   "investimentos:apagar": (id) => nucleo().apagarInvestimento(id),
   "carteira:resumo": () => nucleo().resumoCarteira(),
+  "carteira:painel": (meses, classe) => nucleo().painel(meses, classe),
   "perfil:questionario": () => nucleo().questionario(),
   "perfil:registrar": (respostas) => nucleo().registrarPerfil(respostas),
   "perfil:atual": () => nucleo().perfilAtual(),
