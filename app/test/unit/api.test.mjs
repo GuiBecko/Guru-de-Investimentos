@@ -32,6 +32,7 @@ test("api.investimentos e api.carteira repassam à ponte e desembrulham", async 
       metas: Object.fromEntries(
         ["listar", "ler", "criar", "atualizar", "apagar"].map((n) => [n, canal(n)]),
       ),
+      aporte: { dividir: canal("dividir") },
       mercado: Object.fromEntries(["atualizar", "status"].map((n) => [n, canal(n)])),
       importacao: Object.fromEntries(["escolher", "aplicar", "ultima"].map((n) => [n, canal(n)])),
     },
@@ -61,6 +62,8 @@ test("api.investimentos e api.carteira repassam à ponte e desembrulham", async 
     assert.equal(await api.metas.atualizar(1, {}), "atualizar");
     assert.equal(await api.metas.apagar(1), "apagar");
     assert.deepEqual(chamadas.at(-1), ["apagar", 1]);
+    assert.equal(await api.aporte.dividir(100000), "dividir");
+    assert.deepEqual(chamadas.at(-1), ["dividir", 100000]);
     assert.equal(await api.mercado.atualizar(), "atualizar");
     assert.equal(await api.mercado.status(), "status");
     assert.equal(await api.importacao.escolher(), "escolher");

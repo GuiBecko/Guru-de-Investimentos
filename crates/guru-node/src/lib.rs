@@ -5,12 +5,14 @@ use guru_core::{CORE_VERSION, CoreError, Db, Gravacao};
 use napi::bindgen_prelude::{AsyncTask, Buffer};
 use napi_derive::napi;
 
+mod aporte;
 mod importacao;
 mod investimentos;
 mod mercado;
 mod metas;
 mod painel;
 mod perfil;
+use aporte::ResultadoAporteJs;
 use importacao::{ComparacaoGuardada, ComparacaoJs, DecisaoJs, ResultadoImportacaoJs};
 use investimentos::{
     Catalogo, ErroCampoJs, InvestimentoJs, NovoInvestimentoJs, ResultadoGravacao, ResumoJs,
@@ -174,6 +176,15 @@ impl Core {
             .resumo_carteira(self.data_mercado())
             .map_err(to_js)?;
         Ok(investimentos::resumo(r))
+    }
+
+    #[napi]
+    pub fn proximo_aporte(&self, valor_centavos: i64) -> napi::Result<ResultadoAporteJs, String> {
+        let r = self
+            .db()?
+            .proximo_aporte(self.data_mercado(), valor_centavos)
+            .map_err(to_js)?;
+        Ok(aporte::resultado(r))
     }
 
     /// Assíncrono (`Promise`): calcula numa thread do libuv, com conexão própria.

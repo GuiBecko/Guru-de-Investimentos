@@ -64,6 +64,7 @@ Escopo combinado durante a fase de protótipo. O protótipo das telas está em [
 | Rentabilidade da carteira | Retorno mensal pelo método de Dietz modificado (os aportes pesam pelos dias em que ficaram aplicados no mês), encadeado no período. Investimento sem preço conta pelo valor aplicado, e o mês em que ele ganha preço não vira rendimento. Benchmarks comparados a partir do primeiro aporte do período. Histórico de 6 ou 12 meses, pelos fechamentos de fim de mês. |
 | Proventos | Fora do painel até haver fonte (importação da B3 ou V2). |
 | Importação | Planilha de posição da Área do Investidor B3 (.xlsx), lida pelo nome das abas e das colunas. Casa por ticker (renda variável), código ou emissor + vencimento (renda fixa) e título + vencimento (Tesouro). Valor aplicado, taxa e preço médio não vêm na posição: o usuário completa na tela antes de gravar. Nada é apagado sem escolha explícita. |
+| Próximo aporte | Divide o valor digitado entre as classes da alocação-alvo, por nivelamento: todas as classes com alvo sobem até a mesma fração do seu alvo, e a classe que já passou dessa fração recebe 0. Só aporte, nunca venda: a soma das sugestões é o valor digitado, ao centavo. O valor de cada classe é o atual da carteira (sem cotação, o aplicado). Sem histórico: nada é gravado, e o histórico de decisões de aporte é da V2. "Perto do alvo" no Próximo aporte significa dentro de 1 p.p. (na Carteira, "no alvo" é ±0,5 p.p.). Sem alocação-alvo, a tela convida a defini-la. |
 
 ## Em aberto
 

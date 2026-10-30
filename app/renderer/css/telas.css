@@ -238,6 +238,13 @@ svg.mini { width: 100%; max-width: 120px; height: 24px; }
 .legenda li { display: flex; align-items: center; gap: 6px; }
 .legenda small { color: var(--muted); }
 .legenda .marca { display: inline-block; width: 10px; height: 10px; background: var(--muted); }
+.classe-rotulo { display: inline-flex; align-items: center; gap: 6px; }
+.classe-rotulo .marca { display: inline-block; width: 10px; height: 10px; background: var(--muted); }
+.classe-rotulo .marca.f-c1 { background: var(--c1); }
+.classe-rotulo .marca.f-c2 { background: var(--c2); }
+.classe-rotulo .marca.f-c3 { background: var(--c3); }
+.classe-rotulo .marca.f-c4 { background: var(--c4); }
+.classe-rotulo .marca.f-c5 { background: var(--c5); }
 .legenda .marca.tracejada { height: 0; border-top: 2px dashed var(--muted); background: none; }
 .legenda .marca.s-carteira { background: var(--accent); }
 .legenda .marca.s-bench { border-top-color: var(--bench); }

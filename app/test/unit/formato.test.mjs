@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatarReais, paraCentavos, paraTaxa, formatarData } from "../../renderer/js/formato.js";
+import { formatarReais, formatoDeReais, paraCentavos, paraTaxa, formatarData } from "../../renderer/js/formato.js";
 
 test("formatarReais", () => {
   assert.equal(formatarReais(2000000), "R$ 20.000,00");
@@ -108,4 +108,14 @@ test("formatadores arredondam entrada fracionária", async () => {
   assert.equal(formatarReais(1234.5), "R$ 12,35");
   assert.equal(formatarReais(100.4), "R$ 1,00");
   assert.equal(formatarReais(-166.67), "-R$ 1,67");
+});
+
+test("formatoDeReais reconhece o formato mesmo quando o valor passa do limite", () => {
+  assert.equal(formatoDeReais("2.000,00"), true);
+  assert.equal(formatoDeReais("R$ 50"), true);
+  assert.equal(formatoDeReais("99999999999999999999"), true);
+  assert.equal(paraCentavos("99999999999999999999"), null);
+  assert.equal(formatoDeReais("abc"), false);
+  assert.equal(formatoDeReais("1.00"), false);
+  assert.equal(formatoDeReais(""), false);
 });

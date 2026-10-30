@@ -56,6 +56,7 @@ test("a ponte expõe só os canais do app e nada do Electron ou do Node", async 
       "alocacao",
       "objetivo",
       "metas",
+      "aporte",
       "mercado",
       "importacao",
     ]);
@@ -86,6 +87,7 @@ test("a ponte expõe só os canais do app e nada do Electron ou do Node", async 
       "atualizar",
       "apagar",
     ]);
+    expect(await page.evaluate(() => Object.keys(window.guru.aporte))).toEqual(["dividir"]);
     expect(await page.evaluate(() => Object.keys(window.guru.mercado))).toEqual([
       "atualizar",
       "status",
