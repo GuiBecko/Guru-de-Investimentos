@@ -129,7 +129,36 @@ test("listas sem itens mostram o texto de vazio", async () => {
   }
 });
 
-test("trocar o período várias vezes seguidas termina no último escolhido", async () => {
+test("a resposta atrasada de um período antigo não sobrescreve o último escolhido", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await criar(page, CDB);
+    await abrir(page);
+    const main = page.locator("main");
+    const rotulo = main.locator(".numeros .card b").nth(2);
+    await expect(rotulo).toHaveText("Em 12 meses");
+    // A chamada de 6 meses passa a resolver bem depois da de 12.
+    await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) => {
+        const original = api.carteira.painel;
+        api.carteira.painel = (meses, classe) =>
+          original(meses, classe).then((r) => (meses === 6 ? new Promise((ok) => setTimeout(() => ok(r), 1200)) : r));
+      }),
+    );
+    await main.getByRole("button", { name: "6 meses" }).click();
+    await main.getByRole("button", { name: "12 meses" }).click();
+    await expect(rotulo).toHaveText("Em 12 meses");
+    await page.waitForTimeout(2000);
+    await expect(rotulo).toHaveText("Em 12 meses");
+    await expect(main.locator(".numeros .card b").nth(3)).toHaveText("Rendeu em 12 meses");
+    await expect(main.getByRole("button", { name: "12 meses" })).toHaveAttribute("aria-pressed", "true");
+  } finally {
+    await app.close();
+  }
+});
+
+test("falha ao trocar o período mantém os números, avisa nos gráficos e permite tentar de novo", async () => {
   const app = await lancar();
   try {
     const page = await app.firstWindow();
@@ -137,18 +166,23 @@ test("trocar o período várias vezes seguidas termina no último escolhido", as
     await abrir(page);
     const main = page.locator("main");
     await expect(main.locator(".numeros .card b").nth(2)).toHaveText("Em 12 meses");
-    const seis = main.getByRole("button", { name: "6 meses" });
-    const doze = main.getByRole("button", { name: "12 meses" });
-    for (let i = 0; i < 4; i++) {
-      await seis.click();
-      await doze.click();
-    }
-    await seis.click();
+    await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) => {
+        const original = api.carteira.painel;
+        window.__falhar = true;
+        api.carteira.painel = (m, c) => (window.__falhar && m === 6 ? Promise.reject(new Error("falha")) : original(m, c));
+      }),
+    );
+    await main.getByRole("button", { name: "6 meses" }).click();
+    await expect(main.getByRole("alert")).toContainText("Não foi possível carregar o período.");
+    await expect(main.locator(".numeros .card b").nth(2)).toHaveText("Em 12 meses");
+    await expect(main.getByRole("button", { name: "12 meses" })).toHaveAttribute("aria-pressed", "true");
+    await page.evaluate(() => {
+      window.__falhar = false;
+    });
+    await main.getByRole("button", { name: "6 meses" }).click();
     await expect(main.locator(".numeros .card b").nth(2)).toHaveText("Em 6 meses");
-    await expect(seis).toHaveAttribute("aria-pressed", "true");
-    // A resposta antiga não volta a sobrescrever: o texto continua o do último pedido.
-    await page.waitForTimeout(500);
-    await expect(main.locator(".numeros .card b").nth(3)).toHaveText("Rendeu em 6 meses");
+    await expect(main.getByRole("alert")).toHaveCount(0);
   } finally {
     await app.close();
   }

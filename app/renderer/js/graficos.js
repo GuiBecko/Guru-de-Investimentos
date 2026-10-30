@@ -123,7 +123,9 @@ function eixoX(svg, datas, xs) {
   datas.forEach((d, i) => {
     if (i % passo !== 0 && i !== datas.length - 1) return;
     if (i !== datas.length - 1 && datas.length - 1 - i < passo / 2) return;
-    svg.append(el("text", { class: "eixo", x: xs[i], y: H - 8, "text-anchor": "middle" }, mesAno(d)));
+    // O rótulo do último ponto, centrado, passaria da borda direita do desenho.
+    const naBorda = xs[i] > W - 20;
+    svg.append(el("text", { class: "eixo", x: naBorda ? W - 2 : xs[i], y: H - 8, "text-anchor": naBorda ? "end" : "middle" }, mesAno(d)));
   });
 }
 

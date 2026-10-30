@@ -4,6 +4,7 @@ import { graficoBarras, graficoLinhas, graficoRosca, minigrafico } from "../../g
 import { saudacao } from "../../saudacao.js";
 import { dataDoMercado, textoNota } from "../../mercado.js";
 import { el } from "../_tabela.js";
+import { altasEQuedas } from "./variacoes.js";
 
 // Cor por classe (tokens em telas.css) e dos benchmarks do gráfico de rentabilidade.
 const COR_CLASSE = { rf: "c1", acoes: "c2", fii: "c3", ext: "c4", outros: "c5" };
@@ -29,7 +30,7 @@ function marcar(cartao, valor) {
 }
 
 function cartao(titulo, valor, rodape, testid) {
-  const c = el("div", undefined, "card");
+  const c = el("div", undefined, testid === "numero-patrimonio" ? "card hero" : "card");
   if (testid) c.dataset.testid = testid;
   c.append(el("b", titulo), el("span", valor, "mid mono"));
   if (rodape !== undefined) c.append(el("small", rodape, "mono"));
@@ -55,9 +56,12 @@ function numeros(p, meses) {
   return caixa;
 }
 
-function secao(titulo, ...filhos) {
+function secao(titulo, subtitulo, ...filhos) {
   const s = el("section", undefined, "card bloco");
-  s.append(el("h2", titulo, "bloco-titulo"), ...filhos);
+  const cab = el("div", undefined, "card-title");
+  cab.append(el("h2", titulo, "bloco-titulo"));
+  if (subtitulo) cab.append(el("small", subtitulo));
+  s.append(cab, ...filhos);
   return s;
 }
 
@@ -83,7 +87,7 @@ function rosca(resumo) {
   }));
   const corpo = el("div", undefined, "rosca-corpo");
   corpo.append(graficoRosca(fatias, "Distribuição do patrimônio por classe"), legenda(itens));
-  return secao("Por classe", corpo);
+  return secao("Por classe", "atual · alvo", corpo);
 }
 
 function cartaoClasse(c, porClasse) {
@@ -105,13 +109,10 @@ function cartaoClasse(c, porClasse) {
   return a;
 }
 
-
-
-
 function graficosRentabilidade(p) {
   const temHistorico = p.pontos.some((x) => x.retornoCentesimos !== null && x.retornoCentesimos !== undefined);
   if (!temHistorico) {
-    return [secao("Rentabilidade", el("p", "Ainda não há histórico para comparar.", "hint"))];
+    return [secao("Rentabilidade", undefined, el("p", "Ainda não há histórico para comparar.", "hint"))];
   }
   const series = [{ rotulo: "Carteira", valores: p.pontos.map((x) => x.acumuladoCentesimos), classe: "s-carteira" }];
   const itens = [{ rotulo: "Carteira", classe: "s-carteira" }];
@@ -122,11 +123,13 @@ function graficosRentabilidade(p) {
   }
   const acumulada = secao(
     "Rentabilidade acumulada",
+    undefined,
     graficoLinhas(p.datas, series, formatarCentesimos, "Rentabilidade acumulada da carteira contra CDI, IPCA e BOVA11"),
     legenda(itens),
   );
   const mensal = secao(
     "Mês a mês",
+    "rentabilidade da carteira",
     graficoBarras(p.datas, p.pontos.map((x) => x.retornoCentesimos), formatarCentesimos, "Rentabilidade mês a mês"),
   );
   return [acumulada, mensal];
@@ -136,7 +139,7 @@ function lista(titulo, testid, linhas) {
   const ul = el("ul", undefined, "lista");
   if (linhas.length === 0) ul.append(el("li", "Nada por aqui ainda.", "hint"));
   else ul.append(...linhas);
-  const s = secao(titulo, ul);
+  const s = secao(titulo, undefined, ul);
   s.dataset.testid = testid;
   return s;
 }
@@ -149,10 +152,7 @@ function linhaPar(esquerda, direita, classe) {
 
 function listas(p) {
   const instituicoes = p.instituicoes.map((i) => linhaPar(el("span", i.nome), formatarDecimos(i.percentualDecimos)));
-  const altas = p.variacoes.filter((v) => v.variacaoDecimos > 0).slice(0, 3);
-  const quedas = p.variacoes.filter((v) => v.variacaoDecimos < 0).slice(-3).reverse();
-  const fmt = (v) => `${v.variacaoDecimos > 0 ? "▲" : "▼"} ${formatarDecimos(Math.abs(v.variacaoDecimos))}`;
-  const variacoes = [...altas, ...quedas].map((v) => linhaPar(el("span", v.ticker), fmt(v), v.variacaoDecimos > 0 ? "up" : "down"));
+  const variacoes = altasEQuedas(p.variacoes).map((v) => linhaPar(el("span", v.ticker), v.texto, v.classe));
   const vencimentos = p.vencimentos.map((v) => {
     const a = el("a", v.nome);
     a.href = `#/investimentos/${v.id}`;
@@ -170,6 +170,7 @@ function listas(p) {
 function desenhar(p, resumo) {
   const evolucao = secao(
     "Evolução do patrimônio",
+    undefined,
     graficoLinhas(
       p.datas,
       [
@@ -184,11 +185,13 @@ function desenhar(p, resumo) {
       { rotulo: "Total aportado", classe: "s-bench", tracejada: true },
     ]),
   );
+  const linha1 = el("div", undefined, "graficos g1");
+  linha1.append(evolucao, rosca(resumo));
   const classes = el("div", undefined, "classes");
   classes.append(...resumo.classes.map((c) => cartaoClasse(c, p.porClasse)));
-  const graficos = el("div", undefined, "graficos");
-  graficos.append(evolucao, rosca(resumo), ...graficosRentabilidade(p));
-  return [graficos, classes, listas(p)];
+  const linha2 = el("div", undefined, "graficos g2");
+  linha2.append(...graficosRentabilidade(p));
+  return [linha1, classes, linha2, listas(p)];
 }
 
 function topo(p, meses, aoTrocar) {
@@ -224,7 +227,9 @@ export async function painel(elemento, vigente, erro) {
   let resumo;
   let p;
   try {
-    [resumo, p] = await Promise.all([api.carteira.resumo(), api.carteira.painel(12)]);
+    resumo = await api.carteira.resumo();
+    if (!vigente()) return;
+    if (resumo.totalAplicadoCentavos > 0) p = await api.carteira.painel(12);
   } catch (e) {
     if (!vigente()) return;
     console.error("Falha ao carregar a carteira:", e);
@@ -233,7 +238,7 @@ export async function painel(elemento, vigente, erro) {
   }
   if (!vigente()) return;
 
-  if (resumo.totalAplicadoCentavos === 0) {
+  if (!p) {
     const vazio = el("div", undefined, "vazio");
     const novo = el("a", "Lançar o primeiro investimento", "btn");
     novo.href = "#/investimentos/novo";
@@ -249,11 +254,14 @@ export async function painel(elemento, vigente, erro) {
 
   let meses = 12;
   let pedido = 0;
-  const corpo = el("div", undefined, "painel-corpo");
+  const caixaNumeros = el("div");
+  const area = el("div", undefined, "painel-corpo");
   const aoTrocar = async (novo, botoes) => {
     if (novo === meses) return;
+    const anterior = meses;
+    const marcarBotoes = (m) => botoes.forEach((b, i) => b.setAttribute("aria-pressed", String(MESES.slice().reverse()[i] === m)));
     meses = novo;
-    botoes.forEach((b, i) => b.setAttribute("aria-pressed", String(MESES.slice().reverse()[i] === novo)));
+    marcarBotoes(novo);
     const meu = ++pedido;
     let outro;
     try {
@@ -261,12 +269,18 @@ export async function painel(elemento, vigente, erro) {
     } catch (e) {
       if (!vigente() || meu !== pedido) return;
       console.error("Falha ao carregar o período:", e);
-      corpo.replaceChildren(el("p", "Não foi possível carregar o período.", "erro"));
+      meses = anterior;
+      marcarBotoes(anterior);
+      const aviso = el("p", "Não foi possível carregar o período.", "erro");
+      aviso.setAttribute("role", "alert");
+      area.replaceChildren(aviso);
       return;
     }
     if (!vigente() || meu !== pedido) return;
-    corpo.replaceChildren(numeros(outro, novo), ...desenhar(outro, resumo));
+    caixaNumeros.replaceChildren(numeros(outro, novo));
+    area.replaceChildren(...desenhar(outro, resumo));
   };
-  corpo.append(numeros(p, 12), ...desenhar(p, resumo));
-  elemento.replaceChildren(topo(p, 12, aoTrocar), corpo, el("p", textoNota(data), "hint"));
+  caixaNumeros.append(numeros(p, 12));
+  area.append(...desenhar(p, resumo));
+  elemento.replaceChildren(topo(p, 12, aoTrocar), caixaNumeros, area, el("p", textoNota(data), "hint"));
 }
