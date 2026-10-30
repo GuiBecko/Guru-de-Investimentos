@@ -479,3 +479,35 @@ fn resumo_e_metas_usam_o_valor_atual() {
         r.total_aplicado_centavos
     );
 }
+
+#[test]
+fn ipca_recente_sem_mes_publicado_ainda_calcula_so_com_a_taxa() {
+    let (_d, db) = vazio();
+    db.gravar_ipca(&ipca()).unwrap();
+    // Um ponto de CDI por semana a partir de 10/09/2026: só serve para contar dias úteis.
+    let semanal: Vec<PontoDiario> = (0..)
+        .map(|i| {
+            data(2026, 9, 10)
+                .checked_add_days(Days::new(7 * i))
+                .unwrap()
+        })
+        .take_while(|d| *d <= hoje())
+        .map(|d| PontoDiario {
+            data: d,
+            valor: dec("0.05"),
+        })
+        .collect();
+    db.gravar_indice("cdi", &semanal).unwrap();
+    let du = semanal
+        .iter()
+        .filter(|p| p.data > data(2026, 9, 15))
+        .count() as f64;
+    // Setembro/2026 ainda não terminou na aplicação; outubro não terminou em 28/10: nenhum mês entra.
+    let id = criar(&db, renda_fixa("ipca", "6", "2026-09-15", 1_000_000));
+    let i = atual(&db, id);
+    assert_eq!(i.origem_valor, Origem::Calculo);
+    perto(
+        i.valor_atual_centavos,
+        (1_000_000.0 * 1.06_f64.powf(du / 252.0)).floor() as i64,
+    );
+}

@@ -36,6 +36,10 @@ pub fn ler_cotahist_txt(txt: &[u8]) -> Result<Vec<Cotacao>, ErroFonte> {
             .trim()
             .parse::<i64>()
             .map_err(|_| ErroFonte::Formato("preço inválido no COTAHIST".into()))?;
+        // Fechamento zero ou negativo não é cotação: o banco recusaria e derrubaria a rodada.
+        if fechamento_centavos <= 0 {
+            continue;
+        }
         saida.push(Cotacao {
             ticker: campo(linha, 13, 24)?.trim().to_string(),
             data,
@@ -104,5 +108,19 @@ mod testes {
             ler_cotahist_zip(b"<html>"),
             Err(ErroFonte::Formato(_))
         ));
+    }
+
+    #[test]
+    fn fechamento_zero_ou_negativo_e_pulado() {
+        let texto = std::str::from_utf8(TXT).unwrap();
+        let itub4 = texto.lines().find(|l| l.contains("ITUB4")).unwrap();
+        let (antes, depois) = (&itub4[..108], &itub4[121..]);
+        let zerado = format!("{antes}{:013}{depois}", 0);
+        let negativo = format!("{antes}{:>13}{depois}", "-100");
+        let bom = format!("{antes}{:013}{depois}", 3978);
+        let arquivo = format!("{zerado}\n{negativo}\n{bom}\n");
+        let v = ler_cotahist_txt(arquivo.as_bytes()).unwrap();
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].fechamento_centavos, 3978);
     }
 }

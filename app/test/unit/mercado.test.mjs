@@ -28,7 +28,10 @@ test("precisaAtualizar compara com o dia local", () => {
   assert.equal(precisaAtualizar([], agora), true);
   assert.equal(precisaAtualizar([{ atualizadoEm: hoje }, { atualizadoEm: hoje }], agora), false);
   assert.equal(precisaAtualizar([{ atualizadoEm: hoje }, { atualizadoEm: ontem }], agora), true);
-  assert.equal(precisaAtualizar([{ atualizadoEm: hoje }, {}], agora), true);
+  assert.equal(precisaAtualizar([{ atualizadoEm: hoje }, { erro: "falhou" }], agora), true);
+  // Fonte que a carteira não usa não força a atualização; sem nenhuma em uso, atualiza.
+  assert.equal(precisaAtualizar([{ atualizadoEm: hoje, ultimaData: "2026-10-30" }, { fonte: "tesouro" }], agora), false);
+  assert.equal(precisaAtualizar([{ fonte: "tesouro" }, { fonte: "b3" }], agora), true);
 });
 
 test("deveRedesenhar só nas telas de leitura", () => {
@@ -72,4 +75,10 @@ test("coalescer: sem pedido durante a rodada não há rodada extra", async () =>
   });
   await acionar();
   assert.equal(rodadas, 1);
+});
+
+test("marcaSemValor distingue sem fonte de sem cotação", async () => {
+  const { marcaSemValor } = await import("../../renderer/js/telas/_tabela.js");
+  assert.equal(marcaSemValor("sem_fonte"), "sem fonte de preço");
+  assert.equal(marcaSemValor("sem_dados"), "sem cotação");
 });

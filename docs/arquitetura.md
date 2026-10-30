@@ -129,7 +129,7 @@ Guru-de-Investimentos/
 | JS puro da interface (roteador, formatação) | `node --test` |
 | App inteiro | Playwright com `_electron.launch` |
 
-A CI (GitHub Actions) roda tudo em Linux, Windows e macOS.
+A CI (GitHub Actions) roda fmt, clippy e os testes do núcleo Rust só em Linux; o addon (build e testes) e o app (testes unitários e E2E) rodam em Linux, Windows e macOS.
 
 ### Modo de teste de mercado
 

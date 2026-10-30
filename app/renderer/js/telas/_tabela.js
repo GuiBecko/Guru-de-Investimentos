@@ -29,13 +29,18 @@ export function caixaTabela(thead, tbody, tfoot) {
   return caixa;
 }
 
+// Marca do valor sem fonte: ativo que não tem preço oficial x ticker sem cotação (ou sem dados).
+export function marcaSemValor(origem) {
+  return origem === "sem_fonte" ? "sem fonte de preço" : "sem cotação";
+}
+
 // Células "Atual" e "Rentab." de um investimento. Sem fonte ou sem dados o "Atual" é o valor aplicado,
-// marcado "sem cotação", e a rentabilidade é "—". O valor é bruto, antes do IR.
+// marcado "sem fonte de preço" ou "sem cotação", e a rentabilidade é "—". O valor é bruto, antes do IR.
 export function celulasValor(inv) {
   const atual = el("td", formatarReais(inv.valorAtualCentavos), "r mono");
   const rentab = el("td", undefined, "r mono");
   if (inv.origemValor === "sem_fonte" || inv.origemValor === "sem_dados") {
-    atual.append(el("span", "sem cotação", "sem-cotacao"));
+    atual.append(el("span", marcaSemValor(inv.origemValor), "sem-cotacao"));
     rentab.textContent = "—";
     atual.title = `${inv.origemValorRotulo}; valor bruto, antes do IR`;
   } else {

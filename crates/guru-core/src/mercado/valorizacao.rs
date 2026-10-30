@@ -15,6 +15,8 @@ use crate::investimento::{Benchmark, Indexador, Investimento};
 
 /// Dias úteis por ano da convenção dos prefixados.
 const DIAS_UTEIS_ANO: i64 = 252;
+/// Dias depois do fim de um mês em que o IPCA dele ainda pode não ter sido publicado.
+const PRAZO_IPCA_DIAS: u64 = 45;
 /// Quanto depois da aplicação a série guardada pode começar e ainda cobri-la.
 const FOLGA_COBERTURA_DIAS: u64 = 7;
 
@@ -212,26 +214,31 @@ fn renda_fixa(
             if !cobre(&series.cdi, aplicacao) {
                 return None;
             }
-            let primeiro = mes_de(
-                aplicacao
-                    .with_day(1)?
-                    .checked_add_months(chrono::Months::new(1))?,
-            );
-            if !series.ipca.iter().any(|(m, _)| *m == primeiro) {
-                return None;
-            }
-            // O mês só entra quando já terminou em `data`.
-            let fim_do_mes = data.succ_opt()?.month() != data.month();
-            let ultimo = if fim_do_mes {
-                mes_de(data)
+            // Meses `m` do seguinte ao da aplicação até o último que já terminou em `data`.
+            let mut mes = aplicacao
+                .with_day(1)?
+                .checked_add_months(chrono::Months::new(1))?;
+            let ultimo = if data.succ_opt()?.month() != data.month() {
+                data.with_day(1)?
             } else {
-                mes_de(data.with_day(1)?.pred_opt()?)
+                data.with_day(1)?.pred_opt()?.with_day(1)?
             };
             let mut inflacao = Decimal::ONE;
-            for (m, v) in &series.ipca {
-                if *m >= primeiro && *m <= ultimo {
-                    inflacao = inflacao.checked_mul(Decimal::ONE + *v / cem)?;
+            while mes <= ultimo {
+                let chave = mes_de(mes);
+                let proximo = mes.checked_add_months(chrono::Months::new(1))?;
+                match series.ipca.iter().find(|(m, _)| *m == chave) {
+                    Some((_, v)) => inflacao = inflacao.checked_mul(Decimal::ONE + *v / cem)?,
+                    None => {
+                        // Ainda dentro do prazo de publicação: o mês entra com fator 1.
+                        let fim_do_mes = proximo.pred_opt()?;
+                        let limite = fim_do_mes.checked_add_days(Days::new(PRAZO_IPCA_DIAS))?;
+                        if limite <= data {
+                            return None;
+                        }
+                    }
                 }
+                mes = proximo;
             }
             let dias = dias_entre(&series.cdi, aplicacao, data);
             let fator = inflacao.checked_mul(potencia(taxa, dias.len())?)?;

@@ -33,6 +33,14 @@ const ITUB4 = {
   precoMedioCentavos: 3142,
   dataAplicacao: "2026-10-01",
 };
+const CRIPTO = {
+  tipo: "cripto",
+  instituicao: "Binance",
+  emissor: "Bitcoin",
+  liquidez: "diaria",
+  dataAplicacao: "2026-10-01",
+  valorAplicadoCentavos: 50_000,
+};
 const SEM_COTACAO = { ...ITUB4, ticker: "ZZZZ9", quantidade: 10, precoMedioCentavos: 1000 };
 
 test("ao abrir, o rodapé do menu chega à data dos dados (o IPCA mensal fica fora do menor)", async () => {
@@ -55,11 +63,12 @@ test("lista mostra atual e rentabilidade com sinal; ticker sem cotação mostra 
     await expect(page.getByTestId("mercado")).toContainText("28/10", { timeout: 20000 });
     await criar(page, ITUB4);
     await criar(page, SEM_COTACAO);
+    await criar(page, CRIPTO);
     await atualizarAgora(page);
     await page.getByRole("link", { name: "Investimentos", exact: true }).click();
     await expect(page.locator("main th")).toContainText(["Aplicado", "Atual", "Rentab."]);
     const linhas = page.locator("main tbody tr");
-    await expect(linhas).toHaveCount(2);
+    await expect(linhas).toHaveCount(3);
     // 150 x R$ 39,78 = R$ 5.967,00 sobre R$ 4.713,00 aplicados.
     const itub = linhas.filter({ hasText: "ITUB4" });
     await expect(itub).toContainText("R$ 4.713,00");
@@ -70,7 +79,10 @@ test("lista mostra atual e rentabilidade com sinal; ticker sem cotação mostra 
     await expect(sem).toContainText("R$ 100,00");
     await expect(sem).toContainText("sem cotação");
     await expect(sem.locator("td").nth(6)).toHaveText("—");
-    await expect(page.locator("main tfoot")).toContainText("R$ 6.067,00");
+    const cripto = linhas.filter({ hasText: "Bitcoin" });
+    await expect(cripto).toContainText("sem fonte de preço");
+    await expect(cripto.locator("td").nth(6)).toHaveText("—");
+    await expect(page.locator("main tfoot")).toContainText("R$ 6.567,00");
     await expect(page.locator("main")).toContainText("Valores brutos, antes do IR. Dados de mercado de 28/10.");
   } finally {
     await app.close();
@@ -129,6 +141,8 @@ test("fonte com falha mostra 'com falhas' e o diálogo lista o CDI com a mensage
   for (const nome of fs.readdirSync(FIXTURES)) {
     if (nome !== "sgs-12.json") fs.copyFileSync(path.join(FIXTURES, nome), path.join(pasta, nome));
   }
+  // O 404 do SGS é "sem dados"; a falha vem da página de erro HTML com status 200.
+  fs.copyFileSync(path.join(FIXTURES, "sgs-erro.html"), path.join(pasta, "sgs-12.json"));
   const app = await lancar({ GURU_MERCADO_FIXTURES: pasta });
   try {
     const page = await app.firstWindow();

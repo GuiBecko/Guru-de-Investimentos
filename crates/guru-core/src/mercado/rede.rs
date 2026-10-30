@@ -15,6 +15,10 @@ const SERIES_SGS: [&str; 3] = ["12", "11", "433"];
 const URL_TESOURO: &str = "https://www.tesourotransparente.gov.br/ckan/dataset/df56aa42-484a-4a59-8184-7676580c81e3/resource/796d2059-14e9-44e3-80c9-2d9e30b405c1/download/PrecoTaxaTesouroDireto.csv";
 const PREFIXO_B3: &str = "https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_D";
 const SUFIXO_B3: &str = ".ZIP";
+/// Prazo para resolver, conectar, enviar o pedido e receber o início da resposta.
+const CONECTAR: Duration = Duration::from_secs(60);
+/// Prazo para receber o corpo inteiro (o CSV completo do Tesouro tem ~15 MB).
+const CORPO: Duration = Duration::from_secs(300);
 /// O histórico do Tesouro tem ~15 MB; o limite protege contra respostas absurdas.
 const LIMITE_CORPO: u64 = 64 * 1024 * 1024;
 
@@ -83,7 +87,12 @@ pub struct BaixadorHttp {
 impl BaixadorHttp {
     pub fn novo() -> Self {
         let config = ureq::Agent::config_builder()
-            .timeout_global(Some(Duration::from_secs(60)))
+            // Sem prazo global: o corpo de ~15 MB do Tesouro leva ~50 s e tem orçamento próprio.
+            .timeout_resolve(Some(CONECTAR))
+            .timeout_connect(Some(CONECTAR))
+            .timeout_send_request(Some(CONECTAR))
+            .timeout_recv_response(Some(CONECTAR))
+            .timeout_recv_body(Some(CORPO))
             .user_agent(format!("GuruDeInvestimentos/{}", env!("CARGO_PKG_VERSION")))
             .http_status_as_error(false)
             .https_only(true)
@@ -192,6 +201,15 @@ mod testes {
         for u in ruins {
             assert!(classificar(u).is_none(), "deveria recusar: {u}");
         }
+    }
+
+    #[test]
+    fn prazos_do_baixador_http() {
+        let t = BaixadorHttp::novo().agente.config().timeouts();
+        assert_eq!(t.global, None);
+        assert_eq!(t.connect, Some(Duration::from_secs(60)));
+        assert_eq!(t.recv_response, Some(Duration::from_secs(60)));
+        assert_eq!(t.recv_body, Some(Duration::from_secs(300)));
     }
 
     #[test]

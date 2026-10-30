@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use chrono::NaiveDate;
 use guru_core::{
-    Baixador, BaixadorHttp, BaixadorPasta, Db, ErroFonte, Gravacao, NovoInvestimento, StatusFonte,
-    atualizar, titulo_tesouro,
+    Baixador, BaixadorHttp, BaixadorPasta, Db, ErroFonte, Gravacao, NovoInvestimento, Origem,
+    StatusFonte, atualizar, titulo_tesouro,
 };
 
 fn data(a: i32, m: u32, d: u32) -> NaiveDate {
@@ -91,6 +91,8 @@ struct Falso {
     sem_rede: Vec<&'static str>,
     /// Se verdadeiro, a B3 nunca tem arquivo.
     sem_b3: bool,
+    /// Trechos de URL que respondem 404 (o SGS faz isso quando o intervalo não tem dados).
+    status_404: Vec<&'static str>,
 }
 
 impl Falso {
@@ -101,6 +103,7 @@ impl Falso {
             html_erro: Vec::new(),
             sem_rede: Vec::new(),
             sem_b3: false,
+            status_404: Vec::new(),
         }
     }
 
@@ -122,6 +125,9 @@ impl Baixador for Falso {
         }
         if self.html_erro.iter().any(|t| url.contains(t)) {
             return Ok(std::fs::read(pasta().join("sgs-erro.html")).unwrap());
+        }
+        if self.status_404.iter().any(|t| url.contains(t)) {
+            return Err(ErroFonte::Status(404));
         }
         if self.sem_b3 && url.contains("COTAHIST") {
             return Err(ErroFonte::Status(404));
@@ -590,4 +596,38 @@ fn rede_persistente_na_b3_para_tudo_apos_uma_nova_tentativa() {
         status(&db, "b3").erro.as_deref(),
         Some("A B3 não respondeu. Tente de novo mais tarde.")
     );
+}
+
+#[test]
+fn tesouro_comprado_no_sabado_guarda_o_pu_da_sexta_e_nao_baixa_de_novo() {
+    let (_d, db) = abrir();
+    let mut n = tesouro_selic();
+    n.data_aplicacao = s("2025-03-08");
+    criar(&db, n);
+    let esperas = Esperas::novo();
+    atualizar(&db, &Falso::novo(), hoje(), &esperas.fecha()).unwrap();
+    let p = db
+        .preco_tesouro_em("Tesouro Selic", data(2029, 3, 1), data(2025, 3, 8))
+        .unwrap()
+        .unwrap();
+    assert_eq!(p.data, data(2025, 3, 7));
+    let inv = db.listar_investimentos(hoje()).unwrap();
+    assert_eq!(inv[0].origem_valor, Origem::Tesouro);
+
+    let segundo = Falso::novo();
+    atualizar(&db, &segundo, hoje(), &esperas.fecha()).unwrap();
+    assert!(segundo.com("PrecoTaxaTesouroDireto").is_empty());
+}
+
+#[test]
+fn sgs_404_e_intervalo_sem_dados_sem_erro_e_sem_espera() {
+    let (_d, db) = abrir();
+    criar(&db, cdb("2025-03-15"));
+    let mut falso = Falso::novo();
+    falso.status_404 = vec!["bcdata.sgs.12"];
+    let esperas = Esperas::novo();
+    atualizar(&db, &falso, hoje(), &esperas.fecha()).unwrap();
+    assert_eq!(status(&db, "cdi").erro, None);
+    assert_eq!(falso.com("bcdata.sgs.12").len(), 1);
+    assert_eq!(esperas.0.get(), 0);
 }

@@ -1,9 +1,9 @@
 //! Baixa só o que falta das fontes oficiais e guarda pelo repositório.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::time::Duration;
 
-use chrono::{Datelike, Months, NaiveDate, Utc};
+use chrono::{Datelike, Days, Months, NaiveDate, Utc};
 use rust_decimal::Decimal;
 
 use super::rede::{Baixador, url_b3, url_sgs, url_tesouro};
@@ -14,6 +14,7 @@ use crate::investimento::Investimento;
 
 const ESPERA_NOVA_TENTATIVA: Duration = Duration::from_secs(5);
 const ANOS_POR_CONSULTA: u32 = 10;
+const FOLGA_TESOURO_DIAS: u64 = 10;
 const TENTATIVAS_B3: u32 = 7;
 const MESES_DE_HISTORICO: u32 = 12;
 /// Referências usadas pela fase 3b, gravadas junto com os tickers da carteira.
@@ -75,6 +76,21 @@ fn com_nova_tentativa<T>(
             espera(ESPERA_NOVA_TENTATIVA);
             f()
         }
+    }
+}
+
+/// Como `com_nova_tentativa`, mas o 404 do SGS é resposta definitiva (sem dados), sem repetir.
+fn com_nova_tentativa_sgs<T>(
+    espera: &dyn Fn(Duration),
+    mut f: impl FnMut() -> Result<T, ErroFonte>,
+) -> Result<T, ErroFonte> {
+    match f() {
+        Err(ErroFonte::Status(404)) => Err(ErroFonte::Status(404)),
+        Err(_) => {
+            espera(ESPERA_NOVA_TENTATIVA);
+            f()
+        }
+        Ok(v) => Ok(v),
     }
 }
 
@@ -148,7 +164,7 @@ pub fn atualizar(
     let titulos: HashSet<(String, NaiveDate)> =
         carteira.iter().filter_map(titulo_tesouro).collect();
     if !titulos.is_empty()
-        && (ctx.tesouro_incompleto(&carteira)? || !ctx.atualizado_hoje("tesouro")?)
+        && (ctx.tesouro_incompleto(&titulos)? || !ctx.atualizado_hoje("tesouro")?)
     {
         let mut ultima = None;
         let r = ctx.tesouro(&titulos, &mut ultima);
@@ -198,23 +214,25 @@ impl Contexto<'_> {
                 .unwrap_or(false))
     }
 
-    /// Algum título da carteira não tem preço guardado até a data da sua aplicação mais antiga.
-    fn tesouro_incompleto(&self, carteira: &[Investimento]) -> Result<bool, CoreError> {
-        let mut mais_antiga: HashMap<(String, NaiveDate), NaiveDate> = HashMap::new();
-        for i in carteira {
-            let (Some(titulo), Ok(aplicacao)) = (
-                titulo_tesouro(i),
-                NaiveDate::parse_from_str(&i.data_aplicacao, "%Y-%m-%d"),
-            ) else {
-                continue;
-            };
-            let e = mais_antiga.entry(titulo).or_insert(aplicacao);
-            *e = (*e).min(aplicacao);
-        }
-        for ((tipo, vencimento), aplicacao) in mais_antiga {
+    /// Os preços entram desde 10 dias antes da aplicação mais antiga, para a compra num fim de
+    /// semana ou feriado achar o último PU anterior.
+    fn inicio_tesouro(&self) -> NaiveDate {
+        self.inicio
+            .checked_sub_days(Days::new(FOLGA_TESOURO_DIAS))
+            .unwrap_or(self.inicio)
+    }
+
+    /// Algum título da carteira não tem nenhum preço guardado (até hoje). Um título que o CSV
+    /// não conhece (vencimento digitado errado) fica `sem_dados`; sem preço guardado ele continua
+    /// "incompleto", então o CSV é baixado de novo a cada rodada (sem registro do que já foi tentado).
+    fn tesouro_incompleto(
+        &self,
+        titulos: &HashSet<(String, NaiveDate)>,
+    ) -> Result<bool, CoreError> {
+        for (tipo, vencimento) in titulos {
             if self
                 .db
-                .preco_tesouro_em(&tipo, vencimento, aplicacao)?
+                .preco_tesouro_em(tipo, *vencimento, self.hoje)?
                 .is_none()
             {
                 return Ok(true);
@@ -285,7 +303,14 @@ impl Contexto<'_> {
         let mut novos = 0;
         for (ini, fim) in janelas(de, ate) {
             let url = url_sgs(codigo, ini, fim);
-            let pontos = com_nova_tentativa(self.espera, || ler_sgs(&self.baixador.baixar(&url)?))?;
+            let pontos =
+                match com_nova_tentativa_sgs(self.espera, || ler_sgs(&self.baixador.baixar(&url)?))
+                {
+                    Ok(p) => p,
+                    // 404 do SGS: o intervalo não tem dados novos (fim de semana, mês futuro).
+                    Err(ErroFonte::Status(404)) => Vec::new(),
+                    Err(e) => return Err(e.into()),
+                };
             novos += grava(&pontos)?;
         }
         Ok(novos)
@@ -355,7 +380,7 @@ impl Contexto<'_> {
         let da_carteira: Vec<_> = todos
             .into_iter()
             .filter(|p| {
-                p.data >= self.inicio
+                p.data >= self.inicio_tesouro()
                     && p.data <= self.hoje
                     && titulos.contains(&(p.tipo.clone(), p.vencimento))
             })
