@@ -1,6 +1,8 @@
 //! Leitores puros dos formatos oficiais de dados de mercado (sem rede).
 
+mod atualizador;
 mod cotahist;
+mod rede;
 mod repositorio;
 mod sgs;
 mod tesouro;
@@ -9,7 +11,9 @@ use std::fmt;
 
 use chrono::NaiveDate;
 
+pub use atualizador::{ResultadoAtualizacao, atualizar, titulo_tesouro};
 pub use cotahist::{Cotacao, ler_cotahist_txt, ler_cotahist_zip};
+pub use rede::{Baixador, BaixadorHttp, BaixadorPasta};
 pub use repositorio::StatusFonte;
 pub use sgs::{PontoDiario, ler_sgs};
 pub use tesouro::{PrecoTesouro, ler_tesouro};
