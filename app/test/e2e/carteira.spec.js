@@ -92,7 +92,7 @@ test("carteira mostra total e um card por classe, e o card abre o detalhe", asyn
     const main = page.locator("main");
     await expect(main.getByText("Total aplicado")).toBeVisible();
     await expect(main).toContainText("R$ 42.713,00");
-    await expect(main).toContainText("Valores aplicados. Cotações e rentabilidade chegam numa próxima versão.");
+    await expect(main).toContainText("Valores brutos, antes do IR. Dados de mercado de");
 
     const rf = main.getByRole("link", { name: /Renda fixa/ });
     await expect(rf).toHaveAttribute("href", "#/carteira/rf");
@@ -116,7 +116,7 @@ test("carteira mostra total e um card por classe, e o card abre o detalhe", asyn
     await expect(linhas.nth(1)).toContainText(`Tesouro Selic ${ANO + 4}`);
     await expect(main).not.toContainText("undefined");
     await expect(main.locator("th")).toHaveText([
-      "Investimento", "Instituição", "Rendimento", "Aplicado", "Vencimento", "Liquidez",
+      "Investimento", "Instituição", "Rendimento", "Aplicado", "Atual", "Rentab.", "Vencimento", "Liquidez",
     ]);
 
     await main.getByRole("link", { name: "Carteira ›" }).click();

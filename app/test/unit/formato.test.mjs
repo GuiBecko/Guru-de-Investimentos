@@ -79,3 +79,12 @@ test("paraTaxa recusa o que é ambíguo ou não é número", () => {
     assert.equal(paraTaxa(t), null, JSON.stringify(t));
   }
 });
+
+test("formatarRentabilidade", async () => {
+  const { formatarRentabilidade } = await import("../../renderer/js/formato.js");
+  assert.equal(formatarRentabilidade(171), "+17,1%");
+  assert.equal(formatarRentabilidade(5), "+0,5%");
+  assert.equal(formatarRentabilidade(0), "0,0%");
+  assert.equal(formatarRentabilidade(-32), "−3,2%");
+  assert.equal(formatarRentabilidade(-5), "−0,5%");
+});

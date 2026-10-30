@@ -75,6 +75,7 @@ test("a linha mostra os dados do CDB e o total", async () => {
     await expect(linha).toContainText(VENC_CDB_BR);
     await expect(linha.getByRole("link", { name: "Editar" })).toHaveAttribute("href", `#/investimentos/${id}`);
     await expect(page.locator("main")).toContainText("Total aplicado");
+    await expect(page.locator("main th")).toContainText(["Aplicado", "Atual", "Rentab."]);
   } finally {
     await app.close();
   }

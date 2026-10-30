@@ -1,12 +1,15 @@
 import { api } from "../api.js";
 import { formatarData, formatarDecimos, formatarDiferenca, formatarReais } from "../formato.js";
-import { caixaTabela, cabecalho, el } from "./_tabela.js";
+import { caixaTabela, cabecalho, celulasValor, el } from "./_tabela.js";
+import { dataDoMercado } from "../mercado.js";
 
 const COLUNAS = [
   ["Investimento"],
   ["Instituição"],
   ["Rendimento"],
   ["Aplicado", "r"],
+  ["Atual", "r"],
+  ["Rentab.", "r"],
   ["Vencimento"],
   ["Liquidez"],
 ];
@@ -31,7 +34,7 @@ function card(c) {
   const n = c.quantidade === 1 ? "1 investimento" : `${c.quantidade} investimentos`;
   const base = el("div", undefined, "row");
   base.append(el("small", n), el("span", formatarDecimos(c.percentualDecimos), "mono"));
-  a.append(el("b", c.rotulo), el("span", formatarReais(c.totalAplicadoCentavos), "mid mono"), base);
+  a.append(el("b", c.rotulo), el("span", formatarReais(c.totalAtualCentavos), "mid mono"), base);
   if (c.alvoPercentual !== null && c.alvoPercentual !== undefined) {
     const alvo = el("div", undefined, "row");
     alvo.append(el("small", `alvo ${c.alvoPercentual}%`), el("span", formatarDiferenca(c.percentualDecimos, c.alvoPercentual), "mono"));
@@ -60,13 +63,19 @@ async function painel(elemento, vigente) {
     vazio.append(el("p", "Sua carteira está vazia."), novo);
     partes.push(vazio);
   } else {
-    const total = el("div", undefined, "total");
-    total.append(el("small", "Total aplicado"), el("div", formatarReais(resumo.totalAplicadoCentavos), "mid mono"));
+    const patrimonio = el("div", undefined, "total");
+    patrimonio.append(el("small", "Patrimônio"), el("div", formatarReais(resumo.totalAtualCentavos), "mid mono"));
+    const aplicado = el("div", undefined, "total");
+    aplicado.append(el("small", "Total aplicado"), el("div", formatarReais(resumo.totalAplicadoCentavos), "mono"));
+    const total = el("div", undefined, "patrimonio");
+    total.append(patrimonio, aplicado);
     const cards = el("div", undefined, "classes");
     cards.append(...resumo.classes.map(card));
     partes.push(total, cards);
   }
-  partes.push(el("p", "Valores aplicados. Cotações e rentabilidade chegam numa próxima versão.", "hint"));
+  const data = await dataDoMercado();
+  if (!vigente()) return;
+  partes.push(el("p", `Valores brutos, antes do IR. ${data ? `Dados de mercado de ${data}.` : "Dados de mercado ainda não baixados."}`, "hint"));
   elemento.replaceChildren(...partes);
 }
 
@@ -80,7 +89,10 @@ function linha(inv) {
     formatarData(inv.vencimento),
     inv.liquidezRotulo ?? "—",
   ];
-  celulas.forEach((texto, i) => tr.append(el("td", texto, i === 3 ? "r mono" : i === 4 ? "mono" : "")));
+  celulas.forEach((texto, i) => {
+    tr.append(el("td", texto, i === 3 ? "r mono" : i === 4 ? "mono" : ""));
+    if (i === 3) tr.append(...celulasValor(inv));
+  });
   return tr;
 }
 
@@ -110,12 +122,25 @@ async function detalhe(elemento, classe, vigente) {
   const titulo = el("div");
   titulo.append(voltar(), el("h1", info.rotulo));
   const valor = el("div", undefined, "total");
-  valor.append(el("small", "Total da classe"), el("div", formatarReais(info.totalAplicadoCentavos), "mid mono"));
+  valor.append(el("small", "Total da classe"), el("div", formatarReais(info.totalAtualCentavos), "mid mono"));
   topo.append(titulo, valor);
 
   const tbody = el("tbody");
   tbody.append(...doClasse.map(linha));
-  elemento.replaceChildren(topo, caixaTabela(cabecalho(COLUNAS), tbody));
+  const rotulo = el("td", "Total aplicado / atual");
+  rotulo.colSpan = 3;
+  const rodape = el("tr");
+  rodape.append(
+    rotulo,
+    el("td", formatarReais(info.totalAplicadoCentavos), "r mono"),
+    el("td", formatarReais(info.totalAtualCentavos), "r mono"),
+    el("td"),
+    el("td"),
+    el("td"),
+  );
+  const tfoot = el("tfoot");
+  tfoot.append(rodape);
+  elemento.replaceChildren(topo, caixaTabela(cabecalho(COLUNAS), tbody, tfoot));
 }
 
 export function render(elemento, parametros = [], vigente = () => true) {

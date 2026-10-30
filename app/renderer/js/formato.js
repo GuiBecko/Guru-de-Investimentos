@@ -59,3 +59,11 @@ export function formatarPrazo(aaaamm) {
   const [a, m] = String(aaaamm).split("-");
   return `${MESES[Number(m) - 1] ?? m}/${a}`;
 }
+
+// Rentabilidade em décimos de ponto percentual -> "+17,1%", "\u22123,2%" ou "0,0%". Sem ponto flutuante.
+export function formatarRentabilidade(decimos) {
+  const abs = Math.abs(decimos);
+  const corpo = `${Math.trunc(abs / 10)},${abs % 10}%`;
+  if (decimos > 0) return `+${corpo}`;
+  return decimos < 0 ? `\u2212${corpo}` : corpo;
+}
