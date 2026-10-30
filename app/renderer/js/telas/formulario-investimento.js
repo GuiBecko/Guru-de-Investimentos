@@ -5,7 +5,7 @@ import { formatarData, formatarReais, paraCentavos, paraTaxa } from "../formato.
 import { legendaRendimento, montarDados } from "./formulario-investimento/dados.js";
 
 const OUTRA = "__outra";
-const ROTULO_TAXA = {
+export const ROTULO_TAXA = {
   pos: ["Rendimento", "%"],
   pre: ["Taxa prefixada", "% a.a."],
   ipca: ["Taxa acima da inflação", "% a.a."],

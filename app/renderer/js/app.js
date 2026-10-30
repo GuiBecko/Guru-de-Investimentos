@@ -1,6 +1,7 @@
 import { api } from "./api.js";
 import { iniciar } from "./router.js";
 import { iniciarMercado } from "./mercado.js";
+import { atualizarUltimaImportacao } from "./importacao-ultima.js";
 
 function mostrarVersoes(core, esquema) {
   document.querySelector('[data-testid="core-version"]').textContent = core;
@@ -22,3 +23,4 @@ api.app
   });
 
 iniciarMercado(document.querySelector('[data-testid="mercado"]'));
+atualizarUltimaImportacao();

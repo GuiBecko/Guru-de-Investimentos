@@ -115,7 +115,9 @@ h1, h2, h3, p { margin: 0; }
 .side nav a.on { background: rgba(255, 255, 255, 0.14); color: #fff; font-weight: 500; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
 .side nav a:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
 .side .mercado { margin-top: auto; padding: 0 10px 10px; display: grid; gap: 6px; justify-items: start; font: 400 10.5px var(--f-mono); color: var(--side-muted); }
-.side .mercado + .foot { margin-top: 0; padding: 0 10px; display: grid; gap: 2px; font: 400 10.5px var(--f-mono); color: var(--side-muted); }
+.side .importacao-ultima { padding: 0 10px 10px; font: 400 10.5px var(--f-mono); color: var(--side-muted); }
+.side .importacao-ultima[hidden] { display: none; }
+.side .mercado ~ .foot { margin-top: 0; padding: 0 10px; display: grid; gap: 2px; font: 400 10.5px var(--f-mono); color: var(--side-muted); }
 
 /* Painel de conteúdo: papel quadriculado flutuando sobre a moldura, cantos em pixel. */
 .main {
