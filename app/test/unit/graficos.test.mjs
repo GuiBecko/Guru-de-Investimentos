@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { escala, dominioComZero, caminhoLinha, pontosIsolados, arcosRosca, indiceMaisProximo } from "../../renderer/js/graficos.js";
+import { escala, dominioComZero, caminhoLinha, pontosIsolados, arcosRosca, indiceMaisProximo, margemEsquerda, resumoUltimoPonto } from "../../renderer/js/graficos.js";
 
 test("escala mapeia o domínio na faixa e trata domínio degenerado", () => {
   assert.equal(escala([0, 10], [0, 100])(5), 50);
@@ -39,10 +39,31 @@ test("indiceMaisProximo", () => {
   assert.equal(indiceMaisProximo([0, 10, 20], -5), 0);
 });
 
-test("graficos.js não tem cores fixas", () => {
-  const texto = readFileSync(new URL("../../renderer/js/graficos.js", import.meta.url), "utf8");
-  assert.doesNotMatch(texto, /#[0-9a-fA-F]{3,6}\b/);
-  assert.doesNotMatch(texto, /\.style\b|setAttribute\(\s*["']style|innerHTML/);
+// Cor hexadecimal de 3, 4, 6 ou 8 dígitos.
+const COR = /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\b/;
+
+test("a regex de cor pega 3, 4, 6 e 8 dígitos e ignora rotas", () => {
+  for (const cor of ["#abc", "#abcd", "#a1b2c3", "#a1b2c3d4"]) assert.match(`fill: ${cor};`, COR, cor);
+  for (const rota of ["#/carteira/acoes", "#/aporte", "#/investimentos/12"]) assert.doesNotMatch(rota, COR, rota);
+});
+
+test("gráficos e telas do painel não têm cores fixas nem style", () => {
+  for (const arquivo of ["graficos.js", "telas/carteira/painel.js", "telas/carteira.js"]) {
+    const texto = readFileSync(new URL(`../../renderer/js/${arquivo}`, import.meta.url), "utf8");
+    assert.doesNotMatch(texto, COR, arquivo);
+    assert.doesNotMatch(texto, /\.style\b|setAttribute\(\s*["']style|innerHTML/, arquivo);
+  }
+});
+
+test("resumoUltimoPonto dá o último valor de cada série", () => {
+  const fmt = (v) => `${v}%`;
+  const series = [
+    { rotulo: "Carteira", valores: [0, 1, 2.94] },
+    { rotulo: "IPCA", valores: [0, 4.48, null] },
+    { rotulo: "BOVA11", valores: [null, null] },
+  ];
+  assert.equal(resumoUltimoPonto(series, fmt), "Carteira 2.94%, IPCA 4.48%");
+  assert.equal(resumoUltimoPonto([], fmt), "");
 });
 
 test("pontosIsolados acha só o ponto entre dois null", () => {
@@ -50,6 +71,11 @@ test("pontosIsolados acha só o ponto entre dois null", () => {
   assert.deepEqual(pontosIsolados([a, null, b, null, c, d]), [a, b]);
   assert.deepEqual(pontosIsolados([a, b]), []);
   assert.deepEqual(pontosIsolados([null, c]), [c]);
+});
+
+test("margemEsquerda cabe o maior rótulo e nunca fica abaixo de 64", () => {
+  assert.equal(margemEsquerda(["0,00%", "+1,07%"]), 64);
+  assert.equal(margemEsquerda(["R$ 0", "R$ 1.242.107"]), Math.ceil(12 * 6.2) + 10);
 });
 
 test("dominioComZero trata NaN e Infinity como lacuna", () => {

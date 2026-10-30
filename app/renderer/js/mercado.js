@@ -81,15 +81,25 @@ export function precisaAtualizar(fontes, agora = new Date()) {
   return usadas.some((f) => !f.atualizadoEm || isoLocal(new Date(f.atualizadoEm)) !== hoje);
 }
 
-// Data dos dados para notas nas telas ("dd/mm"), ou null.
-export async function dataDoMercado() {
+// Status das fontes de mercado, ou null se não deu para ler.
+export async function statusDoMercado() {
   try {
-    const data = menorData(await api.mercado.status());
-    return data ? diaMes(data) : null;
+    return await api.mercado.status();
   } catch (e) {
     console.error("Falha ao ler o estado do mercado:", e);
     return null;
   }
+}
+
+// Data dos dados de `fontes` para notas nas telas ("dd/mm"), ou null.
+export function dataDasFontes(fontes) {
+  const data = menorData(fontes);
+  return data ? diaMes(data) : null;
+}
+
+// Data dos dados para notas nas telas ("dd/mm"), ou null.
+export async function dataDoMercado() {
+  return dataDasFontes(await statusDoMercado());
 }
 
 function mostrarFalhas(fontes) {

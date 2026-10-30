@@ -1,9 +1,10 @@
 import { api } from "../api.js";
 import { formatarCentesimos, formatarData, formatarReais } from "../formato.js";
-import { graficoLinhas } from "../graficos.js";
+import { ajustavel, graficoLinhas } from "../graficos.js";
 import { caixaTabela, cabecalho, celulasValor, el } from "./_tabela.js";
 import { dataDoMercado, textoNota } from "../mercado.js";
 import { legenda, painel, secao, temHistorico } from "./carteira/painel.js";
+import { rotuloDaClasse, rotulosPeriodo } from "./carteira/periodo.js";
 
 const COLUNAS = [
   ["Investimento"],
@@ -65,7 +66,7 @@ function seletorBenchmark(benchmarks, escolhido, aoEscolher) {
 
 // Card do gráfico: a classe contra o benchmark escolhido. Os cinco benchmarks já vêm no painel,
 // então trocar de um para outro só redesenha.
-function cartaoBenchmark(p, rotuloClasse) {
+function cartaoBenchmark(p, classe) {
   if (!temHistorico(p)) {
     const vazio = secao("Rentabilidade acumulada", undefined, el("p", "Ainda não há histórico para comparar.", "hint"));
     vazio.classList.add("bloco-benchmark");
@@ -74,11 +75,12 @@ function cartaoBenchmark(p, rotuloClasse) {
   const grafico = el("div");
   const legendaDoGrafico = el("div");
   const desenhar = (b) => {
-    const series = [{ rotulo: "Classe", valores: p.pontos.map((x) => x.acumuladoCentesimos), classe: "s-carteira" }];
-    const itens = [{ rotulo: `Sua ${rotuloClasse.toLowerCase()}`, classe: "s-carteira" }];
+    const sua = rotuloDaClasse(classe);
+    const series = [{ rotulo: sua, valores: p.pontos.map((x) => x.acumuladoCentesimos), classe: "s-carteira" }];
+    const itens = [{ rotulo: sua, classe: "s-carteira" }];
     itens.push({ rotulo: b.rotulo, classe: "s-bench", tracejada: true, texto: b.valores ? "" : "sem dados" });
     if (b.valores) series.push({ rotulo: b.rotulo, valores: b.valores, classe: "s-bench", tracejada: true });
-    grafico.replaceChildren(graficoLinhas(p.datas, series, formatarCentesimos, "Rentabilidade acumulada da classe contra o benchmark"));
+    grafico.replaceChildren(ajustavel((w) => graficoLinhas(p.datas, series, formatarCentesimos, "Rentabilidade acumulada da classe contra o benchmark", w)));
     const nova = [legenda(itens)];
     if (!b.valores) nova.push(el("p", `${b.rotulo}: sem dados no período.`, "hint"));
     legendaDoGrafico.replaceChildren(...nova);
@@ -130,9 +132,14 @@ async function detalhe(elemento, classe, vigente) {
   const valor = el("div", undefined, "total");
   valor.append(el("small", "Valor"), el("div", formatarReais(info.totalAtualCentavos), "mid mono"));
   const periodo = el("div", undefined, "total");
+  // Sem histórico não há período a mostrar; com `desde`, ele começa no primeiro aporte.
+  const comHistorico = temHistorico(p);
   const centesimos = p.numeros.periodoCentesimos;
-  const sinal = centesimos > 0 ? " up" : centesimos < 0 ? " down" : "";
-  periodo.append(el("small", "Em 12 meses"), el("div", formatarCentesimos(centesimos), `mid mono${sinal}`));
+  const sinal = !comHistorico ? "" : centesimos > 0 ? " up" : centesimos < 0 ? " down" : "";
+  periodo.append(
+    el("small", rotulosPeriodo(p.numeros.desde, 12).periodo),
+    el("div", comHistorico ? formatarCentesimos(centesimos) : "—", `mid mono${sinal}`),
+  );
   const numeros = el("div", undefined, "numeros-classe");
   numeros.append(valor, periodo);
   topo.append(titulo, numeros);
@@ -154,7 +161,7 @@ async function detalhe(elemento, classe, vigente) {
   tfoot.append(rodape);
   const data = await dataDoMercado();
   if (!vigente()) return;
-  elemento.replaceChildren(topo, cartaoBenchmark(p, info.rotulo), caixaTabela(cabecalho(COLUNAS), tbody, tfoot), el("p", textoNota(data), "hint"));
+  elemento.replaceChildren(topo, cartaoBenchmark(p, classe), caixaTabela(cabecalho(COLUNAS), tbody, tfoot), el("p", textoNota(data), "hint"));
 }
 
 export function render(elemento, parametros = [], vigente = () => true) {

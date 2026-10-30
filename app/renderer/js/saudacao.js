@@ -13,13 +13,16 @@ function cumprimento(hora) {
 const DIA_MS = 86400000;
 const diaUtc = (iso) => Date.UTC(...iso.split("-").map((n, i) => (i === 1 ? Number(n) - 1 : Number(n))));
 
-export function modelosAplicaveis(painel, hoje) {
+// "Atualizada" só com o estado do mercado em mãos, algum dado baixado e nenhuma fonte com erro.
+const mercadoEmDia = (fontes) => Array.isArray(fontes) && fontes.some((f) => f.ultimaData) && !fontes.some((f) => f.erro);
+
+export function modelosAplicaveis(painel, hoje, fontes) {
   const modelos = [
     "Bom ver você por aqui.",
-    "Sua carteira está atualizada com os dados de mercado mais recentes.",
     "Um passo de cada vez: o que importa é a constância dos aportes.",
     "Tudo o que está aqui fica só no seu computador.",
   ];
+  if (mercadoEmDia(fontes)) modelos.splice(1, 0, "Sua carteira está atualizada com os dados de mercado mais recentes.");
   const { mesCentesimos: mes, mesCdiCentesimos: cdi, rendeuCentavos } = painel.numeros;
   if (mes !== null && cdi !== null && mes !== undefined && cdi !== undefined) {
     if (mes > cdi) modelos.push("Seu mês está acima do CDI até agora.");
@@ -39,11 +42,13 @@ export function modelosAplicaveis(painel, hoje) {
   return modelos;
 }
 
-export function saudacao({ agora, painel, sorteio }) {
-  const modelos = modelosAplicaveis(painel, agora);
+// `fontes` é o status do mercado (`api.mercado.status()`); sem ele, a frase de "atualizada" não entra.
+export function saudacao({ agora, painel, sorteio, fontes }) {
+  const modelos = modelosAplicaveis(painel, agora, fontes);
   const texto = modelos[Math.min(modelos.length - 1, Math.floor(sorteio() * modelos.length))];
   return {
     data: FORMATO_DATA.format(agora).replace("-feira", ""),
     frase: `${cumprimento(agora.getHours())}. ${texto}`,
+    texto,
   };
 }

@@ -27,6 +27,21 @@ const ITUB4 = {
   dataAplicacao: "2026-02-10",
 };
 const ITUB4_NOVO = { ...ITUB4, dataAplicacao: "2026-10-01" };
+// Aplicado no dia dos dados de mercado: não ficou aplicado nenhum dia, então não há retorno.
+const ITUB4_HOJE = { ...ITUB4, dataAplicacao: "2026-10-28" };
+
+// O CDB de 15/01/2026 é posterior a 31/10/2025, o primeiro ponto de 12 meses: o período começa nele.
+const DOZE = "Desde 01/26";
+
+// Tamanho na tela do texto dos eixos: fonte do CSS vezes a escala do viewBox.
+function menorFonteDosEixos(page) {
+  return page.evaluate(() => {
+    const tamanhos = [...document.querySelectorAll("main svg.chart text.eixo")].map(
+      (t) => parseFloat(getComputedStyle(t).fontSize) * t.ownerSVGElement.getScreenCTM().a,
+    );
+    return tamanhos.length ? Math.min(...tamanhos) : 0;
+  });
+}
 
 function criar(page, dados) {
   return page.evaluate((d) => import("./js/api.js").then(({ api }) => api.investimentos.criar(d)), dados);
@@ -66,7 +81,7 @@ test("painel mostra saudação, números, gráficos e listas", async () => {
     await expect(patrimonio.locator(".mid")).toHaveText("R$ 25.967,00");
 
     const numeros = main.locator(".numeros .card b");
-    await expect(numeros).toHaveText(["Patrimônio total", "No mês", "Em 12 meses", "Rendeu em 12 meses", "Total aportado"]);
+    await expect(numeros).toHaveText(["Patrimônio total", "No mês", DOZE, "Rendeu desde 01/26", "Total aportado"]);
     // CDI de 12 meses é nulo nas fixtures (começa em 2026-09-01).
     await expect(main.getByTestId("numero-periodo")).toContainText("CDI —");
     await main.getByRole("button", { name: "6 meses" }).click();
@@ -80,8 +95,24 @@ test("painel mostra saudação, números, gráficos e listas", async () => {
       "Rentabilidade acumulada da carteira contra CDI, IPCA e BOVA11",
       "Rentabilidade mês a mês",
     ]) {
-      await expect(main.locator(`svg[aria-label="${rotulo}"]`)).toHaveCount(1);
+      await expect(main.locator(`svg[aria-label^="${rotulo}"]`)).toHaveCount(1);
     }
+    // O rótulo acessível termina com o último ponto de cada série visível.
+    await expect(main.locator('svg[aria-label^="Rentabilidade acumulada da carteira"]')).toHaveAttribute(
+      "aria-label",
+      /\. Último ponto: Carteira [+−-]?\d+,\d+%(, IPCA [+−-]?\d+,\d+%)?$/,
+    );
+    await expect(main.locator('svg[aria-label^="Evolução do patrimônio"]')).toHaveAttribute(
+      "aria-label",
+      /Último ponto: Patrimônio R\$ 25\.967, Total aportado R\$ 24\.713$/,
+    );
+    await expect(main.locator('svg[aria-label^="Rentabilidade mês a mês"]')).toHaveAttribute("aria-label", /\. Último mês: [+−-]?\d+,\d+%$/);
+    // Minigráficos são decorativos; BOVA11 tem cor própria (não o verde da carteira).
+    await expect(main.locator(".classes svg.mini").first()).toHaveAttribute("aria-hidden", "true");
+    await expect(main.locator(".classes svg.mini[role]")).toHaveCount(0);
+    await expect(main.locator(".legenda li").filter({ hasText: "BOVA11" }).locator(".marca.s-c4")).toHaveCount(1);
+    // Texto dos eixos com pelo menos 10 px na tela, também na meia coluna.
+    await expect.poll(() => menorFonteDosEixos(page)).toBeGreaterThanOrEqual(10);
     await expect(main).not.toContainText("NaN");
 
     const instituicao = main.getByTestId("lista-instituicoes");
@@ -99,17 +130,20 @@ test("painel mostra saudação, números, gráficos e listas", async () => {
   }
 });
 
-test("carteira de um investimento só deste mês não tem histórico para comparar", async () => {
+test("carteira aplicada no dia dos dados não tem histórico para comparar", async () => {
   const app = await lancar();
   try {
     const page = await app.firstWindow();
-    await criar(page, ITUB4_NOVO);
+    await criar(page, ITUB4_HOJE);
     await atualizarAgora(page);
     await abrir(page);
     const main = page.locator("main");
     await expect(main).toContainText("Ainda não há histórico para comparar.");
+    // Sem histórico, o período não tem valor; começa no aporte.
+    await expect(main.getByTestId("numero-periodo").locator("b")).toHaveText("Desde 10/26");
+    await expect(main.getByTestId("numero-periodo").locator(".mid")).toHaveText("—");
     await expect(main.locator('svg[aria-label^="Rentabilidade"]')).toHaveCount(0);
-    await expect(main.locator('svg[aria-label="Evolução do patrimônio contra o total aportado"]')).toHaveCount(1);
+    await expect(main.locator('svg[aria-label^="Evolução do patrimônio contra o total aportado"]')).toHaveCount(1);
     await expect(main.getByTestId("lista-instituicoes")).toContainText("100,0%");
     await expect(main).not.toContainText("NaN");
   } finally {
@@ -137,21 +171,34 @@ test("a resposta atrasada de um período antigo não sobrescreve o último escol
     await abrir(page);
     const main = page.locator("main");
     const rotulo = main.locator(".numeros .card b").nth(2);
-    await expect(rotulo).toHaveText("Em 12 meses");
-    // A chamada de 6 meses passa a resolver bem depois da de 12.
+    await expect(rotulo).toHaveText(DOZE);
+    // A chamada de 6 meses passa a resolver bem depois da de 12; uma marca avisa quando ela chega
+    // (num setTimeout seguinte, depois de a tela ter tratado a resposta).
     await page.evaluate(() =>
       import("./js/api.js").then(({ api }) => {
         const original = api.carteira.painel;
+        window.__atrasadaChegou = false;
         api.carteira.painel = (meses, classe) =>
-          original(meses, classe).then((r) => (meses === 6 ? new Promise((ok) => setTimeout(() => ok(r), 1200)) : r));
+          original(meses, classe).then((r) =>
+            meses === 6
+              ? new Promise((ok) =>
+                  setTimeout(() => {
+                    ok(r);
+                    setTimeout(() => {
+                      window.__atrasadaChegou = true;
+                    }, 0);
+                  }, 1200),
+                )
+              : r,
+          );
       }),
     );
     await main.getByRole("button", { name: "6 meses" }).click();
     await main.getByRole("button", { name: "12 meses" }).click();
-    await expect(rotulo).toHaveText("Em 12 meses");
-    await page.waitForTimeout(2000);
-    await expect(rotulo).toHaveText("Em 12 meses");
-    await expect(main.locator(".numeros .card b").nth(3)).toHaveText("Rendeu em 12 meses");
+    await expect(rotulo).toHaveText(DOZE);
+    await page.waitForFunction(() => window.__atrasadaChegou === true);
+    await expect(rotulo).toHaveText(DOZE);
+    await expect(main.locator(".numeros .card b").nth(3)).toHaveText("Rendeu desde 01/26");
     await expect(main.getByRole("button", { name: "12 meses" })).toHaveAttribute("aria-pressed", "true");
   } finally {
     await app.close();
@@ -165,7 +212,7 @@ test("falha ao trocar o período mantém os números, avisa nos gráficos e perm
     await criar(page, CDB);
     await abrir(page);
     const main = page.locator("main");
-    await expect(main.locator(".numeros .card b").nth(2)).toHaveText("Em 12 meses");
+    await expect(main.locator(".numeros .card b").nth(2)).toHaveText(DOZE);
     await page.evaluate(() =>
       import("./js/api.js").then(({ api }) => {
         const original = api.carteira.painel;
@@ -175,14 +222,69 @@ test("falha ao trocar o período mantém os números, avisa nos gráficos e perm
     );
     await main.getByRole("button", { name: "6 meses" }).click();
     await expect(main.getByRole("alert")).toContainText("Não foi possível carregar o período.");
-    await expect(main.locator(".numeros .card b").nth(2)).toHaveText("Em 12 meses");
+    await expect(main.locator(".numeros .card b").nth(2)).toHaveText(DOZE);
     await expect(main.getByRole("button", { name: "12 meses" })).toHaveAttribute("aria-pressed", "true");
+    // Clicar no botão já pressionado (12) tenta de novo e traz os gráficos de volta.
+    await main.getByRole("button", { name: "12 meses" }).click();
+    await expect(main.getByRole("alert")).toHaveCount(0);
+    await expect(main.locator('svg[aria-label^="Rentabilidade mês a mês"]')).toHaveCount(1);
     await page.evaluate(() => {
       window.__falhar = false;
     });
     await main.getByRole("button", { name: "6 meses" }).click();
     await expect(main.locator(".numeros .card b").nth(2)).toHaveText("Em 6 meses");
     await expect(main.getByRole("alert")).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test("a escolha de 6 meses sobrevive ao redesenho depois de uma atualização de mercado", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await criar(page, CDB);
+    await abrir(page);
+    const main = page.locator("main");
+    await main.getByRole("button", { name: "6 meses" }).click();
+    await expect(main.locator(".numeros .card b").nth(2)).toHaveText("Em 6 meses");
+    // Marca os números atuais para saber quando a tela foi redesenhada.
+    await page.evaluate(() => {
+      document.querySelector("main .numeros").dataset.antigo = "1";
+    });
+    await atualizarAgora(page);
+    await expect(main.locator(".numeros[data-antigo]")).toHaveCount(0);
+    await expect(main.locator(".numeros .card b").nth(2)).toHaveText("Em 6 meses");
+    await expect(main.getByRole("button", { name: "6 meses" })).toHaveAttribute("aria-pressed", "true");
+    await expect(main.getByRole("button", { name: "12 meses" })).toHaveAttribute("aria-pressed", "false");
+  } finally {
+    await app.close();
+  }
+});
+
+test("a saudação só diz que a carteira está atualizada quando nenhuma fonte tem erro", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await criar(page, CDB);
+    // Com CDB a custo, os modelos são 5 e o índice 1 é a frase de "atualizada"; sem ela, 4.
+    await page.evaluate(() => {
+      Math.random = () => 0.25;
+    });
+    await abrir(page);
+    const saudacao = page.locator("main").getByTestId("saudacao");
+    await expect(saudacao).toContainText("Sua carteira está atualizada com os dados de mercado mais recentes.");
+    await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) => {
+        const original = api.mercado.status;
+        api.mercado.status = async () => [...(await original()), { fonte: "b3", rotulo: "Cotações da B3", ultimaData: null, atualizadoEm: null, erro: "A B3 não respondeu." }];
+        window.location.hash = "#/investimentos";
+      }),
+    );
+    await expect(saudacao).toHaveCount(0);
+    await abrir(page);
+    await expect(saudacao).toBeVisible();
+    await expect(saudacao).not.toContainText("atualizada");
   } finally {
     await app.close();
   }

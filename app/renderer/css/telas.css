@@ -155,7 +155,7 @@ textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
 .side .falhas-marca:hover { color: var(--side-ink); }
 
 /* Gráficos em SVG (graficos.js): cores e tracejados só por classe, com tokens que já têm versão escura. */
-svg.chart .grade { stroke: var(--gridline); stroke-width: 1; stroke-dasharray: 1 3; }
+svg.chart .grade { stroke: var(--chart-grid); stroke-width: 1; stroke-dasharray: 1 3; }
 svg.chart .zero { stroke: var(--line-strong); stroke-width: 1; }
 svg.chart .guia { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 3; }
 svg.chart .eixo { fill: var(--muted); font: 10px var(--f-mono); }
@@ -205,15 +205,28 @@ svg.chart .ponto.s-down { fill: var(--down); }
 .seletor { display: flex; }
 .seletor .btn { margin: 0; }
 .seletor .btn[aria-pressed="true"] { background: var(--accent); color: var(--surface); }
-.painel-corpo { display: grid; gap: 14px; min-width: 0; }
-.numeros { display: grid; grid-template-columns: 2fr repeat(4, minmax(0, 1fr)); gap: 12px; }
-.numeros .hero { border-left: 3px solid var(--accent); }
-.numeros .mid { font-size: 16px; white-space: nowrap; }
-.numeros .hero .mid { font-size: 28px; }
-.numeros .card b { font: 500 10.5px var(--f-mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.painel-corpo { display: grid; gap: 14px; min-width: 0; container-type: inline-size; }
+/* Cards dos números: quebram em linhas em vez de espremer; o maior ocupa duas colunas. Com
+   menos de ~1150 px, seis colunas não cabem um "R$ 1.234.567,89": três (o maior + 1, depois 3). */
+.numeros-caixa { container-type: inline-size; }
+.numeros { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+@container (max-width: 1150px) {
+  .numeros { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.numeros .card { min-width: 0; }
+.numeros .hero { grid-column: span 2; border-left: 3px solid var(--accent); }
+.numeros .mid { font-size: clamp(14px, 1.3vw, 16px); white-space: nowrap; min-width: 0; }
+.numeros .hero .mid { font-size: clamp(20px, 2.2vw, 28px); }
+.numeros .card b { font: 500 10.5px var(--f-mono); text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.numeros .card small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .graficos { display: grid; gap: 12px; min-width: 0; }
 .graficos.g1 { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
 .graficos.g2 { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
+/* Abaixo de ~1150 px de conteúdo, meia coluna deixa o gráfico estreito demais: uma coluna só. */
+@container (max-width: 1150px) {
+  .graficos.g1, .graficos.g2 { grid-template-columns: minmax(0, 1fr); }
+}
+.grafico { min-width: 0; }
 .card-title h2 { font: 500 10.5px var(--f-mono); text-transform: uppercase; letter-spacing: 0.08em; }
 .bloco-titulo { font: 500 10.5px var(--f-mono); text-transform: uppercase; letter-spacing: 0.08em; }
 .bloco svg.chart, .bloco svg.mini { display: block; width: 100%; height: auto; }
@@ -231,6 +244,7 @@ svg.mini { width: 100%; max-width: 120px; height: 24px; }
 .legenda .marca.s-c1.tracejada { border-top-color: var(--c1); }
 .legenda .marca.s-c2.tracejada { border-top-color: var(--c2); }
 .legenda .marca.s-c3.tracejada { border-top-color: var(--c3); }
+.legenda .marca.s-c4.tracejada { border-top-color: var(--c4); }
 .legenda .marca.f-c1 { background: var(--c1); }
 .legenda .marca.f-c2 { background: var(--c2); }
 .legenda .marca.f-c3 { background: var(--c3); }

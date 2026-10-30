@@ -255,14 +255,18 @@ test("detalhe da classe sem histórico mostra o aviso no lugar do seletor e do g
   const app = await lancar();
   try {
     const page = await app.firstWindow();
-    await criar(page, { ...CDB, dataAplicacao: "2026-10-20" });
+    // Aplicado no dia dos dados de mercado: nenhum dia aplicado, nenhum retorno.
+    await criar(page, { ...CDB, dataAplicacao: "2026-10-28" });
     await page.evaluate(() => {
       window.location.hash = "#/carteira/rf";
     });
     const main = page.locator("main");
     await expect(main.getByRole("heading", { name: "Renda fixa" })).toBeVisible();
     await expect(main).toContainText("Ainda não há histórico para comparar.");
-    await expect(main.getByText("Em 12 meses")).toBeVisible();
+    // O período começa no aporte e, sem histórico, não tem valor.
+    const periodo = main.locator(".numeros-classe .total").nth(1);
+    await expect(periodo.locator("small")).toHaveText("Desde 10/26");
+    await expect(periodo.locator(".mid")).toHaveText("—");
     await expect(main.getByRole("group", { name: "Benchmark" })).toHaveCount(0);
     await expect(main.getByRole("img", { name: /Rentabilidade acumulada da classe/ })).toHaveCount(0);
     await expect(main.locator("tbody tr")).toHaveCount(1);
@@ -290,7 +294,8 @@ test("detalhe da classe: cabeçalho, benchmark padrão e troca sem refazer a cha
 
     await abrir("#/carteira/acoes");
     await expect(grupo.getByRole("button", { name: "BOVA11" })).toHaveAttribute("aria-pressed", "true");
-    await expect(main.getByText("Sua ações")).toBeVisible();
+    await expect(main.getByText("Suas ações")).toBeVisible();
+    await expect(main.locator(".numeros-classe .total").nth(1).locator("small")).toHaveText("Desde 08/26");
 
     await abrir("#/carteira/rf");
     await expect(main.getByRole("heading", { name: "Renda fixa" })).toBeVisible();

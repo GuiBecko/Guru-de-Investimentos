@@ -81,6 +81,19 @@ export function indiceMaisProximo(xs, x) {
   return melhor;
 }
 
+// "Carteira +2,94%, IPCA +4,48%": o último valor de cada série que tem algum, para o aria-label.
+export function resumoUltimoPonto(series, formatarValor) {
+  return series
+    .map((s) => {
+      const ultimo = s.valores.findLast(ehNum);
+      return ultimo === undefined ? null : `${s.rotulo} ${formatarValor(ultimo)}`;
+    })
+    .filter(Boolean)
+    .join(", ");
+}
+
+const comResumo = (rotulo, resumo) => (resumo ? `${rotulo}. Último ponto: ${resumo}` : rotulo);
+
 // "2026-10-28" -> "10/26"
 export function mesAno(iso) {
   const [a, m] = String(iso).split("-");
@@ -102,23 +115,34 @@ function svgBase(w, h, rotuloAcessivel, classe = "chart") {
 }
 
 const M = { e: 64, d: 12, t: 12, b: 26 };
-const W = 640;
+// Largura de partida do viewBox; `ajustavel` redesenha com a largura real, para o texto dos eixos
+// ficar no tamanho do CSS (10 px) em qualquer coluna. A altura é fixa.
+const LARGURA_INICIAL = 640;
 const H = 240;
+const LARGURA_MINIMA = 280;
 
-function eixoY(svg, y, dominio, formatarValor) {
-  const ticks = dominio[0] === dominio[1] ? [Math.round(dominio[0])] : [0, 1, 2, 3].map((i) => Math.round(dominio[0] + ((dominio[1] - dominio[0]) * i) / 3));
+const ticksDe = (dominio) =>
+  dominio[0] === dominio[1] ? [Math.round(dominio[0])] : [0, 1, 2, 3].map((i) => Math.round(dominio[0] + ((dominio[1] - dominio[0]) * i) / 3));
+
+// Margem esquerda que cabe o maior rótulo do eixo Y (fonte mono de 10 px: 0,6 em por caractere).
+export function margemEsquerda(rotulos) {
+  const maior = Math.max(0, ...rotulos.map((r) => String(r).length));
+  return Math.max(M.e, Math.ceil(maior * 6.2) + 10);
+}
+
+function eixoY(svg, y, ticks, formatarValor, W, e) {
   for (const v of ticks) {
     const py = y(v);
-    svg.append(el("line", { class: "grade", x1: M.e, x2: W - M.d, y1: py, y2: py }));
-    svg.append(el("text", { class: "eixo", x: M.e - 6, y: py + 3, "text-anchor": "end" }, formatarValor(v)));
+    svg.append(el("line", { class: "grade", x1: e, x2: W - M.d, y1: py, y2: py }));
+    svg.append(el("text", { class: "eixo", x: e - 6, y: py + 3, "text-anchor": "end" }, formatarValor(v)));
   }
-  if (dominio[0] < 0 && dominio[1] > 0) {
+  if (ticks[0] < 0 && ticks[ticks.length - 1] > 0) {
     const y0 = y(0);
-    svg.append(el("line", { class: "zero", x1: M.e, x2: W - M.d, y1: y0, y2: y0 }));
+    svg.append(el("line", { class: "zero", x1: e, x2: W - M.d, y1: y0, y2: y0 }));
   }
 }
 
-function eixoX(svg, datas, xs) {
+function eixoX(svg, datas, xs, W) {
   const passo = Math.max(1, Math.ceil(datas.length / 7));
   datas.forEach((d, i) => {
     if (i % passo !== 0 && i !== datas.length - 1) return;
@@ -155,16 +179,16 @@ function criarDica() {
   };
 }
 
-function xDoMouse(svg, ev) {
+function xDoMouse(svg, ev, W) {
   const r = svg.getBoundingClientRect();
   return r.width ? ((ev.clientX - r.left) / r.width) * W : 0;
 }
 
-function ligarHover(svg, xs, dica, linhasDe, guia) {
+function ligarHover(svg, xs, dica, linhasDe, guia, W, e) {
   if (xs.length === 0) return;
-  const alvo = el("rect", { class: "alvo", x: M.e, y: M.t, width: W - M.e - M.d, height: H - M.t - M.b });
+  const alvo = el("rect", { class: "alvo", x: e, y: M.t, width: W - e - M.d, height: H - M.t - M.b });
   alvo.addEventListener("mousemove", (ev) => {
-    const i = indiceMaisProximo(xs, xDoMouse(svg, ev));
+    const i = indiceMaisProximo(xs, xDoMouse(svg, ev, W));
     if (guia) {
       guia.setAttribute("x1", xs[i]);
       guia.setAttribute("x2", xs[i]);
@@ -179,13 +203,15 @@ function ligarHover(svg, xs, dica, linhasDe, guia) {
   svg.append(alvo);
 }
 
-export function graficoLinhas(datas, series, formatarValor, rotuloAcessivel) {
-  const svg = svgBase(W, H, rotuloAcessivel);
+export function graficoLinhas(datas, series, formatarValor, rotuloAcessivel, W = LARGURA_INICIAL) {
+  const svg = svgBase(W, H, comResumo(rotuloAcessivel, resumoUltimoPonto(series, formatarValor)));
   const dominio = dominioComZero(series.flatMap((s) => s.valores));
+  const ticks = ticksDe(dominio);
+  const e = margemEsquerda(ticks.map(formatarValor));
   const y = escala(dominio, [H - M.b, M.t]);
-  const xs = datas.map((_, i) => escala([0, Math.max(1, datas.length - 1)], [M.e, W - M.d])(i));
-  eixoY(svg, y, dominio, formatarValor);
-  eixoX(svg, datas, xs);
+  const xs = datas.map((_, i) => escala([0, Math.max(1, datas.length - 1)], [e, W - M.d])(i));
+  eixoY(svg, y, ticks, formatarValor, W, e);
+  eixoX(svg, datas, xs, W);
   const guia = el("line", { class: "guia", x1: 0, x2: 0, y1: M.t, y2: H - M.b, visibility: "hidden" });
   svg.append(guia);
   for (const s of series) {
@@ -203,19 +229,24 @@ export function graficoLinhas(datas, series, formatarValor, rotuloAcessivel) {
       ...series.map((s) => `${s.rotulo}: ${ehNum(s.valores[i]) ? formatarValor(s.valores[i]) : "—"}`),
     ],
     guia,
+    W,
+    e,
   );
   svg.append(dica.g);
   return svg;
 }
 
-export function graficoBarras(datas, valores, formatarValor, rotuloAcessivel) {
-  const svg = svgBase(W, H, rotuloAcessivel);
+export function graficoBarras(datas, valores, formatarValor, rotuloAcessivel, W = LARGURA_INICIAL) {
+  const ultimo = valores.findLast(ehNum);
+  const svg = svgBase(W, H, ultimo === undefined ? rotuloAcessivel : `${rotuloAcessivel}. Último mês: ${formatarValor(ultimo)}`);
   const dominio = dominioComZero(valores);
+  const ticks = ticksDe(dominio);
+  const e = margemEsquerda(ticks.map(formatarValor));
   const y = escala(dominio, [H - M.b, M.t]);
-  const banda = (W - M.e - M.d) / Math.max(1, datas.length);
-  const xs = datas.map((_, i) => M.e + banda * (i + 0.5));
-  eixoY(svg, y, dominio, formatarValor);
-  eixoX(svg, datas, xs);
+  const banda = (W - e - M.d) / Math.max(1, datas.length);
+  const xs = datas.map((_, i) => e + banda * (i + 0.5));
+  eixoY(svg, y, ticks, formatarValor, W, e);
+  eixoX(svg, datas, xs, W);
   const y0 = y(0);
   valores.forEach((v, i) => {
     if (!ehNum(v) || v === 0) return;
@@ -231,7 +262,7 @@ export function graficoBarras(datas, valores, formatarValor, rotuloAcessivel) {
     );
   });
   const dica = criarDica();
-  ligarHover(svg, xs, dica, (i) => [mesAno(datas[i]), ehNum(valores[i]) ? formatarValor(valores[i]) : "—"], null);
+  ligarHover(svg, xs, dica, (i) => [mesAno(datas[i]), ehNum(valores[i]) ? formatarValor(valores[i]) : "—"], null, W, e);
   svg.append(dica.g);
   return svg;
 }
@@ -260,10 +291,32 @@ export function graficoRosca(fatias, rotuloAcessivel) {
 export function minigrafico(valores, classe) {
   const w = 80;
   const h = 24;
-  const svg = el("svg", { viewBox: `0 0 ${w} ${h}`, role: "img", "aria-label": "Tendência", class: "mini" });
+  // Decorativo: o valor da classe já está escrito no card.
+  const svg = el("svg", { viewBox: `0 0 ${w} ${h}`, "aria-hidden": "true", class: "mini" });
   const dominio = [Math.min(...valores), Math.max(...valores)];
   const y = escala(dominio, [h - 2, 2]);
   const x = escala([0, Math.max(1, valores.length - 1)], [1, w - 1]);
   svg.append(el("path", { class: `serie ${classe}`, d: caminhoLinha(valores.map((v, i) => ({ x: x(i), y: y(v) }))), fill: "none" }));
   return svg;
+}
+
+// Caixa que desenha `construir(largura)` com a largura real em pixels (viewBox 1:1), e redesenha
+// quando ela muda: o texto dos eixos fica sempre no tamanho do CSS, sem encolher na meia coluna.
+export function ajustavel(construir) {
+  const caixa = document.createElement("div");
+  caixa.className = "grafico";
+  let largura = LARGURA_INICIAL;
+  caixa.append(construir(largura));
+  const observador = new ResizeObserver(([entrada]) => {
+    if (!caixa.isConnected) {
+      observador.disconnect();
+      return;
+    }
+    const nova = Math.max(LARGURA_MINIMA, Math.floor(entrada.contentRect.width));
+    if (entrada.contentRect.width <= 0 || nova === largura) return;
+    largura = nova;
+    caixa.replaceChildren(construir(largura));
+  });
+  observador.observe(caixa);
+  return caixa;
 }
