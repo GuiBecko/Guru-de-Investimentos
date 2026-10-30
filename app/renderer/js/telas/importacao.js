@@ -4,7 +4,7 @@ import { api } from "../api.js";
 import { atualizarMercado } from "../mercado.js";
 import { atualizarUltimaImportacao } from "../importacao-ultima.js";
 import { formatarData, formatarReais, paraCentavos } from "../formato.js";
-import { montarDados } from "./formulario-investimento/dados.js";
+import { campoDoTipo, montarDados } from "./formulario-investimento/dados.js";
 import { ROTULO_TAXA } from "./formulario-investimento.js";
 import { caixaTabela, cabecalho, el } from "./_tabela.js";
 
@@ -41,6 +41,8 @@ function opcao(valor, texto) {
 
 // --- Campos que o usuário completa (mesmos rótulos e padrão `.field` do formulário) ---
 
+const ROTULO_DATA_EMISSAO = "Data da aplicação (confira: veio a data de emissão)";
+const vazio = (v) => v === undefined || v === null || String(v).trim() === "";
 const DATAS = new Set(["dataAplicacao", "vencimento", "dataCarencia"]);
 const REAIS = new Set(["precoMedioCentavos", "valorAplicadoCentavos"]);
 const ORDEM = ["tipo", "emissor", "ticker", "instituicao", "indexador", "taxa", "quantidade", "precoMedioCentavos", "dataAplicacao", "vencimento", "valorAplicadoCentavos", "liquidez", "dataCarencia", "ir"];
@@ -149,22 +151,22 @@ function criarItem(item, n, catalogo, nomes) {
   const geral = el("span", undefined, "erro");
   geral.hidden = true;
   let tipoControle = null;
+  let mostrarCampo = () => {};
 
   const tipoAtual = () => (tipoControle ? tipos.get(tipoControle.value) : tipos.get(sugestao?.tipo));
+
+  // Campos que já mostraram erro continuam visíveis mesmo que o tipo não os peça mais.
+  const fixos = new Set();
 
   if (sugestao) {
     const resumo = el("small", resumoDaPlanilha(sugestao, tipoAtual()));
     const grade = el("div", undefined, "grid4");
-    const t0 = tipoAtual();
-    const nomesCampos = ORDEM.filter((nome) => {
-      if (faltam.has(nome)) return true;
-      if (nome === "dataCarencia") return t0 && t0.forma !== "renda_variavel";
-      if (nome === "liquidez") return sugestao.liquidez !== undefined && sugestao.liquidez !== null;
-      if (nome === "ir") return sugestao.ir !== undefined && sugestao.ir !== null;
-      return false;
-    });
+    // Só a renda fixa traz data na sugestão: é a data de emissão, que o usuário deve conferir.
+    const daEmissao = !vazio(sugestao.dataAplicacao);
 
-    for (const nome of nomesCampos) {
+    // Todos os campos existem (escondidos quando não precisam aparecer), já com o valor da
+    // sugestão: trocar o tipo ou receber um erro do núcleo só muda o que está visível.
+    for (const nome of ORDEM) {
       const id = `i${n}-${nome}`;
       let controle;
       let corpo;
@@ -181,7 +183,7 @@ function criarItem(item, n, catalogo, nomes) {
       } else if (nome === "liquidez" || nome === "ir") {
         controle = el("select");
         for (const o of nome === "liquidez" ? catalogo.liquidezes : catalogo.irs) controle.append(opcao(o.codigo, o.rotulo));
-        controle.value = sugestao[nome];
+        controle.value = sugestao[nome] ?? "";
       } else {
         controle = el("input");
         controle.type = DATAS.has(nome) ? "date" : "text";
@@ -190,9 +192,9 @@ function criarItem(item, n, catalogo, nomes) {
           controle.inputMode = "decimal";
         }
         if (nome === "ticker") controle.className = "caixa-alta";
-        if (nome === "taxa") controle.value = sugestao.taxa === undefined || sugestao.taxa === null ? "" : String(sugestao.taxa).replace(".", ",");
-        else if (REAIS.has(nome)) controle.value = sugestao[nome] === undefined || sugestao[nome] === null ? "" : semPrefixo(sugestao[nome]);
-        else if (sugestao[nome] !== undefined && sugestao[nome] !== null) controle.value = String(sugestao[nome]);
+        if (nome === "taxa") controle.value = vazio(sugestao.taxa) ? "" : String(sugestao.taxa).replace(".", ",");
+        else if (REAIS.has(nome)) controle.value = vazio(sugestao[nome]) ? "" : semPrefixo(sugestao[nome]);
+        else if (!vazio(sugestao[nome])) controle.value = String(sugestao[nome]);
       }
       controle.id = id;
       if (REAIS.has(nome)) {
@@ -230,37 +232,54 @@ function criarItem(item, n, catalogo, nomes) {
       grade.append(wrap);
     }
 
+    // Um campo aparece se o tipo escolhido o usa e a planilha não trouxe o valor (ou se o núcleo
+    // apontou que falta, ou se já teve erro). Liquidez e IR aparecem sempre que o tipo os usa,
+    // para o usuário conferir o padrão do catálogo; a data de emissão, para conferir a aplicação.
+    const visivel = (nome, t) => {
+      if (fixos.has(nome)) return true;
+      if (nome === "tipo") return faltam.has("tipo");
+      if (!t) return faltam.has(nome);
+      const liquidez = campos.liquidez.controle.value;
+      if (!campoDoTipo(nome, { tipo: t, liquidez })) return false;
+      if (faltam.has(nome)) return true;
+      if (nome === "indexador" && t.indexadorForcado) return false;
+      if (nome === "liquidez" || nome === "ir") return true;
+      if (nome === "dataAplicacao" && daEmissao) return true;
+      return vazio(sugestao[nome]);
+    };
+
     // Texto e estado dos campos que dependem do tipo escolhido.
+    let anterior = tipoAtual();
     const ajustar = () => {
       const t = tipoAtual();
+      if (t !== anterior) {
+        // Trocou o tipo: o que a planilha não trouxe vem do padrão do catálogo para o novo tipo.
+        if (vazio(sugestao.liquidez)) campos.liquidez.controle.value = t?.liquidezPadrao ?? "";
+        if (vazio(sugestao.ir)) campos.ir.controle.value = t?.irPadrao ?? "";
+        anterior = t;
+      }
       resumo.textContent = resumoDaPlanilha(sugestao, t);
-      const indexador = t?.indexadorForcado ?? campos.indexador?.controle.value ?? sugestao.indexador ?? "pos";
-      if (campos.taxa) {
-        const [rotulo, sufixo] = ROTULO_TAXA[indexador] ?? ROTULO_TAXA.pos;
-        campos.taxa.label.textContent = rotulo;
-        campos.taxa.sufixo.textContent = sufixo;
-      }
-      if (campos.indexador) {
-        campos.indexador.controle.disabled = !!t?.indexadorForcado;
-        if (t?.indexadorForcado) campos.indexador.controle.value = t.indexadorForcado;
-      }
-      if (campos.liquidez) {
-        campos.liquidez.controle.disabled = !!t?.liquidezForcada;
-        if (t?.liquidezForcada) campos.liquidez.controle.value = t.liquidezForcada;
-        campos.liquidez.marca.textContent = t?.liquidezForcada ? "preenchido pelo tipo" : "sugerido pelo catálogo, confira";
-      }
-      if (campos.ir) {
-        const fixo = t?.forma === "renda_fixa" && !t.irEditavel;
-        campos.ir.controle.disabled = fixo;
-        if (fixo && t.irPadrao) campos.ir.controle.value = t.irPadrao;
-        campos.ir.marca.textContent = fixo ? "preenchido pelo tipo" : "sugerido pelo catálogo, confira";
-      }
-      if (campos.dataCarencia) {
-        const liquidez = campos.liquidez?.controle.value ?? sugestao.liquidez;
-        campos.dataCarencia.wrap.hidden = !(liquidez === "carencia" || faltam.has("dataCarencia"));
-      }
-      if (campos.emissor && t) campos.emissor.label.textContent = t.forma === "valor" ? "Nome" : "Emissor";
-      if (campos.dataAplicacao && t) campos.dataAplicacao.label.textContent = t.forma === "renda_variavel" ? "Data da primeira compra" : "Data da aplicação";
+      const indexador = t?.indexadorForcado ?? campos.indexador.controle.value ?? "pos";
+      const [rotulo, sufixo] = ROTULO_TAXA[indexador] ?? ROTULO_TAXA.pos;
+      campos.taxa.label.textContent = rotulo;
+      campos.taxa.sufixo.textContent = sufixo;
+      campos.indexador.controle.disabled = !!t?.indexadorForcado;
+      if (t?.indexadorForcado) campos.indexador.controle.value = t.indexadorForcado;
+      campos.liquidez.controle.disabled = !!t?.liquidezForcada;
+      if (t?.liquidezForcada) campos.liquidez.controle.value = t.liquidezForcada;
+      campos.liquidez.marca.textContent = t?.liquidezForcada ? "preenchido pelo tipo" : "sugerido pelo catálogo, confira";
+      const irFixo = t?.forma === "renda_fixa" && !t.irEditavel;
+      campos.ir.controle.disabled = irFixo;
+      if (irFixo && t.irPadrao) campos.ir.controle.value = t.irPadrao;
+      campos.ir.marca.textContent = irFixo ? "preenchido pelo tipo" : "sugerido pelo catálogo, confira";
+      campos.emissor.label.textContent = t?.forma === "valor" ? "Nome" : "Emissor";
+      campos.dataAplicacao.label.textContent =
+        t?.forma === "renda_variavel" ? "Data da primeira compra" : daEmissao ? ROTULO_DATA_EMISSAO : "Data da aplicação";
+      for (const nome of ORDEM) campos[nome].wrap.hidden = !visivel(nome, t);
+    };
+    mostrarCampo = (nome) => {
+      fixos.add(nome);
+      ajustar();
     };
     detalhe.addEventListener("input", ajustar);
     detalhe.addEventListener("change", ajustar);
@@ -311,7 +330,7 @@ function criarItem(item, n, catalogo, nomes) {
       c.erro.hidden = false;
       c.controle.setAttribute("aria-invalid", "true");
       c.controle.setAttribute("aria-describedby", c.erro.id);
-      c.wrap.hidden = false;
+      mostrarCampo(campo === "benchmark" ? "taxa" : campo);
       primeiro ??= c.controle;
     }
     if (soltos.length) {

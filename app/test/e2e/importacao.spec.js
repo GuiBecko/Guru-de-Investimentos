@@ -5,6 +5,7 @@ const path = require("node:path");
 const FIXTURES = path.resolve(__dirname, "../../../crates/guru-core/tests/fixtures/b3");
 const COMPLETA = path.join(FIXTURES, "posicao-completa.xlsx");
 const DESCONHECIDA = path.join(FIXTURES, "posicao-aba-desconhecida.xlsx");
+const PREFIXO = path.join(FIXTURES, "posicao-prefixo-desconhecido.xlsx");
 
 const abrir = (arquivo) => lancar(undefined, { GURU_TESTE_ARQUIVO_B3: arquivo });
 
@@ -262,6 +263,70 @@ test("dois CDBs do mesmo banco e vencimento: vincular um à linha da B3 grava o 
     await expect(page.locator(".marcas").getByText("1 fora da B3")).toBeVisible();
     await page.getByRole("button", { name: "1 igual" }).click();
     await expect(item(page, "CDB BANCO FICTICIO S/A")).toContainText("igual");
+  } finally {
+    await app.close();
+  }
+});
+
+const DATA_EMISSAO = "Data da aplicação (confira: veio a data de emissão)";
+
+test("renda fixa com prefixo desconhecido: escolher CDB mostra os campos do tipo e aplicar grava", async () => {
+  const app = await abrir(PREFIXO);
+  try {
+    const page = await app.firstWindow();
+    await irParaImportar(page);
+    await escolher(page);
+    await ignorarTodosExceto(page, "LF BANCO FICTICIO S/A");
+    const lf = item(page, "LF BANCO FICTICIO S/A");
+    await expect(lf.getByLabel("Valor aplicado")).toBeHidden();
+    await lf.getByLabel("Tipo", { exact: true }).selectOption({ label: "CDB" });
+    await expect(lf.getByLabel("Rendimento")).toBeVisible();
+    await expect(lf.getByLabel("Valor aplicado")).toBeVisible();
+    await expect(lf.getByLabel("Liquidez")).toHaveValue("vencimento");
+    await expect(lf.getByLabel(DATA_EMISSAO)).toHaveValue("2024-03-15");
+    await lf.getByLabel("Rendimento").fill("102");
+    await lf.getByLabel("Valor aplicado").fill("10.000,00");
+    await page.getByRole("button", { name: "Aplicar 1 alteração", exact: true }).click();
+    await expect(page.getByText("1 alteração aplicada.")).toBeVisible();
+    await expect(page.locator("main tbody tr")).toHaveCount(1);
+    await expect(page.locator("main tbody tr").first()).toContainText("CDB");
+  } finally {
+    await app.close();
+  }
+});
+
+test("renda fixa com prefixo desconhecido: aplicar sem escolher o tipo marca o campo e não grava", async () => {
+  const app = await abrir(PREFIXO);
+  try {
+    const page = await app.firstWindow();
+    await irParaImportar(page);
+    await escolher(page);
+    await ignorarTodosExceto(page, "LF BANCO FICTICIO S/A");
+    await page.getByRole("button", { name: "Aplicar 1 alteração", exact: true }).click();
+    const lf = item(page, "LF BANCO FICTICIO S/A");
+    await expect(lf.locator(".erro", { hasText: "Escolha o tipo." })).toBeVisible();
+    await expect(lf.getByLabel("Tipo", { exact: true })).toHaveAttribute("aria-invalid", "true");
+    await expect(page.getByRole("alert")).toHaveText("Há campos a corrigir. Nada foi aplicado.");
+    await page.evaluate(() => {
+      window.location.hash = "#/investimentos";
+    });
+    await expect(page.getByText("Nenhum investimento ainda.")).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
+test("a data de emissão vem como data da aplicação editável, para conferir", async () => {
+  const app = await abrir(COMPLETA);
+  try {
+    const page = await app.firstWindow();
+    await irParaImportar(page);
+    await escolher(page);
+    const cdb = item(page, "CDB BANCO EXEMPLO S/A");
+    const data = cdb.getByLabel(DATA_EMISSAO);
+    await expect(data).toBeVisible();
+    await expect(data).toBeEditable();
+    await expect(data).not.toHaveValue("");
   } finally {
     await app.close();
   }
