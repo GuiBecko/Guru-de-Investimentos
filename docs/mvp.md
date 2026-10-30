@@ -61,7 +61,7 @@ Escopo combinado durante a fase de protótipo. O protótipo das telas está em [
 | Saudação | Escrita pelo app, sorteada de uma lista fixa de frases. Não usa a IA nem gasta tokens. |
 | Contexto da IA | Cada parte do contexto (instruções, perfil, carteira, mercado, metas) pode ser desligada ou editada. |
 | Classes | Renda fixa (inclui Tesouro), Ações (inclui ETFs), FIIs, Exterior (BDRs) e Outros (fundos, previdência e cripto). A classe Caixa do protótipo fica para quando houver um tipo para ela. |
-| Rentabilidade da carteira | Retorno mensal pelo método de Dietz simples (desconta os aportes do mês), encadeado no período. Histórico de 6 ou 12 meses, pelos fechamentos de fim de mês. |
+| Rentabilidade da carteira | Retorno mensal pelo método de Dietz modificado (os aportes pesam pelos dias em que ficaram aplicados no mês), encadeado no período. Investimento sem preço conta pelo valor aplicado, e o mês em que ele ganha preço não vira rendimento. Benchmarks comparados a partir do primeiro aporte do período. Histórico de 6 ou 12 meses, pelos fechamentos de fim de mês. |
 | Proventos | Fora do painel até haver fonte (importação da B3 ou V2). |
 
 ## Em aberto

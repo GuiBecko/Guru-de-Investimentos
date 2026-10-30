@@ -505,7 +505,6 @@ impl Db {
     }
 }
 
-/// `round(parte × 1000 / total)` em inteiros, meio para cima; total 0 dá 0.
 /// `round(parte × 1000 / total)` meio para cima; 0 com total não positivo.
 pub(crate) fn decimos(parte: i64, total: i64) -> i64 {
     if total <= 0 {
