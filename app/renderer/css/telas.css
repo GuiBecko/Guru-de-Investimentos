@@ -191,3 +191,44 @@ svg.chart .ponto.s-c4 { fill: var(--c4); }
 svg.chart .ponto.s-c5 { fill: var(--c5); }
 svg.chart .ponto.s-up { fill: var(--up); }
 svg.chart .ponto.s-down { fill: var(--down); }
+
+/* Painel da carteira (tela 5 do protótipo). */
+.topo-painel { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.saudacao-texto { display: grid; gap: 4px; min-width: 0; }
+.saudacao-texto small { text-transform: capitalize; }
+.main h1.frase { font-size: 22px; text-transform: none; }
+.acoes-topo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.seletor { display: flex; }
+.seletor .btn { margin: 0; }
+.seletor .btn[aria-pressed="true"] { background: var(--accent); color: var(--surface); }
+.painel-corpo { display: grid; gap: 14px; min-width: 0; }
+.numeros { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.numeros .card b { font: 500 10.5px var(--f-mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.graficos { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; }
+.bloco-titulo { font: 500 10.5px var(--f-mono); text-transform: uppercase; letter-spacing: 0.08em; }
+.bloco svg.chart, .bloco svg.mini { display: block; width: 100%; height: auto; }
+.bloco svg.rosca { max-width: 200px; margin: 0 auto; }
+svg.mini { width: 80px; height: 24px; }
+a.card svg.mini, div.card svg.mini { width: 100%; max-width: 120px; height: 24px; }
+.rosca-corpo { display: grid; gap: 12px; align-items: center; }
+.legenda { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; }
+.legenda li { display: flex; align-items: center; gap: 6px; }
+.legenda small { color: var(--muted); }
+.legenda .marca { display: inline-block; width: 10px; height: 10px; background: var(--muted); }
+.legenda .marca.tracejada { height: 0; border-top: 2px dashed var(--muted); background: none; }
+.legenda .marca.s-carteira { background: var(--accent); }
+.legenda .marca.s-bench { border-top-color: var(--bench); }
+.legenda .marca.s-c1.tracejada { border-top-color: var(--c1); }
+.legenda .marca.s-c2.tracejada { border-top-color: var(--c2); }
+.legenda .marca.s-c3.tracejada { border-top-color: var(--c3); }
+.legenda .marca.f-c1 { background: var(--c1); }
+.legenda .marca.f-c2 { background: var(--c2); }
+.legenda .marca.f-c3 { background: var(--c3); }
+.legenda .marca.f-c4 { background: var(--c4); }
+.legenda .marca.f-c5 { background: var(--c5); }
+.legenda .marca.f-accent { background: var(--accent); }
+.listas { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.lista li { border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+.lista a { color: var(--accent); }
+.main .numeros .mid.up, .main .numeros .mid.down { font-weight: 500; }

@@ -1,7 +1,8 @@
 import { api } from "../api.js";
-import { formatarData, formatarDecimos, formatarDiferenca, formatarReais } from "../formato.js";
+import { formatarData, formatarReais } from "../formato.js";
 import { caixaTabela, cabecalho, celulasValor, el } from "./_tabela.js";
 import { dataDoMercado, textoNota } from "../mercado.js";
+import { painel } from "./carteira/painel.js";
 
 const COLUNAS = [
   ["Investimento"],
@@ -24,59 +25,6 @@ function erro(elemento, titulo) {
   const p = el("p", "Não foi possível carregar a carteira.");
   p.setAttribute("role", "alert");
   elemento.replaceChildren(el("h1", titulo), p);
-}
-
-function card(c) {
-  // Classe sem investimento não tem tela de detalhe: o card não é link.
-  const temDetalhe = c.quantidade > 0;
-  const a = temDetalhe ? el("a", undefined, "card click") : el("div", undefined, "card");
-  if (temDetalhe) a.href = `#/carteira/${c.classe}`;
-  const n = c.quantidade === 1 ? "1 investimento" : `${c.quantidade} investimentos`;
-  const base = el("div", undefined, "row");
-  base.append(el("small", n), el("span", formatarDecimos(c.percentualDecimos), "mono"));
-  a.append(el("b", c.rotulo), el("span", formatarReais(c.totalAtualCentavos), "mid mono"), base);
-  if (c.alvoPercentual !== null && c.alvoPercentual !== undefined) {
-    const alvo = el("div", undefined, "row");
-    alvo.append(el("small", `alvo ${c.alvoPercentual}%`), el("span", formatarDiferenca(c.percentualDecimos, c.alvoPercentual), "mono"));
-    a.append(alvo);
-  }
-  return a;
-}
-
-async function painel(elemento, vigente) {
-  let resumo;
-  try {
-    resumo = await api.carteira.resumo();
-  } catch (e) {
-    if (!vigente()) return;
-    console.error("Falha ao carregar a carteira:", e);
-    erro(elemento, "Carteira");
-    return;
-  }
-  if (!vigente()) return;
-
-  const partes = [el("h1", "Carteira")];
-  if (resumo.totalAplicadoCentavos === 0) {
-    const vazio = el("div", undefined, "vazio");
-    const novo = el("a", "Lançar o primeiro investimento", "btn");
-    novo.href = "#/investimentos/novo";
-    vazio.append(el("p", "Sua carteira está vazia."), novo);
-    partes.push(vazio);
-  } else {
-    const patrimonio = el("div", undefined, "total");
-    patrimonio.append(el("small", "Patrimônio"), el("div", formatarReais(resumo.totalAtualCentavos), "mid mono"));
-    const aplicado = el("div", undefined, "total");
-    aplicado.append(el("small", "Total aplicado"), el("div", formatarReais(resumo.totalAplicadoCentavos), "mono"));
-    const total = el("div", undefined, "patrimonio");
-    total.append(patrimonio, aplicado);
-    const cards = el("div", undefined, "classes");
-    cards.append(...resumo.classes.map(card));
-    partes.push(total, cards);
-  }
-  const data = await dataDoMercado();
-  if (!vigente()) return;
-  partes.push(el("p", textoNota(data), "hint"));
-  elemento.replaceChildren(...partes);
 }
 
 function linha(inv) {
@@ -147,5 +95,5 @@ async function detalhe(elemento, classe, vigente) {
 
 export function render(elemento, parametros = [], vigente = () => true) {
   if (parametros.length > 0) return detalhe(elemento, parametros[0], vigente);
-  return painel(elemento, vigente);
+  return painel(elemento, vigente, erro);
 }

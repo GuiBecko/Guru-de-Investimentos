@@ -80,7 +80,7 @@ test("carteira mostra total e um card por classe, e o card abre o detalhe", asyn
       window.location.hash = "#/carteira";
     });
     const main = page.locator("main");
-    await expect(main.getByText("Total aplicado")).toBeVisible();
+    await expect(main.locator(".numeros").getByText("Total aportado", { exact: true })).toBeVisible();
     await expect(main).toContainText("R$ 42.713,00");
     await expect(main).toContainText("Valores brutos, antes do IR. Dados de mercado de");
 
@@ -110,7 +110,7 @@ test("carteira mostra total e um card por classe, e o card abre o detalhe", asyn
     ]);
 
     await main.getByRole("link", { name: "Carteira ›" }).click();
-    await expect(main.getByText("Total aplicado")).toBeVisible();
+    await expect(main.locator(".numeros").getByText("Total aportado", { exact: true })).toBeVisible();
   } finally {
     await app.close();
   }

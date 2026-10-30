@@ -95,8 +95,8 @@ test("carteira mostra o Patrimônio e a nota de dados de mercado", async () => {
       window.location.hash = "#/carteira";
     });
     const main = page.locator("main");
-    await expect(main.getByText("Patrimônio")).toBeVisible();
-    await expect(main.getByText("Total aplicado")).toBeVisible();
+    await expect(main.getByText("Patrimônio total", { exact: true })).toBeVisible();
+    await expect(main.locator(".numeros").getByText("Total aportado", { exact: true })).toBeVisible();
     await expect(main).toContainText("R$ 5.967,00");
     await expect(main).toContainText("Valores brutos, antes do IR. Dados de mercado de 28/10.");
     await main.getByRole("link", { name: /Ações/ }).click();
