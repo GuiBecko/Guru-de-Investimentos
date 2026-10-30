@@ -128,8 +128,8 @@ fn ultimo_mes_fechado(d: NaiveDate) -> Option<String> {
 }
 
 /// `Π(1 + ipca_m/100)` dos meses cujo último dia está em `(D₀, Dᵢ]` e estão guardados.
-/// Sem nenhum mês guardado até o de `D₀`, ou com o último mês fechado de `Dᵢ` ainda não
-/// publicado, o ponto fica ausente.
+/// Mês ainda não publicado ou faltando simplesmente não entra no produto. Sem nenhum mês
+/// guardado até o de `D₀`, o benchmark inteiro fica ausente.
 fn ipca(
     db: &Db,
     datas: &[NaiveDate],
@@ -148,11 +148,6 @@ fn ipca(
             out.push(None);
             continue;
         };
-        let esperados = ate > mes_inicio;
-        if esperados && !meses.iter().any(|(m, _)| *m == ate) {
-            out.push(None);
-            continue;
-        }
         let mut fator = Decimal::ONE;
         for (m, v) in &meses {
             if *m > mes_inicio && *m <= ate {

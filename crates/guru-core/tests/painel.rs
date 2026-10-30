@@ -516,3 +516,16 @@ fn painel_invalido_e_vazio() {
     assert_eq!(p.numeros.rendeu_centavos, 0);
     assert!(p.instituicoes.is_empty() && p.vencimentos.is_empty() && p.variacoes.is_empty());
 }
+
+#[test]
+fn ipca_com_o_ultimo_mes_fechado_ainda_nao_publicado_mantem_o_ponto() {
+    let (_d, db) = banco();
+    // A fixture termina em set/2026: em 05/11 o IPCA de outubro ainda não saiu.
+    let datas = [data(2025, 10, 31), data(2026, 9, 30), data(2026, 11, 5)];
+    let r = acumulado_benchmark(&db, Referencia::Ipca, &datas)
+        .unwrap()
+        .unwrap();
+    assert_eq!(r[0], Some(0));
+    assert!(r[1].is_some_and(|v| v > 0));
+    assert_eq!(r[2], r[1]);
+}
