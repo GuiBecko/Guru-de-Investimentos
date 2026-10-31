@@ -48,4 +48,18 @@ contextBridge.exposeInMainWorld("guru", {
     aplicar: (token, decisoes) => ipcRenderer.invoke("importacao:aplicar", token, decisoes),
     ultima: () => ipcRenderer.invoke("importacao:ultima"),
   },
+  ia: {
+    config: () => ipcRenderer.invoke("ia:config"),
+    salvarConfig: (dados) => ipcRenderer.invoke("ia:salvarConfig", dados),
+    salvarChave: (chave) => ipcRenderer.invoke("ia:salvarChave", chave),
+    removerChave: () => ipcRenderer.invoke("ia:removerChave"),
+    contexto: () => ipcRenderer.invoke("ia:contexto"),
+    salvarParte: (parte, ligada, textoEditado) => ipcRenderer.invoke("ia:salvarParte", parte, ligada, textoEditado),
+    conversas: () => ipcRenderer.invoke("ia:conversas"),
+    conversa: (id) => ipcRenderer.invoke("ia:conversa", id),
+    apagarConversa: (id) => ipcRenderer.invoke("ia:apagarConversa", id),
+    perguntar: (conversaId, pergunta) => ipcRenderer.invoke("ia:perguntar", conversaId, pergunta),
+    progresso: (pedido) => ipcRenderer.invoke("ia:progresso", pedido),
+    cancelar: (pedido) => ipcRenderer.invoke("ia:cancelar", pedido),
+  },
 });

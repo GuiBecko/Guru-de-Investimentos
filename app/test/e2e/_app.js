@@ -22,7 +22,14 @@ async function lancar(dir = fs.mkdtempSync(path.join(os.tmpdir(), "guru-e2e-")),
   const app = await _electron.launch({
     args: ["."],
     cwd: appDir,
-    env: { ...process.env, GURU_DATA_DIR: dir, ...extraEnv },
+    env: {
+      ...process.env,
+      GURU_DATA_DIR: dir,
+      // IA sem rede e sem cofre do sistema: respostas gravadas e chave em memória.
+      GURU_IA_FIXTURES: path.join(__dirname, "fixtures", "ia"),
+      GURU_IA_COFRE: "memoria",
+      ...extraEnv,
+    },
   });
   const original = app.firstWindow.bind(app);
   let pronta;

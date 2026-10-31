@@ -15,6 +15,10 @@ use napi_derive::napi;
 pub struct OpcoesCore {
     pub pasta_fixtures: Option<String>,
     pub hoje: Option<String>,
+    /// Só teste: pasta com respostas `.sse` no lugar da API da Anthropic.
+    pub pasta_ia: Option<String>,
+    /// Só teste: cofre da chave em memória no lugar do cofre do sistema.
+    pub cofre_memoria: Option<bool>,
 }
 
 #[napi(object)]
@@ -39,10 +43,10 @@ pub struct ModoTeste {
     pub hoje: Option<NaiveDate>,
 }
 
-pub fn modo_teste(opcoes: Option<OpcoesCore>) -> napi::Result<Option<ModoTeste>, String> {
+pub fn modo_teste(opcoes: Option<&OpcoesCore>) -> napi::Result<Option<ModoTeste>, String> {
     let Some(o) = opcoes else { return Ok(None) };
     let invalido = |m: &str| napi::Error::new("MERCADO_CONFIG_INVALIDA".to_string(), m.to_string());
-    match (o.pasta_fixtures, o.hoje) {
+    match (o.pasta_fixtures.clone(), o.hoje.clone()) {
         (None, None) => Ok(None),
         (None, Some(_)) => Err(invalido("`hoje` só vale junto com `pastaFixtures`.")),
         (Some(pasta), _) if pasta.trim().is_empty() => {

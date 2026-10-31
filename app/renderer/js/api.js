@@ -55,4 +55,18 @@ export const api = {
     aplicar: (token, decisoes) => desembrulhar(window.guru.importacao.aplicar(token, decisoes)),
     ultima: () => desembrulhar(window.guru.importacao.ultima()),
   },
+  ia: {
+    config: () => desembrulhar(window.guru.ia.config()),
+    salvarConfig: (dados) => desembrulhar(window.guru.ia.salvarConfig(dados)),
+    salvarChave: (chave) => desembrulhar(window.guru.ia.salvarChave(chave)),
+    removerChave: () => desembrulhar(window.guru.ia.removerChave()),
+    contexto: () => desembrulhar(window.guru.ia.contexto()),
+    salvarParte: (parte, ligada, textoEditado) => desembrulhar(window.guru.ia.salvarParte(parte, ligada, textoEditado)),
+    conversas: () => desembrulhar(window.guru.ia.conversas()),
+    conversa: (id) => desembrulhar(window.guru.ia.conversa(id)),
+    apagarConversa: (id) => desembrulhar(window.guru.ia.apagarConversa(id)),
+    perguntar: (conversaId, pergunta) => desembrulhar(window.guru.ia.perguntar(conversaId, pergunta)),
+    progresso: (pedido) => desembrulhar(window.guru.ia.progresso(pedido)),
+    cancelar: (pedido) => desembrulhar(window.guru.ia.cancelar(pedido)),
+  },
 };
