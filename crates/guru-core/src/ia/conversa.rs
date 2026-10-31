@@ -440,6 +440,17 @@ pub fn perguntar(
         break;
     }
 
+    if acumulador.blocos().is_empty() {
+        // Nenhum bloco em nenhuma parte: uma mensagem da IA vazia quebraria o histórico
+        // (a API recusa), então nada é gravado.
+        let erro = if acumulador.stop_reason() == Some("refusal") {
+            ErroIa::Recusa
+        } else {
+            ErroIa::Indisponivel
+        };
+        return Err(erro.into());
+    }
+
     let mut fim = acumulador.progresso();
     if !fim.terminado {
         // Parou em `pause_turn` depois das 3 continuações: grava o que veio.

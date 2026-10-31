@@ -705,3 +705,46 @@ fn uso_do_mes_soma_e_estima_custo() {
         .unwrap();
     assert_eq!(outro_mes.tokens, 0);
 }
+
+fn nada_gravado(dir: &tempfile::TempDir) {
+    assert_eq!(contar(dir, "conversa"), 0);
+    assert_eq!(contar(dir, "mensagem"), 0);
+    assert_eq!(contar(dir, "ia_uso"), 0);
+}
+
+#[test]
+fn recusa_vazia_da_erro_e_nao_grava() {
+    let (dir, db) = banco();
+    let cofre = cofre_com_chave();
+    let (r, _) = pergunta(&db, &cofre, &fixture(), None, "#recusavazia Algo");
+    let e = r.unwrap_err();
+    assert_eq!(e.code(), "IA_RECUSA");
+    assert_eq!(
+        e.to_string(),
+        "A IA preferiu não responder a esta pergunta."
+    );
+    nada_gravado(&dir);
+}
+
+#[test]
+fn resposta_vazia_da_indisponivel_e_nao_grava() {
+    let (dir, db) = banco();
+    let cofre = cofre_com_chave();
+    let (r, _) = pergunta(&db, &cofre, &fixture(), None, "#vazia Oi");
+    assert_eq!(r.unwrap_err().code(), "IA_INDISPONIVEL");
+    nada_gravado(&dir);
+
+    // Todas as partes de um pause_turn vazias: também nada gravado.
+    let cliente = Gravador::novo();
+    let (r, _) = pergunta(&db, &cofre, &cliente, None, "#pausavazia Oi");
+    assert_eq!(r.unwrap_err().code(), "IA_INDISPONIVEL");
+    assert_eq!(cliente.corpos().len(), 4);
+    nada_gravado(&dir);
+
+    // Numa conversa existente, a resposta vazia não deixa pergunta órfã.
+    let id = pergunta(&db, &cofre, &fixture(), None, "Oi").0.unwrap();
+    let (r, _) = pergunta(&db, &cofre, &fixture(), Some(id), "#recusavazia E agora?");
+    assert_eq!(r.unwrap_err().code(), "IA_RECUSA");
+    assert_eq!(db.conversa(id).unwrap().mensagens.len(), 2);
+    assert_eq!(contar(&dir, "mensagem"), 2);
+}

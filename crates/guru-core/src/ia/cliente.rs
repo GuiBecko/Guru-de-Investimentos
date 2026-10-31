@@ -18,6 +18,8 @@ const BETA_FALLBACK: &str = "server-side-fallback-2026-07-01";
 const CONECTAR: Duration = Duration::from_secs(60);
 /// Prazo para a resposta inteira, do DNS ao último byte do corpo.
 const RESPOSTA: Duration = Duration::from_secs(600);
+/// Prazo total para validar a chave (`GET /v1/models?limit=1`), que não é streaming.
+const VALIDAR: Duration = Duration::from_secs(30);
 const LIMITE_RESPOSTA: u64 = 8 * 1024 * 1024;
 const LIMITE_CORPO_ERRO: u64 = 64 * 1024;
 const MAX_MENSAGEM_ERRO: usize = 500;
@@ -44,6 +46,9 @@ pub enum ErroIa {
     SemConexao,
     #[error("Resposta interrompida.")]
     Cancelada,
+    /// Recusa sem nenhum bloco de conteúdo: não há o que gravar.
+    #[error("A IA preferiu não responder a esta pergunta.")]
+    Recusa,
 }
 
 impl ErroIa {
@@ -56,6 +61,7 @@ impl ErroIa {
             ErroIa::PedidoInvalido(_) => "IA_PEDIDO_INVALIDO",
             ErroIa::SemConexao => "IA_SEM_CONEXAO",
             ErroIa::Cancelada => "IA_CANCELADA",
+            ErroIa::Recusa => "IA_RECUSA",
         }
     }
 }
@@ -195,6 +201,9 @@ impl ClienteHttp {
         let mut resposta = self
             .agente
             .get(url)
+            .config()
+            .timeout_global(Some(VALIDAR))
+            .build()
             .header("x-api-key", chave)
             .header("anthropic-version", VERSAO_API)
             .header("content-type", "application/json")
@@ -331,6 +340,12 @@ impl ClienteIa for ClienteFixture {
             return Err(ErroIa::ChaveRecusada);
         } else if pergunta.contains("#erro529") {
             return Err(ErroIa::Indisponivel);
+        } else if pergunta.contains("#recusavazia") {
+            "recusa_vazia.sse"
+        } else if pergunta.contains("#pausavazia") {
+            "pausa_vazia.sse"
+        } else if pergunta.contains("#vazia") {
+            "vazia.sse"
         } else if pergunta.contains("#busca") {
             "busca.sse"
         } else if pergunta.contains("#pause") && !continuacao {
