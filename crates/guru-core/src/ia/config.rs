@@ -88,8 +88,6 @@ impl Db {
         Ok(Vec::new())
     }
 
-    // Usado pelo fluxo de salvar a chave (tarefa seguinte da fase 6a).
-    #[allow(dead_code)]
     /// Guarda só os 4 últimos caracteres, mesmo que quem chama passe mais.
     pub(crate) fn gravar_chave_final(&self, final4: Option<&str>) -> Result<(), CoreError> {
         let final4: Option<String> = final4.map(|c| {

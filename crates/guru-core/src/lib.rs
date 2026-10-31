@@ -48,6 +48,8 @@ pub use aporte::{
 };
 
 pub use ia::{
-    Cofre, CofreMemoria, CofreSistema, ConfigIa, ContextoMontado, FonteInterna, MODELOS,
-    ParteContexto, estimar_tokens, validar_formato_chave,
+    Acumulador, ClienteFixture, ClienteHttp, ClienteIa, Cofre, CofreMemoria, CofreSistema,
+    ConfigIa, ContextoMontado, Conversa, ConversaResumo, ErroIa, Fonte, FonteInterna, MODELOS,
+    MensagemGravada, ParteContexto, Progresso as ProgressoIa, UsoMes, corpo_pedido, estimar_tokens,
+    perguntar, remover_chave, salvar_chave, validar_formato_chave,
 };

@@ -24,6 +24,10 @@ pub enum CoreError {
     DecisaoInvalida(String),
     #[error("Não foi possível usar o cofre de senhas do sistema.")]
     CofreIndisponivel,
+    #[error("Esta conversa não existe mais. Atualize a lista.")]
+    ConversaNaoEncontrada(i64),
+    #[error("{0}")]
+    Ia(#[from] crate::ia::ErroIa),
 }
 
 impl CoreError {
@@ -33,11 +37,14 @@ impl CoreError {
             CoreError::DbInvalid(_) => "DB_INVALID",
             CoreError::Io(_) => "IO",
             CoreError::Sqlite(_) => "SQLITE",
-            CoreError::NaoEncontrado(_) | CoreError::MetaNaoEncontrada(_) => "NAO_ENCONTRADO",
+            CoreError::NaoEncontrado(_)
+            | CoreError::MetaNaoEncontrada(_)
+            | CoreError::ConversaNaoEncontrada(_) => "NAO_ENCONTRADO",
             CoreError::PeriodoInvalido(_) => "PERIODO_INVALIDO",
             CoreError::ArquivoInvalido(_) => "ARQUIVO_INVALIDO",
             CoreError::DecisaoInvalida(_) => "DECISAO_INVALIDA",
             CoreError::CofreIndisponivel => "IA_COFRE_INDISPONIVEL",
+            CoreError::Ia(e) => e.code(),
         }
     }
 }
