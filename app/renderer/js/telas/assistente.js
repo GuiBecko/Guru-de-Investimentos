@@ -21,14 +21,21 @@ function convite() {
   return card;
 }
 
-// `#/assistente/<id>` abre a conversa `id`; sem ela, a tela abre numa conversa nova.
+// O texto que `#/assistente/insight/<n>` põe no campo (nada é enviado sozinho).
+export const sobreInsight = (texto) => `Sobre este insight do painel: "${texto}" `;
+
+// `#/assistente/<id>` abre a conversa `id`; `#/assistente/insight/<n>` abre uma conversa nova com
+// o campo preenchido pelo insight `n` do painel (índice inválido: o Assistente normal); sem
+// parâmetro, a tela abre numa conversa nova.
 export async function render(raiz, parametros = [], vigente = () => true) {
   const titulo = el("h1", "Assistente");
-  const pedidaId = /^\d+$/.test(parametros[0] ?? "") ? Number(parametros[0]) : null;
+  const doInsight = parametros[0] === "insight";
+  const pedidaId = !doInsight && /^\d+$/.test(parametros[0] ?? "") ? Number(parametros[0]) : null;
   let config;
   let lista;
   let inicial = null;
-  let naoAbriu = parametros.length > 0 && pedidaId === null;
+  let preenchido = null;
+  let naoAbriu = !doInsight && parametros.length > 0 && pedidaId === null;
   try {
     [config, lista] = await Promise.all([api.ia.config(), api.ia.conversas()]);
   } catch (e) {
@@ -50,6 +57,15 @@ export async function render(raiz, parametros = [], vigente = () => true) {
     } catch (e) {
       console.warn("Conversa pedida pelo endereço não abriu:", e);
       naoAbriu = true;
+    }
+    if (!vigente()) return;
+  }
+  if (doInsight && /^\d+$/.test(parametros[1] ?? "")) {
+    try {
+      const texto = (await api.ia.painel()).insights?.itens[Number(parametros[1])]?.texto;
+      if (texto) preenchido = sobreInsight(texto);
+    } catch (e) {
+      console.warn("Insight pedido pelo endereço não abriu:", e);
     }
     if (!vigente()) return;
   }
@@ -135,4 +151,5 @@ export async function render(raiz, parametros = [], vigente = () => true) {
 
   chat.mostrar(inicial);
   if (naoAbriu) chat.erro(NAO_ABRIU);
+  if (preenchido) chat.preencher(preenchido);
 }

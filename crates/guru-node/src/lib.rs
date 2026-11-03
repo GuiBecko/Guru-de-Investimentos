@@ -392,7 +392,8 @@ impl Core {
     pub fn config_ia(&self) -> napi::Result<ConfigIaJs, String> {
         let db = self.db()?;
         let c = db.config_ia().map_err(to_js)?;
-        let uso = db.uso_do_mes(hoje_real()).map_err(to_js)?;
+        // Mesmo dia em que os pedidos somam o uso (o de mercado, fixo no modo de teste).
+        let uso = db.uso_do_mes(self.data_mercado()).map_err(to_js)?;
         Ok(ConfigIaJs {
             modelo: c.modelo,
             modelos: guru_core::MODELOS

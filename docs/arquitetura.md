@@ -90,9 +90,15 @@ Só a Anthropic recebe dado do usuário, com a chave dele e só as partes do con
 | Tesouro Transparente | Taxas e preços do Tesouro Direto | 3 |
 | B3, série histórica (arquivo diário COTAHIST) | Preço de fechamento de ações, FIIs e ETFs | 3 |
 | `https://api.anthropic.com/v1/messages` (POST) | Perguntas ao Claude, com a chave do usuário | 6a |
+| `https://api.anthropic.com/v1/messages` (POST) | Insights e notícias do painel da Carteira, só pelos botões | 6b |
 | `https://api.anthropic.com/v1/models?limit=1` (GET) | Conferir a chave ao salvar, sem custo | 6a |
 
 Os dois pedidos à Anthropic levam os cabeçalhos `x-api-key`, `anthropic-version: 2026-10-21`, `content-type: application/json` e o mesmo `User-Agent`. Com Opus e Sonnet, a pergunta leva também `anthropic-beta: server-side-fallback-2026-07-01`. Prazos: 60 s para conectar e 10 min para a resposta inteira (30 s no total para conferir a chave). Uma resposta acima de 8 MB é cortada com erro. A resposta chega por streaming (SSE) e é lida numa thread do addon, com conexão própria ao banco; a tela acompanha o pedido a cada 150 ms e pode pará-lo.
+
+Os dois pedidos do painel da Carteira (6b) usam o mesmo destino e os mesmos cabeçalhos, e só saem dos botões "Gerar insights" e "Buscar notícias":
+
+- **Insights:** levam o mesmo contexto de uma conversa, com as partes que o usuário deixou ligadas e as mesmas chaves de privacidade, mais um pedido fixo. Usam saída estruturada (`output_config.format` com JSON Schema) e não levam a busca na web, mesmo com "Buscar na web" ligada.
+- **Notícias:** levam só a lista de ativos (tickers e os tipos de renda fixa com o indexador), sem nenhum valor, nome de investimento, instituição ou emissor, mais as instruções do usuário. Com a parte "Carteira" desligada, vão só as classes presentes, sem tickers. Levam sempre a busca na web; com "Buscar na web" desligada, nada é enviado. Cada notícia guarda o link, o domínio e a data da fonte que a resposta citou, e só links `https`.
 
 ## Chave da IA
 
@@ -103,7 +109,7 @@ Os dois pedidos à Anthropic levam os cabeçalhos `x-api-key`, `anthropic-versio
 
 ### Modo de teste da IA
 
-Os testes nunca chamam a API real. No núcleo, o `ClienteFixture` lê respostas gravadas (`.sse`). Nos e2e, `GURU_IA_FIXTURES=<pasta>` troca a rede por essa pasta e `GURU_IA_COFRE=memoria` troca o cofre do sistema por um em memória. Uma marca na pergunta escolhe o arquivo (`#busca`, `#erro401`, `#recusa`...). As duas variáveis valem só fora do app empacotado.
+Os testes nunca chamam a API real. No núcleo, o `ClienteFixture` lê respostas gravadas (`.sse`). Nos e2e, `GURU_IA_FIXTURES=<pasta>` troca a rede por essa pasta e `GURU_IA_COFRE=memoria` troca o cofre do sistema por um em memória. Uma marca na pergunta escolhe o arquivo (`#busca`, `#erro401`, `#recusa`...). Os insights e as notícias não têm pergunta: a marca vai nas instruções do usuário, que chegam no contexto (`#insights-invalido`, `#noticias-vazias`, `#noticias-recusa`, `#noticias-max-tokens`, `#noticias-pausa`, e `#erro401` e `#erro529` também valem para eles). As duas variáveis valem só fora do app empacotado.
 
 ## Atualização de mercado
 

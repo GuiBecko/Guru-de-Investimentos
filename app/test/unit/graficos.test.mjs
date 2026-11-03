@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { escala, dominioComZero, caminhoLinha, pontosIsolados, arcosRosca, indiceMaisProximo, margemEsquerda, resumoUltimoPonto } from "../../renderer/js/graficos.js";
+import { escala, dominioComZero, caminhoLinha, pontosIsolados, arcosRosca, indiceMaisProximo, margemEsquerda, passoDoEixoX, resumoUltimoPonto } from "../../renderer/js/graficos.js";
 
 test("escala mapeia o domínio na faixa e trata domínio degenerado", () => {
   assert.equal(escala([0, 10], [0, 100])(5), 50);
@@ -80,4 +80,12 @@ test("margemEsquerda cabe o maior rótulo e nunca fica abaixo de 64", () => {
 
 test("dominioComZero trata NaN e Infinity como lacuna", () => {
   assert.deepEqual(dominioComZero([NaN, Infinity, 3, -Infinity]), [0, 3]);
+});
+
+test("passoDoEixoX mostra até 7 meses e menos numa coluna estreita", () => {
+  assert.equal(passoDoEixoX(13, 560), 2);
+  assert.equal(passoDoEixoX(7, 560), 1);
+  // ~214 px de desenho: cabem 4 rótulos de ~44 px.
+  assert.equal(passoDoEixoX(13, 214), 4);
+  assert.ok(passoDoEixoX(13, 50) >= 7);
 });
