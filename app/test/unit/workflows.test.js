@@ -101,3 +101,10 @@ test("quatro_runners_na_release", () => {
     assert.ok(corpo.includes(os), `release.yml sem ${os}`);
   }
 });
+
+// Sem certificado cadastrado, CSC_LINK vazio faria o electron-builder ler a pasta como certificado.
+test("segredo_vazio_nao_chega_ao_build", () => {
+  const corpo = linhas(release()).join("\n");
+  assert.match(corpo, /for v in CSC_LINK CSC_KEY_PASSWORD WIN_CSC_LINK/);
+  assert.match(corpo, /if \[ -z "\$\{!v\}" \]; then unset "\$v"; fi/);
+});
