@@ -74,7 +74,7 @@ fn agora() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
-fn mes(hoje: NaiveDate) -> String {
+pub(crate) fn mes(hoje: NaiveDate) -> String {
     hoje.format("%Y-%m").to_string()
 }
 

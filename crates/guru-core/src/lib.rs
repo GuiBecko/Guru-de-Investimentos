@@ -54,3 +54,7 @@ pub use ia::{
     corpo_pedido, estimar_tokens, perguntar, perguntar_aporte, remover_chave, salvar_chave,
     validar_formato_chave,
 };
+pub use ia::{
+    Gerados, Insight, Noticia, PainelIa, buscar_noticias, corpo_insights, gerar_insights,
+    ler_insights, ler_noticias, rotulo_insight,
+};

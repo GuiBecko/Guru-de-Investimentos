@@ -30,6 +30,37 @@ const INTERVALO_FIXTURE: Duration = Duration::from_millis(20);
 /// Fixo e sem data, para o cache do prompt.
 const SISTEMA: &str = "Você é o assistente do Guru de Investimentos, um app brasileiro de carteira pessoal. Responda em português do Brasil, com clareza e sem jargão desnecessário. Apresente opções, com prós e contras, e deixe a decisão com o usuário: não faça recomendação individual de investimento nem diga o que ele deve comprar ou vender. Use o contexto enviado sobre a carteira, o perfil, as metas e o mercado. Para fatos de mercado recentes (decisões do Copom, projeções, notícias), busque na web quando a busca estiver disponível e cite a fonte. Quando algo for opinião sua, sem fonte, diga que é opinião. Se faltar um dado para responder bem, diga qual.";
 
+/// O pedido fixo dos insights, a única mensagem do usuário.
+pub(crate) const PEDIDO_INSIGHTS: &str = "Analise o contexto e escreva de 3 a 5 insights curtos sobre a carteira, em português do Brasil, cada um com no máximo 300 caracteres. Use os tipos rebalanceamento (desvio da alocação-alvo), meta (ritmo ou atraso das metas), vencimento (o que vence nos próximos 12 meses), concentracao (peso alto num ativo, setor ou instituição) e mercado (o que os dados de mercado e as notícias do contexto significam para a carteira). Para cada um, escolha a ação que leva ao lugar certo do app: aporte, meta, classe (com o código da classe), conversar ou nenhuma. Apresente fatos e opções, sem recomendar a compra ou a venda de um ativo específico. Use só os dados do contexto.";
+
+/// O pedido fixo das notícias, a única mensagem do usuário.
+pub(crate) const PEDIDO_NOTICIAS: &str = "Busque na web notícias dos últimos 7 dias sobre os ativos listados no contexto e sobre os indicadores que os afetam (Selic, IPCA, câmbio). Escolha até 8 notícias relevantes, de veículos jornalísticos ou fontes oficiais. Responda só com uma linha por notícia, no formato `- <ativo ou classe> | <título em português, com até 100 caracteres>`, citando a matéria em cada linha. Não escreva mais nada.";
+
+/// O JSON Schema da saída estruturada dos insights.
+fn schema_insights() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["insights"],
+        "properties": {"insights": {"type": "array", "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["tipo", "texto", "acao", "classe"],
+            "properties": {
+                "tipo": {"type": "string", "enum":
+                    ["rebalanceamento", "meta", "vencimento", "concentracao", "mercado"]},
+                "texto": {"type": "string"},
+                "acao": {"type": "string", "enum":
+                    ["aporte", "meta", "classe", "conversar", "nenhuma"]},
+                "classe": {"anyOf": [
+                    {"type": "string", "enum": ["rf", "acoes", "fii", "ext", "outros"]},
+                    {"type": "null"}
+                ]}
+            }
+        }}}
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ErroIa {
     #[error("Configure a sua chave em Configurar IA.")]
@@ -49,6 +80,10 @@ pub enum ErroIa {
     /// Recusa sem nenhum bloco de conteúdo: não há o que gravar.
     #[error("A IA preferiu não responder a esta pergunta.")]
     Recusa,
+    #[error("A IA devolveu os insights num formato inesperado. Tente de novo.")]
+    RespostaInvalida,
+    #[error("Ligue “Buscar na web” em Configurar IA para buscar notícias.")]
+    BuscaDesligada,
 }
 
 impl ErroIa {
@@ -62,6 +97,8 @@ impl ErroIa {
             ErroIa::SemConexao => "IA_SEM_CONEXAO",
             ErroIa::Cancelada => "IA_CANCELADA",
             ErroIa::Recusa => "IA_RECUSA",
+            ErroIa::RespostaInvalida => "IA_RESPOSTA_INVALIDA",
+            ErroIa::BuscaDesligada => "IA_BUSCA_DESLIGADA",
         }
     }
 }
@@ -124,6 +161,16 @@ pub fn corpo_pedido(
         corpo["fallbacks"] = json!("default");
         (corpo, Some(BETA_FALLBACK))
     }
+}
+
+/// O corpo dos insights: o da 6a sem busca, com `PEDIDO_INSIGHTS` como única mensagem e a saída
+/// estruturada. Sem `tools` mesmo com "Buscar na web" ligada: a API recusa saída estruturada
+/// junto com citações, e a busca sempre cita.
+pub fn corpo_insights(modelo: &str, contexto: &str) -> (Value, Option<&'static str>) {
+    let mensagens = [json!({"role": "user", "content": PEDIDO_INSIGHTS})];
+    let (mut corpo, beta) = corpo_pedido(modelo, contexto, false, &mensagens);
+    corpo["output_config"]["format"] = json!({"type": "json_schema", "schema": schema_insights()});
+    (corpo, beta)
 }
 
 /// Erro HTTP fora de 2xx, a partir do status e do corpo `{"type":"error","error":{...}}`.
@@ -297,7 +344,9 @@ impl ClienteIa for ClienteHttp {
     }
 }
 
-/// Modo de teste: respostas gravadas em `.sse`, escolhidas pela última pergunta do usuário.
+/// Modo de teste: respostas gravadas em `.sse`. Os insights (corpo com `output_config.format`) e
+/// as notícias (última pergunta = `PEDIDO_NOTICIAS`) escolhem pelas marcas no `system[1]`, que
+/// chegam pelas instruções do usuário; as conversas, pela última pergunta do usuário.
 pub struct ClienteFixture {
     pub pasta: PathBuf,
 }
@@ -332,11 +381,35 @@ impl ClienteIa for ClienteFixture {
         ao_evento: &mut dyn FnMut(&Value),
     ) -> Result<(), ErroIa> {
         let pergunta = ultima_pergunta(corpo);
+        let sistema = corpo["system"][1]["text"].as_str().unwrap_or("");
+        let gerado = if corpo["output_config"]["format"].is_object() {
+            Some(if sistema.contains("#insights-invalido") {
+                "insights_invalido.sse"
+            } else {
+                "insights.sse"
+            })
+        } else if pergunta == PEDIDO_NOTICIAS {
+            Some(if sistema.contains("#noticias-vazias") {
+                "noticias_vazias.sse"
+            } else {
+                "noticias.sse"
+            })
+        } else {
+            None
+        };
+        if gerado.is_some() && sistema.contains("#erro401") {
+            return Err(ErroIa::ChaveRecusada);
+        }
+        if gerado.is_some() && sistema.contains("#erro529") {
+            return Err(ErroIa::Indisponivel);
+        }
         let continuacao = corpo["messages"]
             .as_array()
             .and_then(|m| m.last())
             .is_some_and(|m| m["role"] == "assistant");
-        let arquivo = if pergunta.contains("#erro401") {
+        let arquivo = if let Some(arquivo) = gerado {
+            arquivo
+        } else if pergunta.contains("#erro401") {
             return Err(ErroIa::ChaveRecusada);
         } else if pergunta.contains("#erro529") {
             return Err(ErroIa::Indisponivel);

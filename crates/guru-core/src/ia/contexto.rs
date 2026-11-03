@@ -8,7 +8,7 @@ use rusqlite::params;
 
 use crate::db::{Db, classifica};
 use crate::error::CoreError;
-use crate::investimento::{ErroCampo, Investimento};
+use crate::investimento::{Classe, ErroCampo, Investimento};
 use crate::metas::{Meta, formatar_reais};
 use crate::painel::{Referencia, acumulado_benchmark, datas_painel};
 
@@ -16,6 +16,8 @@ use super::config::ConfigIa;
 
 const MAX_TEXTO_EDITADO: usize = 20_000;
 const DIAS_PARA_ANTIGO: i64 = 7;
+/// Quantas notícias guardadas vão no fim da parte "Mercado".
+const NOTICIAS_NO_MERCADO: usize = 3;
 
 /// (código, rótulo), na ordem em que entram no contexto.
 const PARTES: [(&str, &str); 5] = [
@@ -290,9 +292,30 @@ impl Db {
             "Dado mais recente de cada fonte: {}.",
             recentes.join("; ")
         ));
+        let mut resumo = "automático".to_string();
+        if let Some(g) = self.noticias_guardadas()?
+            && !g.itens.is_empty()
+        {
+            let primeiras = &g.itens[..g.itens.len().min(NOTICIAS_NO_MERCADO)];
+            linhas.push(format!(
+                "Notícias da carteira (buscadas em {}):",
+                data_br(g.gerado_em)
+            ));
+            for n in primeiras {
+                let onde = match &n.data {
+                    Some(d) => format!("{}, {d}", n.dominio),
+                    None => n.dominio.clone(),
+                };
+                linhas.push(format!("- {}: {} ({onde})", n.etiqueta, n.titulo));
+            }
+            resumo = format!(
+                "automático · {}",
+                plural(primeiras.len(), "notícia", "notícias")
+            );
+        }
         Ok(Gerada {
             texto: linhas.join("\n"),
-            resumo: "automático".into(),
+            resumo,
             data_dados: datas_fontes.into_iter().max(),
         })
     }
@@ -396,6 +419,65 @@ impl Db {
             )
             .map_err(classifica)?;
         Ok(Vec::new())
+    }
+
+    /// O contexto reduzido das notícias: só a lista de ativos, sem valor nem `nome`, as
+    /// instruções (se ligadas e não vazias) e a data. Instituição e emissor só com "Nome das
+    /// instituições"; com a parte "Carteira" desligada, só as classes, sem tickers.
+    pub fn contexto_noticias(&self, hoje: NaiveDate) -> Result<String, CoreError> {
+        let cfg = self.config_ia()?;
+        let edicoes = self.edicoes_de_partes()?;
+        let ligada = |parte: &str| edicoes.get(parte).is_none_or(|(l, _)| *l);
+        let lista = self.listar_investimentos(hoje)?;
+        let presentes: Vec<Classe> = Classe::TODOS
+            .iter()
+            .copied()
+            .filter(|c| lista.iter().any(|i| i.classe == *c))
+            .collect();
+        let mut ativos = Vec::new();
+        if lista.is_empty() {
+            ativos.push("Nenhum investimento cadastrado.".to_string());
+        } else if !ligada("carteira") {
+            let rotulos: Vec<&str> = presentes.iter().map(|c| c.rotulo()).collect();
+            ativos.push(format!("Classes na carteira: {}.", rotulos.join(", ")));
+        } else {
+            for c in &presentes {
+                let mut itens: Vec<String> = Vec::new();
+                for i in lista.iter().filter(|i| i.classe == *c) {
+                    let item = Self::ativo_noticia(i, &cfg);
+                    if !itens.contains(&item) {
+                        itens.push(item);
+                    }
+                }
+                ativos.push(format!("{}: {}.", c.rotulo(), itens.join(", ")));
+            }
+        }
+        let mut blocos = vec![format!("## Ativos da carteira\n{}", ativos.join("\n"))];
+        if ligada("instrucoes") && !cfg.instrucoes.trim().is_empty() {
+            blocos.push(format!("## Suas instruções\n{}", cfg.instrucoes));
+        }
+        blocos.push(format!("Hoje é {}.", data_br(hoje)));
+        Ok(blocos.join("\n\n"))
+    }
+
+    /// O ticker, ou o tipo com o indexador ("CDB 102% do CDI"); a instituição e o emissor só
+    /// com "Nome das instituições".
+    fn ativo_noticia(i: &Investimento, cfg: &ConfigIa) -> String {
+        if let Some(t) = &i.ticker {
+            return t.clone();
+        }
+        let mut item = match &i.rendimento {
+            Some(r) => format!("{} {r}", i.tipo_rotulo),
+            None => i.tipo_rotulo.clone(),
+        };
+        if cfg.nomes_instituicoes {
+            let mut onde = format!("instituição {}", i.instituicao);
+            if let Some(e) = i.emissor.as_deref().filter(|e| *e != i.instituicao) {
+                onde.push_str(&format!(", emissor {e}"));
+            }
+            item.push_str(&format!(" ({onde})"));
+        }
+        item
     }
 
     /// Só as partes ligadas (e com texto), cada uma sob `## <rótulo>`, e a data de hoje no fim.
