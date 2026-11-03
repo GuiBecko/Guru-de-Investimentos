@@ -9,10 +9,18 @@ const PRIVACIDADE = [
   ["buscaWeb", "Buscar na web"],
 ];
 
-const numero = (n) => n.toLocaleString("pt-BR");
-const dolares = (centesimos) => (centesimos / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function linhaUso(uso) {
+  const custo = (uso.custoCentesimosDolar / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const volume = uso.tokens >= 1000 ? `${numero(Math.round(uso.tokens / 1000))} mil` : numero(uso.tokens);
+  return `Uso este mês: ~${volume} tokens (≈ US$ ${custo}), sem contar buscas na web.`;
+}
 
-function chave(rotulo, marcada, aoMudar, id) {
+// Contador de chamadas de atualizar(): só a mais recente pode redesenhar a tela.
+let sequencia = 0;
+
+const numero = (n) => n.toLocaleString("pt-BR");
+
+function chave(marcada, aoMudar, id) {
   const input = el("input");
   input.type = "checkbox";
   input.setAttribute("role", "switch");
@@ -46,7 +54,38 @@ function mostrarErro(erro, input, mensagem) {
 const juntar = (erros) => erros.map((e) => e.mensagem).join(" ");
 
 export async function render(raiz, _parametros, vigente) {
-  const editando = new Set();
+  // Texto digitado e ainda não salvo, que um redesenho não pode perder.
+  const editando = new Map();
+  const rascunho = { chave: "", instrucoes: null };
+  // Valores atuais da configuração: cada controle muda aqui na hora e toda gravação envia estes valores.
+  let estado = null;
+  let fila = Promise.resolve();
+  const doConfig = (c) => ({ modelo: c.modelo, instrucoes: c.instrucoes, apenasPercentuais: c.apenasPercentuais, nomesInstituicoes: c.nomesInstituicoes, buscaWeb: c.buscaWeb });
+
+  // Grava a configuração em fila, sempre com o `estado` do momento do envio.
+  function salvarConfig(mudancas, aoErro, aoOk) {
+    const anterior = Object.fromEntries(Object.keys(mudancas).map((k) => [k, estado[k]]));
+    Object.assign(estado, mudancas);
+    const tarefa = fila.then(async () => {
+      try {
+        const erros = await api.ia.salvarConfig({ ...estado });
+        if (!vigente()) return;
+        if (erros?.length) {
+          Object.assign(estado, anterior);
+          return aoErro(juntar(erros));
+        }
+        aoOk?.();
+        await atualizar();
+      } catch (e) {
+        console.error("Falha ao salvar a configuração da IA:", e);
+        if (!vigente()) return;
+        Object.assign(estado, anterior);
+        aoErro("Não foi possível salvar. Tente de novo.");
+      }
+    });
+    fila = tarefa;
+    return tarefa;
+  }
 
   async function carregar() {
     const [config, contexto] = await Promise.all([api.ia.config(), api.ia.contexto()]);
@@ -54,9 +93,11 @@ export async function render(raiz, _parametros, vigente) {
   }
 
   async function atualizar() {
+    const meu = ++sequencia;
     try {
       const dados = await carregar();
-      if (!vigente()) return;
+      if (!vigente() || meu !== sequencia) return;
+      estado ??= doConfig(dados.config);
       desenhar(dados);
     } catch (e) {
       console.error("Falha ao carregar a configuração da IA:", e);
@@ -68,11 +109,12 @@ export async function render(raiz, _parametros, vigente) {
   }
 
   // Roda uma gravação; erros de campo voltam para `aoErro`, o resto vira mensagem geral.
-  async function gravar(acao, aoErro) {
+  async function gravar(acao, aoErro, aoOk) {
     try {
       const erros = await acao();
       if (!vigente()) return;
       if (erros?.length) return aoErro(juntar(erros));
+      aoOk?.();
       await atualizar();
     } catch (e) {
       console.error("Falha ao salvar a configuração da IA:", e);
@@ -97,7 +139,7 @@ export async function render(raiz, _parametros, vigente) {
       c.append(l);
       col.append(c);
     }
-    col.append(formularioChave(config), seletorModelo(config), el("small", `Uso este mês: ~${numero(config.uso.tokens)} tokens (≈ US$ ${dolares(config.uso.custoCentesimosDolar)})`), privacidade(config));
+    col.append(formularioChave(config), seletorModelo(config), el("small", linhaUso(config.uso)), privacidade(config));
     return col;
   }
 
@@ -109,6 +151,10 @@ export async function render(raiz, _parametros, vigente) {
     input.type = "password";
     input.id = "ia-chave";
     input.autocomplete = "off";
+    input.value = rascunho.chave;
+    input.addEventListener("input", () => {
+      rascunho.chave = input.value;
+    });
     input.spellcheck = false;
     const label = el("label", "Chave da API da Anthropic");
     label.htmlFor = input.id;
@@ -142,22 +188,13 @@ export async function render(raiz, _parametros, vigente) {
       if (salvar.disabled) return;
       mostrarErro(erro, input, null);
       salvar.disabled = true;
-      await gravar(() => api.ia.salvarChave(input.value), (m) => mostrarErro(erro, input, m));
+      await gravar(() => api.ia.salvarChave(input.value), (m) => mostrarErro(erro, input, m), () => {
+        rascunho.chave = "";
+      });
       if (vigente()) salvar.disabled = false;
     });
     form.append(campo, acoes, el("small", "A chave fica guardada só neste computador, no cofre de senhas do sistema."));
     return form;
-  }
-
-  function entradaConfig(config, mudancas) {
-    return {
-      modelo: config.modelo,
-      instrucoes: config.instrucoes,
-      apenasPercentuais: config.apenasPercentuais,
-      nomesInstituicoes: config.nomesInstituicoes,
-      buscaWeb: config.buscaWeb,
-      ...mudancas,
-    };
   }
 
   function seletorModelo(config) {
@@ -169,12 +206,15 @@ export async function render(raiz, _parametros, vigente) {
       o.value = m.codigo;
       select.append(o);
     }
-    select.value = config.modelo;
+    select.value = estado.modelo;
     const label = el("label", "Modelo");
     label.htmlFor = select.id;
     const erro = faixaErro();
     erro.id = "e-ia-modelo";
-    select.addEventListener("change", () => gravar(() => api.ia.salvarConfig(entradaConfig(config, { modelo: select.value })), (m) => mostrarErro(erro, select, m)));
+    select.addEventListener("change", () => salvarConfig({ modelo: select.value }, (m) => {
+      select.value = estado.modelo;
+      mostrarErro(erro, select, m);
+    }));
     campo.append(label, select, erro);
     return campo;
   }
@@ -186,7 +226,7 @@ export async function render(raiz, _parametros, vigente) {
     erro.id = "e-ia-privacidade";
     PRIVACIDADE.forEach(([nome, rotulo]) => {
       const linha = el("label", undefined, "row");
-      const input = chave(rotulo, config[nome], (ligada, i) => gravar(() => api.ia.salvarConfig(entradaConfig(config, { [nome]: ligada })), (m) => {
+      const input = chave(estado[nome], (ligada, i) => salvarConfig({ [nome]: ligada }, (m) => {
         i.checked = !ligada;
         mostrarErro(erro, undefined, m);
       }), `ia-priv-${nome}`);
@@ -204,7 +244,7 @@ export async function render(raiz, _parametros, vigente) {
     const area = el("textarea");
     area.id = "ia-instrucoes";
     area.rows = 4;
-    area.value = config.instrucoes;
+    area.value = rascunho.instrucoes ?? estado.instrucoes;
     const label = el("label", "Instruções para a sua IA", "so-leitor");
     label.htmlFor = area.id;
     const contador = el("small", undefined, "contador");
@@ -212,7 +252,10 @@ export async function render(raiz, _parametros, vigente) {
       contador.textContent = `${numero([...area.value].length)}/${numero(LIMITE_INSTRUCOES)}`;
     };
     contar();
-    area.addEventListener("input", contar);
+    area.addEventListener("input", () => {
+      rascunho.instrucoes = area.value === estado.instrucoes ? null : area.value;
+      contar();
+    });
     const erro = faixaErro();
     erro.id = "e-ia-instrucoes";
     const salvar = el("button", "Salvar instruções", "btn");
@@ -220,7 +263,9 @@ export async function render(raiz, _parametros, vigente) {
     salvar.addEventListener("click", async () => {
       mostrarErro(erro, area, null);
       salvar.disabled = true;
-      await gravar(() => api.ia.salvarConfig(entradaConfig(config, { instrucoes: area.value })), (m) => mostrarErro(erro, area, m));
+      await salvarConfig({ instrucoes: area.value }, (m) => mostrarErro(erro, area, m), () => {
+        rascunho.instrucoes = null;
+      });
       if (vigente()) salvar.disabled = false;
     });
     card.append(topo, label, area, contador, erro, salvar);
@@ -237,26 +282,25 @@ export async function render(raiz, _parametros, vigente) {
     const lado = el("span", undefined, "row");
     const erro = faixaErro();
     erro.id = `e-ia-parte-${p.parte}`;
-    const salvarParte = (ligada, texto) => gravar(() => api.ia.salvarParte(p.parte, ligada, texto), (m) => mostrarErro(erro, undefined, m));
+    const salvarParte = (ligada, texto, aoOk) => gravar(() => api.ia.salvarParte(p.parte, ligada, texto), (m) => mostrarErro(erro, undefined, m), aoOk);
     if (p.parte !== "instrucoes") {
       if (p.editado) {
         const voltar = el("button", "voltar ao automático", "link");
         voltar.type = "button";
         voltar.addEventListener("click", () => {
-          editando.delete(p.parte);
-          salvarParte(p.ligada, null);
+          salvarParte(p.ligada, null, () => editando.delete(p.parte));
         });
         lado.append(voltar);
       }
       const editar = el("button", "editar", "link");
       editar.type = "button";
       editar.addEventListener("click", () => {
-        editando.add(p.parte);
+        editando.set(p.parte, p.texto);
         atualizar();
       });
       lado.append(editar);
     }
-    const input = chave(p.rotulo, p.ligada, (ligada, i) => {
+    const input = chave(p.ligada, (ligada, i) => {
       salvarParte(ligada, p.editado ? p.texto : null).then(() => {
         if (vigente() && !erro.hidden) i.checked = !ligada;
       });
@@ -268,14 +312,14 @@ export async function render(raiz, _parametros, vigente) {
     if (editando.has(p.parte)) {
       const area = el("textarea");
       area.rows = 6;
-      area.value = p.texto;
+      area.value = editando.get(p.parte);
+      area.addEventListener("input", () => editando.set(p.parte, area.value));
       area.setAttribute("aria-label", `Texto de ${p.rotulo}`);
       const salvar = el("button", "Salvar", "btn sm");
       const cancelar = el("button", "Cancelar", "btn ghost sm");
       salvar.type = cancelar.type = "button";
       salvar.addEventListener("click", () => {
-        editando.delete(p.parte);
-        salvarParte(p.ligada, area.value);
+        salvarParte(p.ligada, area.value, () => editando.delete(p.parte));
       });
       cancelar.addEventListener("click", () => {
         editando.delete(p.parte);

@@ -133,3 +133,28 @@ test("com Apenas percentuais ligada o texto da Carteira não tem R$", async () =
     await app.close();
   }
 });
+
+test("linha de uso numa instalação nova", () =>
+  comApp(async (page) => {
+    await expect(main(page)).toContainText("Uso este mês: ~0 tokens (≈ US$ 0,00), sem contar buscas na web.");
+  }));
+
+test("duas chaves de privacidade viradas em seguida persistem", () =>
+  comApp(async (page) => {
+    const percentuais = page.getByRole("switch", { name: "Apenas percentuais" });
+    const web = page.getByRole("switch", { name: "Buscar na web" });
+    await percentuais.uncheck();
+    await web.uncheck();
+    await ir(page, "#/carteira");
+    await abrir(page);
+    await expect(page.getByRole("switch", { name: "Apenas percentuais" })).not.toBeChecked();
+    await expect(page.getByRole("switch", { name: "Buscar na web" })).not.toBeChecked();
+  }));
+
+test("redesenhar não perde instruções digitadas e ainda não salvas", () =>
+  comApp(async (page) => {
+    await page.getByLabel("Instruções para a sua IA").fill("Rascunho sem salvar.");
+    await page.getByRole("switch", { name: "Nome das instituições" }).check();
+    await expect(page.getByRole("switch", { name: "Nome das instituições" })).toBeChecked();
+    await expect(page.getByLabel("Instruções para a sua IA")).toHaveValue("Rascunho sem salvar.");
+  }));
