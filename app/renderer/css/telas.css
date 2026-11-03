@@ -342,3 +342,29 @@ button.link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 .src a:hover { text-decoration: underline; }
 .src .dom { font: 10.5px var(--f-mono); color: var(--muted); word-break: break-all; }
 .src .took { font-size: 11px; color: var(--muted); }
+
+/* Próximo aporte: direções em chips, a grade com a gaveta do chat e a etiqueta do foco. */
+.aporte-grade { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+.aporte-grade.com-gaveta { grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); }
+.lado-gaveta:empty { display: none; }
+.envolve { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 12px; }
+.envolve > .btn { justify-self: start; }
+.linha-aporte { justify-content: flex-start; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.linha-aporte > .field { width: 220px; }
+.direcoes { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 6px; }
+.direcoes legend { padding: 0; margin-bottom: 6px; font: 500 10.5px var(--f-mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.chip-check { display: inline-flex; align-items: center; gap: 6px; font: 400 12.5px var(--f-body); color: var(--ink); background: var(--app-card); border: 1px solid var(--line-strong); padding: 5px 10px; cursor: pointer; }
+.chip-check input { margin: 0; accent-color: var(--accent); }
+.chip-check:hover { border-color: var(--accent); }
+.chip-check:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.chip-check:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chip-check:has(input:disabled) { cursor: not-allowed; opacity: 0.6; }
+.card .conversar { justify-self: start; }
+.gaveta { display: flex; flex-direction: column; gap: 10px; padding: 14px; background: var(--app-card); border: 1px solid var(--line); min-width: 0; }
+.gaveta h2 { margin: 0; font-size: 15px; }
+.gaveta > .row { align-items: flex-start; flex-wrap: wrap; }
+.gaveta .chat { min-height: 280px; }
+.resumo-contexto { color: var(--muted); overflow-wrap: anywhere; }
+.links-gaveta { justify-content: flex-start; gap: 14px; }
+.links-gaveta a { font-size: 12px; color: var(--accent); }
+.etiqueta-foco { justify-self: start; margin: 2px 0; }
