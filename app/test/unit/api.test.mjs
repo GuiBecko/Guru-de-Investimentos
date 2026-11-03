@@ -31,6 +31,8 @@ const IA = [
   "buscarNoticias",
 ];
 
+const ATUALIZACAO = ["estado", "procurar", "salvarConfig", "baixar", "reiniciar"];
+
 test("api.investimentos e api.carteira repassam à ponte e desembrulham", async () => {
   const chamadas = [];
   const canal = (nome) => (...args) => {
@@ -39,7 +41,7 @@ test("api.investimentos e api.carteira repassam à ponte e desembrulham", async 
   };
   globalThis.window = {
     guru: {
-      app: { info: canal("info") },
+      app: { info: canal("info"), avisosTerceiros: canal("avisosTerceiros") },
       investimentos: Object.fromEntries(
         ["catalogo", "listar", "ler", "criar", "atualizar", "apagar"].map((n) => [n, canal(n)]),
       ),
@@ -54,10 +56,14 @@ test("api.investimentos e api.carteira repassam à ponte e desembrulham", async 
       mercado: Object.fromEntries(["atualizar", "status"].map((n) => [n, canal(n)])),
       importacao: Object.fromEntries(["escolher", "aplicar", "ultima"].map((n) => [n, canal(n)])),
       ia: Object.fromEntries(IA.map((n) => [n, canal(n)])),
+      atualizacao: Object.fromEntries(ATUALIZACAO.map((n) => [n, canal(n)])),
     },
   };
   try {
     const { api } = await import("../../renderer/js/api.js");
+    assert.equal(await api.app.info(), "info");
+    assert.equal(await api.app.avisosTerceiros(), "avisosTerceiros");
+    chamadas.length = 0;
     assert.equal(await api.investimentos.criar({ a: 1 }), "criar");
     assert.equal(await api.investimentos.atualizar(2, { b: 2 }), "atualizar");
     assert.equal(await api.investimentos.apagar(3), "apagar");
@@ -100,6 +106,10 @@ test("api.investimentos e api.carteira repassam à ponte e desembrulham", async 
     assert.deepEqual(chamadas.at(-1), ["perguntar", null, "Oi", foco]);
     await api.ia.progresso(7);
     assert.deepEqual(chamadas.at(-1), ["progresso", 7]);
+    for (const n of ATUALIZACAO) assert.equal(await api.atualizacao[n](), n);
+    assert.deepEqual(Object.keys(api.atualizacao), ATUALIZACAO);
+    await api.atualizacao.salvarConfig({ procurarAoAbrir: false });
+    assert.deepEqual(chamadas.at(-1), ["salvarConfig", { procurarAoAbrir: false }]);
   } finally {
     delete globalThis.window;
   }

@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { AVISOS } from "../avisos.js";
 import { formatarDecimos, formatarReais, formatoDeReais, paraCentavos } from "../formato.js";
 import { el } from "./_tabela.js";
 import { COR_CLASSE } from "./carteira/painel.js";
@@ -8,8 +9,6 @@ const CONVITE = "Para dividir o aporte, defina a sua alocação-alvo.";
 const MENSAGEM_VALOR = "Informe o valor em reais, como 2.000,00.";
 const MENSAGEM_ALTO = "Valor alto demais.";
 const CONVITE_IA = "Para conversar com a IA sobre cada classe, configure a sua chave.";
-const AVISO =
-  "Cálculo de rebalanceamento pela sua alocação-alvo, sem vender nada. Investimentos sem cotação contam pelo valor aplicado. Não é recomendação individual de investimento.";
 
 const semPercento = (decimos) => formatarDecimos(decimos).replace(/%$/, "");
 
@@ -179,7 +178,7 @@ export async function render(raiz, _parametros, vigente = () => true) {
 
   const saida = el("div");
   saida.setAttribute("aria-live", "polite");
-  const rodape = el("p", AVISO, "legal");
+  const rodape = el("p", AVISOS.RODAPE_APORTE, "legal");
   const esquerda = el("div", undefined, "coluna");
   esquerda.append(form, saida, rodape);
   const direita = el("div", undefined, "lado-gaveta");

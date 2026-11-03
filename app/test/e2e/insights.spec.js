@@ -70,6 +70,10 @@ async function salvarChave(page) {
   await expect(main(page).getByText("ativo", { exact: true })).toBeVisible();
 }
 
+// A geração lê a resposta gravada em ritmo de rede; no macOS da CI ela passa de 5 s.
+const GERACAO = 20000;
+// Cada teste espera várias gerações: o prazo do teste acompanha.
+test.describe.configure({ timeout: 90000 });
 const coluna = (page) => main(page).getByTestId("coluna-ia");
 const cartoes = (page) => coluna(page).getByTestId("insight");
 
@@ -103,7 +107,7 @@ test("com chave, insights e notícias só com clique, guardados e com link", asy
     // Abrir a Carteira não chama a IA.
     await expect(coluna(page)).toContainText("Nenhum insight gerado ainda.");
     await expect(coluna(page)).toContainText("Cada geração usa a sua chave da Anthropic.");
-    await expect(coluna(page)).toContainText("Gerado por IA com os seus dados. Não é recomendação individual de investimento.");
+    await expect(coluna(page)).toContainText("Gerado por IA com os seus dados. Pode conter erros. Não é recomendação individual de investimento.");
     expect(await tokens(page)).toBe(0);
 
     // O começo e o fim da geração saem numa região viva (role="status") do bloco.
@@ -115,7 +119,7 @@ test("com chave, insights e notícias só com clique, guardados e com link", asy
       return document.querySelector("[data-testid=coluna-ia] .ia-insights [role=status]").textContent;
     });
     expect(começo).toBe("Gerando insights…");
-    await expect(cartoes(page)).toHaveCount(5);
+    await expect(cartoes(page)).toHaveCount(5, { timeout: GERACAO });
     await expect(statusInsights).toHaveText("Insights gerados.");
     await expect(cartoes(page).locator(".pill")).toHaveText(ETIQUETAS);
     await expect(cartoes(page).first().locator(".pill")).toHaveClass(/\bwa\b/);
@@ -129,7 +133,7 @@ test("com chave, insights e notícias só com clique, guardados e com link", asy
 
     // Voltar à Carteira mostra os mesmos, sem gastar.
     await abrirCarteira(page);
-    await expect(cartoes(page)).toHaveCount(5);
+    await expect(cartoes(page)).toHaveCount(5, { timeout: GERACAO });
     await expect(cartoes(page).locator(".pill")).toHaveText(ETIQUETAS);
     expect(await tokens(page)).toBe(uso);
 
@@ -141,7 +145,7 @@ test("com chave, insights e notícias só com clique, guardados e com link", asy
     await abrirCarteira(page);
     await coluna(page).getByRole("button", { name: "Gerar de novo" }).click();
     await expect(coluna(page).getByRole("alert")).toHaveText(INVALIDA);
-    await expect(cartoes(page)).toHaveCount(5);
+    await expect(cartoes(page)).toHaveCount(5, { timeout: GERACAO });
     await expect(cartoes(page).locator(".pill")).toHaveText(ETIQUETAS);
     await expect(coluna(page).getByRole("button", { name: "Gerar de novo" })).toBeEnabled();
 
@@ -173,7 +177,7 @@ test("com chave, insights e notícias só com clique, guardados e com link", asy
     });
     expect(começoNoticias).toBe("Buscando notícias na web…");
     const links = secao.getByTestId("noticia");
-    await expect(links).toHaveCount(5);
+    await expect(links).toHaveCount(5, { timeout: GERACAO });
     await expect(statusNoticias).toHaveText("Notícias atualizadas.");
     for (const href of await links.evaluateAll((as) => as.map((a) => a.getAttribute("href")))) expect(href).toMatch(/^https:\/\//);
     await expect(secao.locator('a[href^="http:"]')).toHaveCount(0);
@@ -198,7 +202,7 @@ test("com chave, insights e notícias só com clique, guardados e com link", asy
     await expect(coluna(page).getByTestId("noticias")).toContainText(DESLIGADA);
     await expect(coluna(page).getByTestId("noticias").getByRole("link", { name: "Configurar IA" })).toHaveAttribute("href", "#/ia");
     await expect(coluna(page).getByTestId("noticias").getByRole("button", { name: /Buscar/ })).toHaveCount(0);
-    await expect(coluna(page).getByTestId("noticia")).toHaveCount(5);
+    await expect(coluna(page).getByTestId("noticia")).toHaveCount(5, { timeout: GERACAO });
 
     expect(erros).toEqual([]);
   } finally {
@@ -218,7 +222,7 @@ test("sair da Carteira durante a geração não para, e voltar mostra o resultad
     await ir(page, "#/investimentos");
     await expect(main(page).getByRole("heading", { name: "Investimentos" })).toBeVisible();
     await ir(page, "#/carteira");
-    await expect(cartoes(page)).toHaveCount(5);
+    await expect(cartoes(page)).toHaveCount(5, { timeout: GERACAO });
     await expect(coluna(page).getByRole("alert")).toBeHidden();
     expect(erros).toEqual([]);
   } finally {

@@ -1,12 +1,58 @@
-const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, net, shell } = require("electron");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { origemPermitida } = require("./main/origem.js");
 const { normalizarErro } = require("./main/erro.js");
+const { executarSmoke } = require("./main/smoke.js");
+const { montarAtualizacao } = require("./main/atualizacao-electron.js");
+
+// Smoke do pacote: uma opção, não uma variável, porque vale também no app empacotado. Pasta
+// temporária, cofre em memória, nenhuma janela e nenhuma rede; o processo só imprime e sai.
+const SMOKE = process.argv.includes("--guru-smoke");
+const PRAZO_SMOKE_MS = 30000;
+if (SMOKE) {
+  const pasta = fs.mkdtempSync(path.join(os.tmpdir(), "guru-smoke-"));
+  app.setPath("userData", pasta);
+  app.dock?.hide();
+  const sair = (codigo) => {
+    try {
+      fs.rmSync(pasta, { recursive: true, force: true });
+    } catch (e) {
+      console.error("Não foi possível apagar a pasta do smoke:", e.message);
+    }
+    app.exit(codigo);
+  };
+  setTimeout(() => {
+    console.log(`GURU_SMOKE_FALHOU PRAZO: o smoke passou de ${PRAZO_SMOKE_MS / 1000} s.`);
+    sair(2);
+  }, PRAZO_SMOKE_MS);
+  app
+    .whenReady()
+    .then(() =>
+      executarSmoke({
+        pasta,
+        versaoApp: app.getVersion(),
+        empacotado: app.isPackaged,
+        abrirCore: (dir, opcoes) => require("@guru/core-node").Core.open(dir, opcoes),
+        existe: (caminho) => fs.existsSync(caminho),
+        listar: (dir) => fs.readdirSync(dir),
+        dirApp: app.getAppPath(),
+        dirRecursos: process.resourcesPath,
+        plataforma: process.platform,
+        arquitetura: process.arch,
+        log: (linha) => console.log(linha),
+      }),
+    )
+    .then(sair, (e) => {
+      console.log(`GURU_SMOKE_FALHOU ADDON_INDISPONIVEL: ${e && e.message}`);
+      sair(1);
+    });
+}
 
 // Variáveis de teste (GURU_*) só valem fora do app empacotado.
-if (process.env.GURU_DATA_DIR && !app.isPackaged) {
+if (process.env.GURU_DATA_DIR && !app.isPackaged && !SMOKE) {
   app.setPath("userData", process.env.GURU_DATA_DIR);
 }
 
@@ -21,6 +67,8 @@ if (process.env.GURU_JANELA_OCULTA === "1" && !app.isPackaged) {
 
 let janela = null;
 let core = null;
+// Criada depois do whenReady e nunca no smoke (que não chama a rede).
+let atualizacao = null;
 
 const URL_ESPERADA = pathToFileURL(path.join(__dirname, "renderer", "index.html")).href;
 
@@ -52,9 +100,34 @@ ipcMain.handle(
       erro.code = forcado;
       throw erro;
     }
-    return nucleo().info();
+    return { ...nucleo().info(), versaoApp: app.getVersion() };
   }),
 );
+
+// Texto gerado por scripts/avisos-terceiros.mjs e empacotado junto do app. Só é lido no clique.
+ipcMain.handle(
+  "app:avisosTerceiros",
+  tratar(async () => {
+    try {
+      return await fs.promises.readFile(path.join(__dirname, "avisos-terceiros.txt"), "utf8");
+    } catch (e) {
+      // O code do fs (ENOENT…) passaria pela ponte com o caminho na mensagem.
+      console.error("Falha ao ler os avisos de terceiros:", e);
+      const erro = new Error("Não foi possível ler os avisos de terceiros.");
+      erro.code = "PACOTE_INCOMPLETO";
+      throw erro;
+    }
+  }),
+);
+
+function atualizador() {
+  if (!atualizacao) {
+    const erro = new Error("A procura de atualizações só funciona no app instalado.");
+    erro.code = "ATUALIZACAO_INDISPONIVEL";
+    throw erro;
+  }
+  return atualizacao;
+}
 
 function nucleo() {
   if (!core) {
@@ -150,6 +223,11 @@ const canais = {
   "ia:painel": () => nucleo().painelIa(),
   "ia:gerarInsights": () => nucleo().gerarInsightsIa(),
   "ia:buscarNoticias": () => nucleo().buscarNoticiasIa(),
+  "atualizacao:estado": () => atualizador().estado(),
+  "atualizacao:procurar": () => atualizador().procurar(),
+  "atualizacao:salvarConfig": (dados) => atualizador().salvarConfig(dados),
+  "atualizacao:baixar": () => atualizador().baixar(),
+  "atualizacao:reiniciar": () => atualizador().reiniciar(),
 };
 for (const [canal, handler] of Object.entries(canais)) {
   ipcMain.handle(canal, tratar(handler));
@@ -226,6 +304,12 @@ function criarJanela() {
     codigo = e.code || "ADDON_INDISPONIVEL";
   }
 
+  // A procura de abertura só começa com a página carregada, para não atrasar a abertura.
+  // Na tela de erro (núcleo indisponível) ninguém mostraria o resultado: não procura.
+  janela.webContents.once("did-finish-load", () => {
+    if (atualizacao && core) atualizacao.aoAbrir();
+  });
+
   if (core) {
     janela.loadFile(path.join(__dirname, "renderer", "index.html"));
   } else {
@@ -235,7 +319,9 @@ function criarJanela() {
   }
 }
 
-if (!app.requestSingleInstanceLock()) {
+if (SMOKE) {
+  // Tratado no topo: sem trava de instância única, sem janela.
+} else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => {
@@ -245,6 +331,14 @@ if (!app.requestSingleInstanceLock()) {
   });
   // Idioma fixo: campos de data e números se comportam igual em qualquer máquina.
   app.commandLine.appendSwitch("lang", "pt-BR");
-  app.whenReady().then(criarJanela);
+  app.whenReady().then(() => {
+    try {
+      atualizacao = montarAtualizacao({ app, net });
+    } catch (e) {
+      // Só o feed de teste malformado chega aqui; o app abre sem procurar atualizações.
+      console.error("Falha ao preparar a atualização:", e);
+    }
+    criarJanela();
+  });
   app.on("window-all-closed", () => app.quit());
 }

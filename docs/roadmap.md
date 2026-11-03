@@ -15,6 +15,8 @@ Ordem de construção do MVP descrito em [`mvp.md`](mvp.md). Cada fase termina c
 | 6b. IA no resto do app | Chat por classe no Próximo aporte, insights e notícias no painel. | 5, 7 |
 | 7. Distribuição | Instaladores para Windows, macOS e Linux, atualização automática e revisão jurídica dos textos. | — |
 
+A revisão jurídica dos textos por um advogado é pendente e condição para a versão 1.0. A fase 7 consolidou os avisos em [`avisos.md`](avisos.md).
+
 Os planos detalhados:
 
 - Fase 0: [`superpowers/plans/2026-10-28-fase-0-fundacao.md`](superpowers/plans/2026-10-28-fase-0-fundacao.md)
@@ -26,3 +28,4 @@ Os planos detalhados:
 - Fase 5: [`superpowers/plans/2026-10-30-fase-5-proximo-aporte.md`](superpowers/plans/2026-10-30-fase-5-proximo-aporte.md)
 - Fase 6a: [`superpowers/plans/2026-10-30-fase-6a-ia-assistente.md`](superpowers/plans/2026-10-30-fase-6a-ia-assistente.md)
 - Fase 6b: [`superpowers/plans/2026-11-03-fase-6b-ia-no-app.md`](superpowers/plans/2026-11-03-fase-6b-ia-no-app.md)
+- Fase 7: [`superpowers/plans/2026-11-03-fase-7-distribuicao.md`](superpowers/plans/2026-11-03-fase-7-distribuicao.md)

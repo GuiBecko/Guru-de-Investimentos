@@ -9,6 +9,7 @@ const TELAS = [
   ["investimentos", "Investimentos"],
   ["perfil", "Perfil e objetivo"],
   ["ia", "Configurar IA"],
+  ["sobre", "Sobre e avisos"],
 ];
 
 test("clicar no menu troca a tela e marca o item", async () => {

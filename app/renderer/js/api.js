@@ -10,7 +10,10 @@ export async function desembrulhar(promessa) {
 }
 
 export const api = {
-  app: { info: () => desembrulhar(window.guru.app.info()) },
+  app: {
+    info: () => desembrulhar(window.guru.app.info()),
+    avisosTerceiros: () => desembrulhar(window.guru.app.avisosTerceiros()),
+  },
   investimentos: {
     catalogo: () => desembrulhar(window.guru.investimentos.catalogo()),
     listar: () => desembrulhar(window.guru.investimentos.listar()),
@@ -71,5 +74,12 @@ export const api = {
     painel: () => desembrulhar(window.guru.ia.painel()),
     gerarInsights: () => desembrulhar(window.guru.ia.gerarInsights()),
     buscarNoticias: () => desembrulhar(window.guru.ia.buscarNoticias()),
+  },
+  atualizacao: {
+    estado: () => desembrulhar(window.guru.atualizacao.estado()),
+    procurar: () => desembrulhar(window.guru.atualizacao.procurar()),
+    salvarConfig: (dados) => desembrulhar(window.guru.atualizacao.salvarConfig(dados)),
+    baixar: () => desembrulhar(window.guru.atualizacao.baixar()),
+    reiniciar: () => desembrulhar(window.guru.atualizacao.reiniciar()),
   },
 };

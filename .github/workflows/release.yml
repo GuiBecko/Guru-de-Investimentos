@@ -1,0 +1,198 @@
+name: Release
+
+# Só uma tag v* dispara a release, e ela nasce em rascunho: quem publica é uma
+# pessoa, depois de baixar e abrir os instaladores.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  conferir:
+    name: Conferir a tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      versao: ${{ steps.versao.outputs.versao }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: A tag é v + a versão do app/package.json
+        id: versao
+        shell: bash
+        run: |
+          versao="$(node -p "require('./app/package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "v$versao" ]; then
+            echo "::error::A tag $GITHUB_REF_NAME não é v$versao, a versão do app/package.json."
+            exit 1
+          fi
+          echo "versao=$versao" >> "$GITHUB_OUTPUT"
+
+  instaladores:
+    name: Instaladores (${{ matrix.os }}, ${{ matrix.arch }})
+    needs: conferir
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: true
+      matrix:
+        # Um instalador por sistema e arquitetura, cada um construído e provado
+        # na máquina da própria arquitetura.
+        include:
+          - os: ubuntu-latest
+            arch: x64
+            executavel: dist/linux-unpacked/guru-de-investimentos
+          - os: windows-latest
+            arch: x64
+            executavel: dist/win-unpacked/Guru de Investimentos.exe
+          - os: macos-latest
+            arch: arm64
+            executavel: dist/mac-arm64/Guru de Investimentos.app/Contents/MacOS/Guru de Investimentos
+          - os: macos-15-intel
+            arch: x64
+            executavel: dist/mac/Guru de Investimentos.app/Contents/MacOS/Guru de Investimentos
+    steps:
+      - uses: actions/checkout@v4
+      # Ações de terceiros fixadas por commit no workflow que gera o que vai para o usuário.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            crates/guru-node/package-lock.json
+            app/package-lock.json
+
+      - name: Instalar dependências do addon
+        working-directory: crates/guru-node
+        run: npm ci
+      - name: Construir o addon
+        working-directory: crates/guru-node
+        run: npm run build
+      - name: Testar o addon
+        working-directory: crates/guru-node
+        run: npm test
+
+      - name: Instalar dependências do app
+        working-directory: app
+        run: npm ci
+      - name: Testes unitários do app
+        working-directory: app
+        run: npm test
+
+      # Os segredos de assinatura só existem se alguém os cadastrar. Sem eles,
+      # as variáveis ficam vazias, a busca de identidade fica desligada e o
+      # electron-builder não assina (no macOS fica a assinatura ad hoc, refeita
+      # depois dos fusíveis por resetAdHocDarwinSignature). O script
+      # dist leva --publish never: nada é enviado daqui.
+      - name: Gerar os instaladores
+        working-directory: app
+        run: npm run dist -- --${{ matrix.arch }}
+        env:
+          # CSC_LINK é o certificado da Apple: só no macOS, senão o Windows tentaria assinar com ele.
+          CSC_LINK: ${{ runner.os == 'macOS' && secrets.CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ runner.os == 'macOS' && secrets.CSC_KEY_PASSWORD || '' }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK != '' }}
+
+      - name: Liberar namespaces de usuário (Linux)
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      # O passo falha se o código não for 0 ou se a saída não tiver GURU_SMOKE_OK.
+      - name: Smoke do pacote (Linux)
+        if: runner.os == 'Linux'
+        working-directory: app
+        shell: bash
+        env:
+          EXECUTAVEL: ${{ matrix.executavel }}
+        run: |
+          saida="$(xvfb-run -a "$EXECUTAVEL" --guru-smoke)"
+          echo "$saida"
+          grep -q '^GURU_SMOKE_OK ' <<<"$saida"
+      - name: Smoke do pacote
+        if: runner.os != 'Linux'
+        working-directory: app
+        shell: bash
+        env:
+          EXECUTAVEL: ${{ matrix.executavel }}
+        run: |
+          saida="$("$EXECUTAVEL" --guru-smoke)"
+          echo "$saida"
+          grep -q '^GURU_SMOKE_OK ' <<<"$saida"
+
+      # Os latest-mac.yml dos dois macOS não vão para a release: a procura é
+      # pela API do GitHub e o macOS não se atualiza sozinho.
+      - name: Guardar os instaladores
+        uses: actions/upload-artifact@v4
+        with:
+          name: instaladores-${{ matrix.os }}
+          path: |
+            app/dist/*.exe
+            app/dist/*.dmg
+            app/dist/*.AppImage
+            app/dist/*.deb
+            app/dist/*.blockmap
+            app/dist/latest.yml
+            app/dist/latest-linux.yml
+          retention-days: 7
+          if-no-files-found: error
+
+  rascunho:
+    name: Release em rascunho
+    needs: [conferir, instaladores]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: instaladores-*
+          path: instaladores
+          merge-multiple: true
+
+      - name: Conferir os arquivos e gerar o SHA256SUMS.txt
+        working-directory: instaladores
+        shell: bash
+        run: |
+          shopt -s nullglob
+          instaladores=(*.exe *.dmg *.AppImage *.deb)
+          if [ "${#instaladores[@]}" -ne 5 ]; then
+            echo "::error::Esperava 5 instaladores e há ${#instaladores[@]}: ${instaladores[*]}"
+            exit 1
+          fi
+          for f in latest.yml latest-linux.yml; do
+            [ -f "$f" ] || { echo "::error::Falta $f."; exit 1; }
+          done
+          sha256sum "${instaladores[@]}" > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      # Rascunho, nunca publicada. Uma release que já existe para a tag, até em
+      # rascunho, faz o passo falhar em vez de criar outra.
+      - name: Criar a release em rascunho
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSAO: ${{ needs.conferir.outputs.versao }}
+        run: |
+          if gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[].tag_name' | grep -Fxq "$GITHUB_REF_NAME"; then
+            echo "::error::Já existe uma release para $GITHUB_REF_NAME."
+            exit 1
+          fi
+          shopt -s nullglob
+          anexos=(instaladores/*.exe instaladores/*.dmg instaladores/*.AppImage instaladores/*.deb instaladores/*.blockmap instaladores/latest.yml instaladores/latest-linux.yml instaladores/SHA256SUMS.txt)
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "Guru de Investimentos $VERSAO" --notes-file .github/notas-da-versao.md --generate-notes "${anexos[@]}"

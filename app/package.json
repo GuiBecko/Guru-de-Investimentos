@@ -1,20 +1,33 @@
 {
   "name": "guru-de-investimentos",
   "productName": "Guru de Investimentos",
-  "version": "0.1.0",
+  "version": "0.9.0",
+  "description": "Carteira de investimentos com IA, no seu computador.",
+  "author": {
+    "name": "Guilherme Becker",
+    "email": "GuiBecko@users.noreply.github.com"
+  },
+  "homepage": "https://github.com/GuiBecko/Guru-de-Investimentos",
+  "license": "MIT",
   "private": true,
   "main": "main.js",
   "type": "commonjs",
   "scripts": {
     "start": "electron .",
     "test": "node --test \"test/unit/**/*.test.*js\"",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "dist": "electron-builder --publish never",
+    "dist:dir": "electron-builder --dir --publish never",
+    "avisos": "node scripts/avisos-terceiros.mjs",
+    "avisos:conferir": "node scripts/avisos-terceiros.mjs --conferir"
   },
   "dependencies": {
-    "@guru/core-node": "file:../crates/guru-node"
+    "@guru/core-node": "file:../crates/guru-node",
+    "electron-updater": "6.8.10"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
-    "electron": "^45.1.0"
+    "electron": "45.1.0",
+    "electron-builder": "26.17.0"
   }
 }

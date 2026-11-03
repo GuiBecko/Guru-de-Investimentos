@@ -49,10 +49,10 @@ Escopo combinado durante a fase de protótipo. O protótipo das telas está em [
 | Tema | Decisão |
 |------|---------|
 | Plataforma | Só computador. Nada mobile. |
-| Distribuição | Programa instalado. Carteira e chave da IA ficam no computador do usuário, sem servidor no MVP. |
+| Distribuição | Programa instalado. Carteira e chave da IA ficam no computador do usuário, sem servidor no MVP. Instaladores para Windows (`.exe`), macOS (`.dmg` para Apple Silicon e para Intel) e Linux (`.deb` e AppImage), na página de versões do GitHub, sem assinatura por enquanto. Atualização: o app procura uma versão nova ao abrir, com o ajuste para desligar em "Sobre e avisos"; nada é baixado sem clique, e a instalação por clique existe só no Windows e no AppImage. |
 | Tecnologia | Electron com interface em HTML, CSS e JS puros, e núcleo em Rust. Detalhes em [`arquitetura.md`](arquitetura.md). |
 | Perfil | Questionário próprio de 12 perguntas nas dimensões da ANBIMA (objetivos, situação financeira, conhecimento), sem prévia do resultado, com travas por prazo e reserva e avisos de inconsistência. Três perfis: Conservador, Moderado e Arrojado. |
-| Regulatório | A IA apresenta opções, prós e contras e fontes. A decisão é sempre do usuário. Revisão jurídica dos textos antes do lançamento. |
+| Regulatório | A IA apresenta opções, prós e contras e fontes. A decisão é sempre do usuário. Os avisos legais ficam numa fonte só, em [`avisos.md`](avisos.md) e na tela "Sobre e avisos". Revisão por advogado pendente antes da 1.0. |
 | Dados de mercado | Indicadores buscados pelo próprio app nas fontes oficiais. Busca na web da IA só para notícias. |
 | Custo da IA | O usuário usa e paga a própria IA. O app só integra. |
 | Cotações | Arquivo diário oficial da B3 (série histórica), com o preço de fechamento do último pregão. Sem preço em tempo real no MVP. |

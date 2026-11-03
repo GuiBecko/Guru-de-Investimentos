@@ -9,7 +9,7 @@ const ir = (page, hash) =>
 const chamar = (page, fn) => page.evaluate(`import("./js/api.js").then(({ api }) => (${fn})(api))`);
 
 const AVISO =
-  "Conteúdo educativo gerado por IA com os seus dados e fontes da web. Não é recomendação individual de investimento. Confira as fontes.";
+  "Conteúdo educativo gerado por IA com os seus dados e fontes da web. Pode conter erros. Não é recomendação individual de investimento. Confira as fontes.";
 const SUGESTOES = [
   "O que mudou no mercado esta semana?",
   "Minha carteira está alinhada ao meu perfil?",
