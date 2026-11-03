@@ -10,6 +10,7 @@ process.env.GURU_MERCADO_HOJE = "2026-10-28";
 
 module.exports = defineConfig({
   testDir: "test/e2e",
+  globalSetup: require.resolve("./test/e2e/_pasta-temporaria.js"),
   timeout: 30000,
   workers: 1,
   reporter: "list",
