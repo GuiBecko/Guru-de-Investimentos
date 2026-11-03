@@ -15,8 +15,9 @@ mod painel;
 mod perfil;
 use aporte::ResultadoAporteJs;
 use ia::{
-    ConfigIaEntradaJs, ConfigIaJs, ConfigSalvaJs, ContextoIaJs, ConversaJs, ConversaResumoJs, Ia,
-    ModeloJs, PedidoJs, ProgressoIaJs, RemoverChave, SalvarChave, UsoIaJs,
+    ConfigIaEntradaJs, ConfigIaJs, ConfigSalvaJs, ContextoIaJs, ConversaJs, ConversaResumoJs,
+    FocoAporteJs, Ia, ModeloJs, PainelIaJs, PedidoJs, ProgressoIaJs, RemoverChave, SalvarChave,
+    UsoIaJs,
 };
 use importacao::{ComparacaoGuardada, ComparacaoJs, DecisaoJs, ResultadoImportacaoJs};
 use investimentos::{
@@ -495,14 +496,40 @@ impl Core {
         &self,
         conversa_id: Option<i64>,
         pergunta: String,
+        foco: Option<FocoAporteJs>,
     ) -> napi::Result<PedidoJs, String> {
         let pedido = self.ia.perguntar(
             self.pasta_dados.clone(),
             self.data_mercado(),
             conversa_id,
             pergunta,
+            foco,
         )?;
         Ok(PedidoJs { pedido })
+    }
+
+    /// Devolve já, com o número do pedido; o resultado fica em `painelIa`.
+    #[napi]
+    pub fn gerar_insights_ia(&self) -> napi::Result<PedidoJs, String> {
+        let pedido = self
+            .ia
+            .gerar_insights(self.pasta_dados.clone(), self.data_mercado())?;
+        Ok(PedidoJs { pedido })
+    }
+
+    #[napi]
+    pub fn buscar_noticias_ia(&self) -> napi::Result<PedidoJs, String> {
+        let pedido = self
+            .ia
+            .buscar_noticias(self.pasta_dados.clone(), self.data_mercado())?;
+        Ok(PedidoJs { pedido })
+    }
+
+    #[napi]
+    pub fn painel_ia(&self) -> napi::Result<PainelIaJs, String> {
+        let db = self.db()?;
+        let busca_web = db.config_ia().map_err(to_js)?.busca_web;
+        Ok(ia::painel(busca_web, db.painel_ia().map_err(to_js)?))
     }
 
     #[napi]

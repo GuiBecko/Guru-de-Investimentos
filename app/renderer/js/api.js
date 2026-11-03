@@ -65,8 +65,11 @@ export const api = {
     conversas: () => desembrulhar(window.guru.ia.conversas()),
     conversa: (id) => desembrulhar(window.guru.ia.conversa(id)),
     apagarConversa: (id) => desembrulhar(window.guru.ia.apagarConversa(id)),
-    perguntar: (conversaId, pergunta) => desembrulhar(window.guru.ia.perguntar(conversaId, pergunta)),
+    perguntar: (conversaId, pergunta, foco) => desembrulhar(window.guru.ia.perguntar(conversaId, pergunta, foco)),
     progresso: (pedido) => desembrulhar(window.guru.ia.progresso(pedido)),
     cancelar: (pedido) => desembrulhar(window.guru.ia.cancelar(pedido)),
+    painel: () => desembrulhar(window.guru.ia.painel()),
+    gerarInsights: () => desembrulhar(window.guru.ia.gerarInsights()),
+    buscarNoticias: () => desembrulhar(window.guru.ia.buscarNoticias()),
   },
 };

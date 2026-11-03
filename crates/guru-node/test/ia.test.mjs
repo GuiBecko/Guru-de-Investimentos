@@ -150,3 +150,87 @@ test("remover a chave é uma Promise", async () => {
   assert.equal(await r, undefined);
   assert.equal(core.configIa().chave, null);
 });
+
+const ALVO = ["rf", "acoes", "fii", "ext", "outros"].map((classe, i) => ({ classe, percentual: [50, 25, 10, 10, 5][i] }));
+const preparar = async () => {
+  const core = abrir();
+  await core.salvarChaveIa(CHAVE);
+  assert.deepEqual(core.salvarAlocacaoAlvo(ALVO), []);
+  core.criarInvestimento({
+    tipo: "rf-cdb", instituicao: "Banco Inter", emissor: "Banco Inter", indexador: "pos", taxa: "102",
+    benchmark: "cdi", dataAplicacao: "2024-01-10", valorAplicadoCentavos: 2000000, liquidez: "diaria", ir: "regressiva",
+  });
+  return core;
+};
+const foco = (extra = {}) => ({ classe: "acoes", valorCentavos: 200000, direcoes: ["acoes"], direcaoLivre: "", metaId: null, ...extra });
+
+test("perguntarIa com foco abre a conversa da classe com a parte aporte", async () => {
+  const core = await preparar();
+  const p = await esperar(core, core.perguntarIa(null, "Oi", foco()).pedido);
+  assert.equal(p.erro, null);
+  assert.equal(typeof p.conversaId, "number");
+  const [c] = core.conversas();
+  assert.equal(c.foco, "acoes");
+  assert.equal(c.focoRotulo, "Ações");
+  const conv = core.conversa(p.conversaId);
+  assert.equal(conv.foco, "acoes");
+  assert.equal(conv.focoRotulo, "Ações");
+  assert.ok(conv.fontesInternas.some((f) => f.parte === "aporte"));
+});
+
+test("conversa do Assistente tem foco null e o foco é ignorado com conversaId", async () => {
+  const core = await preparar();
+  const p = await esperar(core, core.perguntarIa(null, "Oi").pedido);
+  assert.equal(core.conversas()[0].foco, null);
+  assert.equal(core.conversas()[0].focoRotulo, null);
+  await esperar(core, core.perguntarIa(p.conversaId, "E agora?", foco()).pedido);
+  assert.equal(core.conversa(p.conversaId).foco, null);
+});
+
+test("foco com classe inexistente termina com IA_FOCO_INVALIDO", async () => {
+  const core = await preparar();
+  const p = await esperar(core, core.perguntarIa(null, "Oi", foco({ classe: "xxx" })).pedido);
+  assert.equal(p.erro.code, "IA_FOCO_INVALIDO");
+});
+
+test("gerarInsightsIa grava 5 insights", async () => {
+  const core = await preparar();
+  assert.equal(core.painelIa().insights, null);
+  const { pedido } = core.gerarInsightsIa();
+  const p = await esperar(core, pedido);
+  assert.equal(p.erro, null);
+  assert.equal(p.conversaId, null);
+  const painel = core.painelIa();
+  assert.equal(painel.buscaWeb, true);
+  assert.equal(painel.insights.itens.length, 5);
+  assert.match(painel.insights.geradoEm, /^\d{4}-\d{2}-\d{2}$/);
+  const i = painel.insights.itens[0];
+  assert.ok(i.tipo && i.rotulo && i.texto && i.acao);
+  assert.equal(painel.noticias, null);
+});
+
+test("buscarNoticiasIa grava só links https", async () => {
+  const core = await preparar();
+  const p = await esperar(core, core.buscarNoticiasIa().pedido);
+  assert.equal(p.erro, null);
+  const { noticias } = core.painelIa();
+  assert.ok(noticias.itens.length > 0);
+  for (const n of noticias.itens) {
+    assert.ok(n.url.startsWith("https://"));
+    assert.ok(n.titulo && n.dominio && n.etiqueta);
+  }
+});
+
+test("buscarNoticiasIa com a busca desligada termina com IA_BUSCA_DESLIGADA", async () => {
+  const core = await preparar();
+  const c = core.configIa();
+  core.salvarConfigIa({ modelo: c.modelo, instrucoes: "", apenasPercentuais: true, nomesInstituicoes: false, buscaWeb: false });
+  assert.equal(core.painelIa().buscaWeb, false);
+  const p = await esperar(core, core.buscarNoticiasIa().pedido);
+  assert.equal(p.erro.code, "IA_BUSCA_DESLIGADA");
+});
+
+test("gerar insights sem chave termina com IA_SEM_CHAVE", async () => {
+  const core = abrir();
+  assert.equal((await esperar(core, core.gerarInsightsIa().pedido)).erro.code, "IA_SEM_CHAVE");
+});

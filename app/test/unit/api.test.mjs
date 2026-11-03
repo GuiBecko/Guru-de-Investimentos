@@ -26,6 +26,9 @@ const IA = [
   "perguntar",
   "progresso",
   "cancelar",
+  "painel",
+  "gerarInsights",
+  "buscarNoticias",
 ];
 
 test("api.investimentos e api.carteira repassam à ponte e desembrulham", async () => {
@@ -91,7 +94,10 @@ test("api.investimentos e api.carteira repassam à ponte e desembrulham", async 
     await api.ia.salvarParte("carteira", true, null);
     assert.deepEqual(chamadas.at(-1), ["salvarParte", "carteira", true, null]);
     await api.ia.perguntar(null, "Oi");
-    assert.deepEqual(chamadas.at(-1), ["perguntar", null, "Oi"]);
+    assert.deepEqual(chamadas.at(-1), ["perguntar", null, "Oi", undefined]);
+    const foco = { classe: "acoes", valorCentavos: 1, direcoes: [], direcaoLivre: "", metaId: null };
+    await api.ia.perguntar(null, "Oi", foco);
+    assert.deepEqual(chamadas.at(-1), ["perguntar", null, "Oi", foco]);
     await api.ia.progresso(7);
     assert.deepEqual(chamadas.at(-1), ["progresso", 7]);
   } finally {
