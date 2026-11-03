@@ -58,8 +58,11 @@ contextBridge.exposeInMainWorld("guru", {
     conversas: () => ipcRenderer.invoke("ia:conversas"),
     conversa: (id) => ipcRenderer.invoke("ia:conversa", id),
     apagarConversa: (id) => ipcRenderer.invoke("ia:apagarConversa", id),
-    perguntar: (conversaId, pergunta) => ipcRenderer.invoke("ia:perguntar", conversaId, pergunta),
+    perguntar: (conversaId, pergunta, foco) => ipcRenderer.invoke("ia:perguntar", conversaId, pergunta, foco),
     progresso: (pedido) => ipcRenderer.invoke("ia:progresso", pedido),
     cancelar: (pedido) => ipcRenderer.invoke("ia:cancelar", pedido),
+    painel: () => ipcRenderer.invoke("ia:painel"),
+    gerarInsights: () => ipcRenderer.invoke("ia:gerarInsights"),
+    buscarNoticias: () => ipcRenderer.invoke("ia:buscarNoticias"),
   },
 });

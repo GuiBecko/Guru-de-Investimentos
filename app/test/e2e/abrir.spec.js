@@ -25,7 +25,7 @@ test("abre com título e mostra a versão do esquema", async () => {
   try {
     const page = await app.firstWindow();
     expect(await page.title()).toBe("Guru de Investimentos");
-    await expect(page.getByTestId("schema-version")).toHaveText("6");
+    await expect(page.getByTestId("schema-version")).toHaveText("7");
     await expect(page.getByTestId("core-version")).not.toBeEmpty();
     expect(fs.existsSync(path.join(dataDir, "guru.db"))).toBe(true);
   } finally {
@@ -111,6 +111,9 @@ test("a ponte expõe só os canais do app e nada do Electron ou do Node", async 
       "perguntar",
       "progresso",
       "cancelar",
+      "painel",
+      "gerarInsights",
+      "buscarNoticias",
     ]);
     expect(await page.evaluate(() => typeof window.ipcRenderer)).toBe("undefined");
     expect(await page.evaluate(() => typeof window.require)).toBe("undefined");

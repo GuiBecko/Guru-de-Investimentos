@@ -221,9 +221,9 @@ svg.chart .ponto.s-down { fill: var(--down); }
 .graficos { display: grid; gap: 12px; min-width: 0; }
 .graficos.g1 { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
 .graficos.g2 { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
-/* Duas colunas na janela normal (1280 × 800: ~1009 px de conteúdo) e na mínima (1100: ~829 px);
-   uma só quando o conteúdo fica mais estreito que isso. */
-@container (max-width: 780px) {
+/* Com a coluna da IA (270 px) ao lado, o corpo tem ~725 px na janela normal (1280 × 800): duas
+   colunas. Na mínima (1100: ~545 px), uma só, para os gráficos não ficarem apertados. */
+@container (max-width: 600px) {
   .graficos.g1, .graficos.g2 { grid-template-columns: minmax(0, 1fr); }
 }
 .grafico { min-width: 0; }
@@ -342,3 +342,60 @@ button.link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 .src a:hover { text-decoration: underline; }
 .src .dom { font: 10.5px var(--f-mono); color: var(--muted); word-break: break-all; }
 .src .took { font-size: 11px; color: var(--muted); }
+
+/* Próximo aporte: direções em chips, a grade com a gaveta do chat e a etiqueta do foco. */
+.aporte-grade { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+.aporte-grade.com-gaveta { grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); }
+.lado-gaveta:empty { display: none; }
+.envolve { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 12px; }
+.envolve > .btn { justify-self: start; }
+.linha-aporte { justify-content: flex-start; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.linha-aporte > .field { width: 220px; }
+.direcoes { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 6px; }
+.direcoes legend { padding: 0; margin-bottom: 6px; font: 500 10.5px var(--f-mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.chip-check { display: inline-flex; align-items: center; gap: 6px; font: 400 12.5px var(--f-body); color: var(--ink); background: var(--app-card); border: 1px solid var(--line-strong); padding: 5px 10px; cursor: pointer; }
+.chip-check input { margin: 0; accent-color: var(--accent); }
+.chip-check:hover { border-color: var(--accent); }
+.chip-check:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.chip-check:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chip-check:has(input:disabled) { cursor: not-allowed; opacity: 0.6; }
+.card .conversar { justify-self: start; }
+.gaveta { display: flex; flex-direction: column; gap: 10px; padding: 14px; background: var(--app-card); border: 1px solid var(--line); min-width: 0; }
+.gaveta h2 { margin: 0; font-size: 15px; }
+.gaveta > .row { align-items: flex-start; flex-wrap: wrap; }
+.gaveta .chat { min-height: 280px; }
+.resumo-contexto { color: var(--muted); overflow-wrap: anywhere; }
+.links-gaveta { justify-content: flex-start; gap: 14px; }
+.links-gaveta a { font-size: 12px; color: var(--accent); }
+.etiqueta-foco { justify-self: start; margin: 2px 0; }
+
+/* Coluna da IA no painel da Carteira (tela 5 do protótipo): insights e notícias com link. */
+.painel-com-ia { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 14px; align-items: start; min-width: 0; }
+/* Em janela estreita (a mínima é 1100 px, e telas de 1024 px a deixam nesse tamanho) a coluna da IA desce
+   para baixo do painel, para os gráficos continuarem em duas colunas. */
+@media (max-width: 1200px) {
+  .painel-com-ia { grid-template-columns: minmax(0, 1fr); }
+}
+.coluna-ia { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.coluna-ia > p { margin: 0; }
+.coluna-ia > .btn { justify-self: start; }
+.ia-insights, .ia-noticias { display: grid; gap: 8px; min-width: 0; }
+.ia-noticias { border-top: 1px solid var(--line); padding-top: 12px; }
+.ia-insights > .row, .ia-noticias > .row { align-items: center; }
+.ia-insights p, .ia-noticias p { margin: 0; }
+.insight { display: grid; gap: 4px; padding: 10px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.insight > .pill { justify-self: start; }
+.insight .acao-insight { font-size: 12px; color: var(--accent); text-decoration: none; justify-self: start; }
+.insight .acao-insight:hover { text-decoration: underline; }
+.insight .acao-insight:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.acoes-ia { display: flex; gap: 8px; flex-wrap: wrap; }
+.acoes-ia .btn { margin: 0; }
+.coluna-ia .erro { margin: 0; }
+.coluna-ia .hint a { color: var(--accent); }
+.newsfeed { display: grid; gap: 2px; }
+.newsfeed a { display: grid; gap: 3px; padding: 8px; margin: 0 -8px; text-decoration: none; color: var(--ink); overflow-wrap: anywhere; }
+.newsfeed a:hover, .newsfeed a:focus-visible { background: var(--app-side); outline: none; }
+.newsfeed a:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+.newsfeed .t { font-weight: 500; line-height: 1.35; }
+.newsfeed .m { font: 10.5px var(--f-mono); color: var(--muted); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.ia-noticias button.link { justify-self: start; }

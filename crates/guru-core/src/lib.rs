@@ -49,7 +49,12 @@ pub use aporte::{
 
 pub use ia::{
     Acumulador, ClienteFixture, ClienteHttp, ClienteIa, Cofre, CofreMemoria, CofreSistema,
-    ConfigIa, ConfigSalva, ContextoMontado, Conversa, ConversaResumo, ErroIa, Fonte, FonteInterna,
-    MODELOS, MensagemGravada, ParteContexto, Progresso as ProgressoIa, UsoMes, corpo_pedido,
-    estimar_tokens, perguntar, remover_chave, salvar_chave, validar_formato_chave,
+    ConfigIa, ConfigSalva, ContextoMontado, Conversa, ConversaResumo, DIRECOES, ErroIa, FocoAporte,
+    Fonte, FonteInterna, MODELOS, MensagemGravada, ParteContexto, Progresso as ProgressoIa, UsoMes,
+    corpo_pedido, estimar_tokens, perguntar, perguntar_aporte, remover_chave, salvar_chave,
+    validar_formato_chave,
+};
+pub use ia::{
+    Gerados, Insight, Noticia, PainelIa, buscar_noticias, corpo_insights, gerar_insights,
+    ler_insights, ler_noticias, rotulo_insight,
 };

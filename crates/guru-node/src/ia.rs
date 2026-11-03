@@ -10,7 +10,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use chrono::NaiveDate;
 use guru_core::{
     ClienteFixture, ClienteHttp, ClienteIa, Cofre, CofreMemoria, CofreSistema, Conversa,
-    ConversaResumo, CoreError, Db, Fonte, FonteInterna, ParteContexto, ProgressoIa,
+    ConversaResumo, CoreError, Db, FocoAporte, Fonte, FonteInterna, Gerados, Insight, Noticia,
+    PainelIa, ParteContexto, ProgressoIa, rotulo_insight,
 };
 use napi::JsValue;
 use napi::bindgen_prelude::{AsyncTask, Env, Task};
@@ -95,11 +96,14 @@ pub struct FonteInternaJs {
     pub antigo: bool,
 }
 
-#[napi(object)]
+#[napi(object, use_nullable = true)]
 pub struct ConversaResumoJs {
     pub id: i64,
     pub titulo: String,
     pub atualizada_em: String,
+    /// Código da classe do chat do Próximo aporte; `null` nas conversas do Assistente.
+    pub foco: Option<String>,
+    pub foco_rotulo: Option<String>,
 }
 
 #[napi(object, use_nullable = true)]
@@ -111,13 +115,121 @@ pub struct MensagemJs {
     pub aviso: Option<String>,
 }
 
-#[napi(object)]
+#[napi(object, use_nullable = true)]
 pub struct ConversaJs {
     pub id: i64,
     pub titulo: String,
     pub modelo: String,
+    pub foco: Option<String>,
+    pub foco_rotulo: Option<String>,
     pub fontes_internas: Vec<FonteInternaJs>,
     pub mensagens: Vec<MensagemJs>,
+}
+
+/// O que a tela do Próximo aporte manda para o chat de uma classe.
+#[napi(object, use_nullable = true)]
+pub struct FocoAporteJs {
+    pub classe: String,
+    pub valor_centavos: i64,
+    pub direcoes: Vec<String>,
+    pub direcao_livre: String,
+    pub meta_id: Option<i64>,
+}
+
+impl From<FocoAporteJs> for FocoAporte {
+    fn from(f: FocoAporteJs) -> FocoAporte {
+        FocoAporte {
+            classe: f.classe,
+            valor_centavos: f.valor_centavos,
+            direcoes: f.direcoes,
+            direcao_livre: f.direcao_livre,
+            meta_id: f.meta_id,
+        }
+    }
+}
+
+#[napi(object, use_nullable = true)]
+pub struct InsightJs {
+    pub tipo: String,
+    pub rotulo: String,
+    pub texto: String,
+    pub acao: String,
+    pub classe: Option<String>,
+    pub classe_rotulo: Option<String>,
+}
+
+#[napi(object, use_nullable = true)]
+pub struct NoticiaJs {
+    pub titulo: String,
+    pub url: String,
+    pub dominio: String,
+    pub data: Option<String>,
+    pub etiqueta: String,
+}
+
+#[napi(object)]
+pub struct InsightsGeradosJs {
+    /// `aaaa-mm-dd`.
+    pub gerado_em: String,
+    pub modelo: String,
+    pub itens: Vec<InsightJs>,
+}
+
+#[napi(object)]
+pub struct NoticiasGeradasJs {
+    pub gerado_em: String,
+    pub modelo: String,
+    pub itens: Vec<NoticiaJs>,
+}
+
+#[napi(object, use_nullable = true)]
+pub struct PainelIaJs {
+    pub busca_web: bool,
+    pub insights: Option<InsightsGeradosJs>,
+    pub noticias: Option<NoticiasGeradasJs>,
+}
+
+fn insight(i: Insight) -> InsightJs {
+    let classe_rotulo = i
+        .classe
+        .as_deref()
+        .and_then(guru_core::Classe::de_codigo)
+        .map(|c| c.rotulo().to_string());
+    InsightJs {
+        rotulo: rotulo_insight(&i.tipo).to_string(),
+        tipo: i.tipo,
+        texto: i.texto,
+        acao: i.acao,
+        classe: i.classe,
+        classe_rotulo,
+    }
+}
+
+pub fn painel(busca_web: bool, p: PainelIa) -> PainelIaJs {
+    let PainelIa { insights, noticias } = p;
+    PainelIaJs {
+        busca_web,
+        insights: insights.map(|g: Gerados<Insight>| InsightsGeradosJs {
+            gerado_em: g.gerado_em.to_string(),
+            modelo: g.modelo,
+            itens: g.itens.into_iter().map(insight).collect(),
+        }),
+        noticias: noticias.map(|g: Gerados<Noticia>| NoticiasGeradasJs {
+            gerado_em: g.gerado_em.to_string(),
+            modelo: g.modelo,
+            itens: g
+                .itens
+                .into_iter()
+                .map(|n| NoticiaJs {
+                    titulo: n.titulo,
+                    url: n.url,
+                    dominio: n.dominio,
+                    data: n.data,
+                    etiqueta: n.etiqueta,
+                })
+                .collect(),
+        }),
+    }
 }
 
 #[napi(object)]
@@ -183,6 +295,8 @@ pub fn resumo(c: ConversaResumo) -> ConversaResumoJs {
         id: c.id,
         titulo: c.titulo,
         atualizada_em: c.atualizada_em,
+        foco: c.foco.map(|f| f.codigo().to_string()),
+        foco_rotulo: c.foco.map(|f| f.rotulo().to_string()),
     }
 }
 
@@ -191,6 +305,8 @@ pub fn conversa(c: Conversa) -> ConversaJs {
         id: c.id,
         titulo: c.titulo,
         modelo: c.modelo,
+        foco: c.foco.map(|f| f.codigo().to_string()),
+        foco_rotulo: c.foco.map(|f| f.rotulo().to_string()),
         fontes_internas: c.fontes_internas.into_iter().map(fonte_interna).collect(),
         mensagens: c
             .mensagens
@@ -214,6 +330,17 @@ struct EstadoPedido {
     conversa_id: Option<i64>,
     erro: Option<(String, String)>,
 }
+
+type Tarefa = Box<
+    dyn FnOnce(
+            &Db,
+            &dyn Cofre,
+            &dyn ClienteIa,
+            &AtomicBool,
+            &mut dyn FnMut(ProgressoIa),
+        ) -> Result<Option<i64>, CoreError>
+        + Send,
+>;
 
 type Pedidos = Arc<Mutex<HashMap<u32, EstadoPedido>>>;
 
@@ -252,16 +379,11 @@ impl Ia {
         }
     }
 
-    /// Registra o pedido e roda `perguntar` numa thread própria, com conexão própria: o `Mutex`
-    /// do `Core` não fica preso nos até 10 minutos de streaming. Uma thread (e não `AsyncTask`)
-    /// porque a `Promise` do `AsyncTask` só resolve no fim, e aqui o retorno é imediato.
-    pub fn perguntar(
-        &self,
-        pasta_dados: PathBuf,
-        hoje: NaiveDate,
-        conversa_id: Option<i64>,
-        pergunta: String,
-    ) -> napi::Result<u32, String> {
+    /// Registra o pedido e roda a tarefa numa thread própria, com conexão própria: o `Mutex` do
+    /// `Core` não fica preso nos até 10 minutos de streaming. Uma thread (e não `AsyncTask`)
+    /// porque a `Promise` do `AsyncTask` só resolve no fim, e aqui o retorno é imediato. A tarefa
+    /// devolve o id da conversa, ou `None` quando não há (insights e notícias).
+    pub fn lancar(&self, pasta_dados: PathBuf, tarefa: Tarefa) -> napi::Result<u32, String> {
         let pedido = self.proximo.fetch_add(1, Ordering::SeqCst);
         let cancelar = Arc::new(AtomicBool::new(false));
         travar(&self.pedidos).insert(
@@ -282,22 +404,13 @@ impl Ia {
             .spawn(move || {
                 let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let db = Db::open(&pasta_dados)?;
-                    guru_core::perguntar(
-                        &db,
-                        cofre.as_ref(),
-                        cliente.as_ref(),
-                        hoje,
-                        conversa_id,
-                        &pergunta,
-                        &cancelar,
-                        &mut |p| {
-                            if let Some(e) = travar(&pedidos).get_mut(&pedido) {
-                                e.progresso = p;
-                            }
-                        },
-                    )
+                    tarefa(&db, cofre.as_ref(), cliente.as_ref(), &cancelar, &mut |p| {
+                        if let Some(e) = travar(&pedidos).get_mut(&pedido) {
+                            e.progresso = p;
+                        }
+                    })
                 }));
-                let resultado: Result<i64, (String, String)> = match r {
+                let resultado: Result<Option<i64>, (String, String)> = match r {
                     Ok(Ok(id)) => Ok(id),
                     Ok(Err(e)) => Err((e.code().to_string(), e.to_string())),
                     Err(_) => Err((
@@ -307,7 +420,7 @@ impl Ia {
                 };
                 if let Some(e) = travar(&pedidos).get_mut(&pedido) {
                     match resultado {
-                        Ok(id) => e.conversa_id = Some(id),
+                        Ok(id) => e.conversa_id = id,
                         Err(erro) => e.erro = Some(erro),
                     }
                     e.terminado = true;
@@ -317,10 +430,77 @@ impl Ia {
             travar(&self.pedidos).remove(&pedido);
             return Err(napi::Error::new(
                 "ERRO_INTERNO".to_string(),
-                "Não foi possível iniciar a pergunta.".to_string(),
+                "Não foi possível iniciar o pedido à IA.".to_string(),
             ));
         }
         Ok(pedido)
+    }
+
+    pub fn perguntar(
+        &self,
+        pasta_dados: PathBuf,
+        hoje: NaiveDate,
+        conversa_id: Option<i64>,
+        pergunta: String,
+        foco: Option<FocoAporteJs>,
+    ) -> napi::Result<u32, String> {
+        self.lancar(
+            pasta_dados,
+            Box::new(move |db, cofre, cliente, cancelar, progresso| {
+                // O foco só vale para a primeira pergunta; com conversa, é ignorado.
+                match (conversa_id, foco) {
+                    (None, Some(f)) => guru_core::perguntar_aporte(
+                        db,
+                        cofre,
+                        cliente,
+                        hoje,
+                        &f.into(),
+                        &pergunta,
+                        cancelar,
+                        progresso,
+                    ),
+                    _ => guru_core::perguntar(
+                        db,
+                        cofre,
+                        cliente,
+                        hoje,
+                        conversa_id,
+                        &pergunta,
+                        cancelar,
+                        progresso,
+                    ),
+                }
+                .map(Some)
+            }),
+        )
+    }
+
+    pub fn gerar_insights(
+        &self,
+        pasta_dados: PathBuf,
+        hoje: NaiveDate,
+    ) -> napi::Result<u32, String> {
+        self.lancar(
+            pasta_dados,
+            Box::new(move |db, cofre, cliente, cancelar, progresso| {
+                guru_core::gerar_insights(db, cofre, cliente, hoje, cancelar, progresso)
+                    .map(|()| None)
+            }),
+        )
+    }
+
+    pub fn buscar_noticias(
+        &self,
+        pasta_dados: PathBuf,
+        hoje: NaiveDate,
+    ) -> napi::Result<u32, String> {
+        self.lancar(
+            pasta_dados,
+            Box::new(move |db, cofre, cliente, cancelar, progresso| {
+                guru_core::buscar_noticias(db, cofre, cliente, hoje, cancelar, progresso)
+                    .map(|()| None)
+            }),
+        )
     }
 
     /// O retrato do pedido; um terminado sai do mapa na primeira leitura que o mostra assim.

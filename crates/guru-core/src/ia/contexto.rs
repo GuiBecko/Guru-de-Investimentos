@@ -8,14 +8,16 @@ use rusqlite::params;
 
 use crate::db::{Db, classifica};
 use crate::error::CoreError;
-use crate::investimento::{ErroCampo, Investimento};
-use crate::metas::formatar_reais;
+use crate::investimento::{Classe, ErroCampo, Investimento};
+use crate::metas::{Meta, formatar_reais};
 use crate::painel::{Referencia, acumulado_benchmark, datas_painel};
 
 use super::config::ConfigIa;
 
 const MAX_TEXTO_EDITADO: usize = 20_000;
 const DIAS_PARA_ANTIGO: i64 = 7;
+/// Quantas notícias guardadas vão no fim da parte "Mercado".
+const NOTICIAS_NO_MERCADO: usize = 3;
 
 /// (código, rótulo), na ordem em que entram no contexto.
 const PARTES: [(&str, &str); 5] = [
@@ -73,7 +75,7 @@ fn data_iso_br(s: &str) -> String {
 }
 
 /// Décimos de ponto percentual: `365` vira `36,5%`.
-fn pct_decimos(d: i64) -> String {
+pub(crate) fn pct_decimos(d: i64) -> String {
     let sinal = if d < 0 { "-" } else { "" };
     let a = d.unsigned_abs();
     format!("{sinal}{},{}%", a / 10, a % 10)
@@ -102,6 +104,29 @@ struct Gerada {
 
 fn plural(n: usize, singular: &str, plural: &str) -> String {
     format!("{n} {}", if n == 1 { singular } else { plural })
+}
+
+/// Uma meta numa linha, sem o marcador: "Nome · prazo 12/2030 · 27,5% atingido", com os valores
+/// em reais só se "Apenas percentuais" estiver desligada.
+pub(crate) fn linha_meta(m: &Meta, cfg: &ConfigIa) -> String {
+    let mut p = vec![m.nome.clone()];
+    let prazo = m
+        .prazo
+        .split_once('-')
+        .map_or_else(|| m.prazo.clone(), |(a, mes)| format!("{mes}/{a}"));
+    p.push(format!("prazo {prazo}"));
+    p.push(format!("{} atingido", pct_decimos(m.percentual_decimos)));
+    if !cfg.apenas_percentuais {
+        p.push(format!("alvo {}", formatar_reais(m.valor_alvo_centavos)));
+        p.push(format!(
+            "acumulado {}",
+            formatar_reais(m.acumulado_centavos)
+        ));
+        if let Some(a) = m.aporte_necessario_centavos {
+            p.push(format!("aporte mensal necessário {}", formatar_reais(a)));
+        }
+    }
+    p.join(" · ")
 }
 
 impl Db {
@@ -224,7 +249,9 @@ impl Db {
         })
     }
 
-    fn parte_mercado(&self, hoje: NaiveDate) -> Result<Gerada, CoreError> {
+    /// Com a parte "Carteira" desligada (`carteira_ligada` falso), as notícias com um ticker
+    /// na etiqueta ficam de fora; as de uma classe ou de "Mercado" continuam.
+    fn parte_mercado(&self, hoje: NaiveDate, carteira_ligada: bool) -> Result<Gerada, CoreError> {
         let datas = datas_painel(hoje, 12)?;
         let mut acumulados = Vec::new();
         for r in [Referencia::Cdi, Referencia::Selic, Referencia::Ipca] {
@@ -267,9 +294,39 @@ impl Db {
             "Dado mais recente de cada fonte: {}.",
             recentes.join("; ")
         ));
+        let mut resumo = "automático".to_string();
+        let sem_ticker = |etiqueta: &str| {
+            etiqueta == "Mercado" || Classe::TODOS.iter().any(|c| c.rotulo() == etiqueta)
+        };
+        let noticias = self.noticias_guardadas()?;
+        let primeiras: Vec<_> = noticias
+            .iter()
+            .flat_map(|g| g.itens.iter())
+            .filter(|n| carteira_ligada || sem_ticker(&n.etiqueta))
+            .take(NOTICIAS_NO_MERCADO)
+            .collect();
+        if let Some(g) = &noticias
+            && !primeiras.is_empty()
+        {
+            linhas.push(format!(
+                "Notícias da carteira (buscadas em {}):",
+                data_br(g.gerado_em)
+            ));
+            for n in &primeiras {
+                let onde = match &n.data {
+                    Some(d) => format!("{}, {d}", n.dominio),
+                    None => n.dominio.clone(),
+                };
+                linhas.push(format!("- {}: {} ({onde})", n.etiqueta, n.titulo));
+            }
+            resumo = format!(
+                "automático · {}",
+                plural(primeiras.len(), "notícia", "notícias")
+            );
+        }
         Ok(Gerada {
             texto: linhas.join("\n"),
-            resumo: "automático".into(),
+            resumo,
             data_dados: datas_fontes.into_iter().max(),
         })
     }
@@ -281,24 +338,7 @@ impl Db {
             linhas.push("Nenhuma meta cadastrada.".to_string());
         }
         for m in &metas {
-            let mut p = vec![m.nome.clone()];
-            let prazo = m
-                .prazo
-                .split_once('-')
-                .map_or_else(|| m.prazo.clone(), |(a, mes)| format!("{mes}/{a}"));
-            p.push(format!("prazo {prazo}"));
-            p.push(format!("{} atingido", pct_decimos(m.percentual_decimos)));
-            if !cfg.apenas_percentuais {
-                p.push(format!("alvo {}", formatar_reais(m.valor_alvo_centavos)));
-                p.push(format!(
-                    "acumulado {}",
-                    formatar_reais(m.acumulado_centavos)
-                ));
-                if let Some(a) = m.aporte_necessario_centavos {
-                    p.push(format!("aporte mensal necessário {}", formatar_reais(a)));
-                }
-            }
-            linhas.push(format!("- {}", p.join(" · ")));
+            linhas.push(format!("- {}", linha_meta(m, cfg)));
         }
         Ok(Gerada {
             texto: linhas.join("\n"),
@@ -307,7 +347,9 @@ impl Db {
         })
     }
 
-    fn edicoes_de_partes(&self) -> Result<HashMap<String, (bool, Option<String>)>, CoreError> {
+    pub(crate) fn edicoes_de_partes(
+        &self,
+    ) -> Result<HashMap<String, (bool, Option<String>)>, CoreError> {
         let mut stmt = self
             .conn
             .prepare("SELECT parte, ligada, texto_editado FROM ia_contexto_parte")
@@ -324,6 +366,7 @@ impl Db {
     pub fn partes_contexto(&self, hoje: NaiveDate) -> Result<Vec<ParteContexto>, CoreError> {
         let cfg = self.config_ia()?;
         let edicoes = self.edicoes_de_partes()?;
+        let carteira_ligada = edicoes.get("carteira").is_none_or(|(l, _)| *l);
         let mut out = Vec::new();
         for (codigo, rotulo) in PARTES {
             let gerada = match codigo {
@@ -334,7 +377,7 @@ impl Db {
                 },
                 "perfil" => self.parte_perfil(hoje)?,
                 "carteira" => self.parte_carteira(hoje, &cfg)?,
-                "mercado" => self.parte_mercado(hoje)?,
+                "mercado" => self.parte_mercado(hoje, carteira_ligada)?,
                 _ => self.parte_metas(hoje, &cfg)?,
             };
             let (ligada, editado) = edicoes
@@ -392,8 +435,76 @@ impl Db {
         Ok(Vec::new())
     }
 
+    /// O contexto reduzido das notícias: só a lista de ativos, sem valor nem `nome`, as
+    /// instruções (se ligadas e não vazias) e a data. Instituição e emissor só com "Nome das
+    /// instituições"; com a parte "Carteira" desligada, só as classes, sem tickers.
+    pub fn contexto_noticias(&self, hoje: NaiveDate) -> Result<String, CoreError> {
+        let cfg = self.config_ia()?;
+        let edicoes = self.edicoes_de_partes()?;
+        let ligada = |parte: &str| edicoes.get(parte).is_none_or(|(l, _)| *l);
+        let lista = self.listar_investimentos(hoje)?;
+        let presentes: Vec<Classe> = Classe::TODOS
+            .iter()
+            .copied()
+            .filter(|c| lista.iter().any(|i| i.classe == *c))
+            .collect();
+        let mut ativos = Vec::new();
+        if lista.is_empty() {
+            ativos.push("Nenhum investimento cadastrado.".to_string());
+        } else if !ligada("carteira") {
+            let rotulos: Vec<&str> = presentes.iter().map(|c| c.rotulo()).collect();
+            ativos.push(format!("Classes na carteira: {}.", rotulos.join(", ")));
+        } else {
+            for c in &presentes {
+                let mut itens: Vec<String> = Vec::new();
+                for i in lista.iter().filter(|i| i.classe == *c) {
+                    let item = Self::ativo_noticia(i, &cfg);
+                    if !itens.contains(&item) {
+                        itens.push(item);
+                    }
+                }
+                ativos.push(format!("{}: {}.", c.rotulo(), itens.join(", ")));
+            }
+        }
+        let mut blocos = vec![format!("## Ativos da carteira\n{}", ativos.join("\n"))];
+        if ligada("instrucoes") && !cfg.instrucoes.trim().is_empty() {
+            blocos.push(format!("## Suas instruções\n{}", cfg.instrucoes));
+        }
+        blocos.push(format!("Hoje é {}.", data_br(hoje)));
+        Ok(blocos.join("\n\n"))
+    }
+
+    /// O ticker, ou o tipo com o indexador ("CDB 102% do CDI"); a instituição e o emissor só
+    /// com "Nome das instituições".
+    fn ativo_noticia(i: &Investimento, cfg: &ConfigIa) -> String {
+        if let Some(t) = &i.ticker {
+            return t.clone();
+        }
+        let mut item = match &i.rendimento {
+            Some(r) => format!("{} {r}", i.tipo_rotulo),
+            None => i.tipo_rotulo.clone(),
+        };
+        if cfg.nomes_instituicoes {
+            let mut onde = format!("instituição {}", i.instituicao);
+            if let Some(e) = i.emissor.as_deref().filter(|e| *e != i.instituicao) {
+                onde.push_str(&format!(", emissor {e}"));
+            }
+            item.push_str(&format!(" ({onde})"));
+        }
+        item
+    }
+
     /// Só as partes ligadas (e com texto), cada uma sob `## <rótulo>`, e a data de hoje no fim.
     pub fn contexto_montado(&self, hoje: NaiveDate) -> Result<ContextoMontado, CoreError> {
+        self.contexto_com(hoje, None)
+    }
+
+    /// O `contexto_montado` com um bloco a mais antes de "Hoje é" e a fonte dele no fim.
+    pub(crate) fn contexto_com(
+        &self,
+        hoje: NaiveDate,
+        extra: Option<(String, FonteInterna)>,
+    ) -> Result<ContextoMontado, CoreError> {
         let mut blocos = Vec::new();
         let mut fontes = Vec::new();
         for p in self.partes_contexto(hoje)? {
@@ -409,6 +520,10 @@ impl Db {
                     && p.data_dados
                         .is_some_and(|d| (hoje - d).num_days() > DIAS_PARA_ANTIGO),
             });
+        }
+        if let Some((bloco, fonte)) = extra {
+            blocos.push(bloco);
+            fontes.push(fonte);
         }
         blocos.push(format!("Hoje é {}.", data_br(hoje)));
         let texto = blocos.join("\n\n");

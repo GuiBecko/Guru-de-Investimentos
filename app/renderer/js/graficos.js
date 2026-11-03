@@ -119,7 +119,7 @@ const M = { e: 64, d: 12, t: 12, b: 26 };
 // ficar no tamanho do CSS (10 px) em qualquer coluna. A altura é fixa.
 const LARGURA_INICIAL = 640;
 const H = 240;
-const LARGURA_MINIMA = 280;
+const LARGURA_MINIMA = 240;
 
 const ticksDe = (dominio) =>
   dominio[0] === dominio[1] ? [Math.round(dominio[0])] : [0, 1, 2, 3].map((i) => Math.round(dominio[0] + ((dominio[1] - dominio[0]) * i) / 3));
@@ -142,8 +142,15 @@ function eixoY(svg, y, ticks, formatarValor, W, e) {
   }
 }
 
+// De quantos em quantos meses vai um rótulo: até 7 rótulos, menos quando o desenho é estreito,
+// porque cada um ("10/25") pede ~44 px.
+export function passoDoEixoX(pontos, larguraDoDesenho) {
+  const cabem = Math.max(2, Math.floor(larguraDoDesenho / 44));
+  return Math.max(1, Math.ceil(pontos / Math.min(7, cabem)));
+}
+
 function eixoX(svg, datas, xs, W) {
-  const passo = Math.max(1, Math.ceil(datas.length / 7));
+  const passo = passoDoEixoX(datas.length, W - (xs[0] ?? 0));
   datas.forEach((d, i) => {
     if (i % passo !== 0 && i !== datas.length - 1) return;
     if (i !== datas.length - 1 && datas.length - 1 - i < passo / 2) return;

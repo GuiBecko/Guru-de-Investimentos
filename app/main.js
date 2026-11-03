@@ -144,9 +144,12 @@ const canais = {
   "ia:conversas": () => nucleo().conversas(),
   "ia:conversa": (id) => nucleo().conversa(id),
   "ia:apagarConversa": (id) => nucleo().apagarConversa(id),
-  "ia:perguntar": (conversaId, pergunta) => nucleo().perguntarIa(conversaId ?? null, pergunta),
+  "ia:perguntar": (conversaId, pergunta, foco) => nucleo().perguntarIa(conversaId ?? null, pergunta, foco ?? null),
   "ia:progresso": (pedido) => nucleo().iaProgresso(pedido),
   "ia:cancelar": (pedido) => nucleo().cancelarIa(pedido),
+  "ia:painel": () => nucleo().painelIa(),
+  "ia:gerarInsights": () => nucleo().gerarInsightsIa(),
+  "ia:buscarNoticias": () => nucleo().buscarNoticiasIa(),
 };
 for (const [canal, handler] of Object.entries(canais)) {
   ipcMain.handle(canal, tratar(handler));

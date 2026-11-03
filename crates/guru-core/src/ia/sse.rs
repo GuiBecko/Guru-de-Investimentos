@@ -359,6 +359,11 @@ impl Acumulador {
         self.parou
     }
 
+    /// Chegou pelo menos um `message_start`: a partir daí a resposta já gastou tokens.
+    pub(crate) fn comecou(&self) -> bool {
+        !self.usos.is_empty()
+    }
+
     pub(crate) fn uso(&self) -> Uso {
         self.usos.iter().fold(Uso::default(), |a, u| Uso {
             entrada: a.entrada + u.entrada,

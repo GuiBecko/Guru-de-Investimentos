@@ -25,3 +25,4 @@ Os planos detalhados:
 - Fase 4: [`superpowers/plans/2026-10-30-fase-4-importacao-b3.md`](superpowers/plans/2026-10-30-fase-4-importacao-b3.md)
 - Fase 5: [`superpowers/plans/2026-10-30-fase-5-proximo-aporte.md`](superpowers/plans/2026-10-30-fase-5-proximo-aporte.md)
 - Fase 6a: [`superpowers/plans/2026-10-30-fase-6a-ia-assistente.md`](superpowers/plans/2026-10-30-fase-6a-ia-assistente.md)
+- Fase 6b: [`superpowers/plans/2026-11-03-fase-6b-ia-no-app.md`](superpowers/plans/2026-11-03-fase-6b-ia-no-app.md)

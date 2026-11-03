@@ -483,7 +483,8 @@ fn erro_no_meio_nao_grava_nada() {
     assert!(db.listar_conversas().unwrap().is_empty());
     assert_eq!(contar(&dir, "conversa"), 0);
     assert_eq!(contar(&dir, "mensagem"), 0);
-    assert_eq!(contar(&dir, "ia_uso"), 0);
+    // Só o #quebrado chegou ao `message_start`: os tokens dele contam, os do #erro529 não existem.
+    assert_eq!(db.uso_do_mes(hoje()).unwrap().entrada, 500);
 
     // Numa conversa existente: o erro não deixa pergunta órfã, e a seguinte funciona.
     let id = pergunta(&db, &cofre, &fixture(), None, "Oi").0.unwrap();
@@ -533,7 +534,8 @@ fn cancelar_nao_grava_nada() {
     assert!(n < 10, "deveria parar logo depois do pedido");
     assert_eq!(contar(&dir, "conversa"), 0);
     assert_eq!(contar(&dir, "mensagem"), 0);
-    assert_eq!(contar(&dir, "ia_uso"), 0);
+    // Os tokens do `message_start` contam mesmo com a resposta parada.
+    assert_eq!(db.uso_do_mes(hoje()).unwrap().entrada, 1200);
 
     pergunta(&db, &cofre, &fixture(), None, "Oi").0.unwrap();
     assert_eq!(contar(&dir, "mensagem"), 2);
@@ -706,10 +708,11 @@ fn uso_do_mes_soma_e_estima_custo() {
     assert_eq!(outro_mes.tokens, 0);
 }
 
+/// Nenhuma conversa nem mensagem. O uso conta: estas respostas passaram do `message_start`.
 fn nada_gravado(dir: &tempfile::TempDir) {
     assert_eq!(contar(dir, "conversa"), 0);
     assert_eq!(contar(dir, "mensagem"), 0);
-    assert_eq!(contar(dir, "ia_uso"), 0);
+    assert_eq!(contar(dir, "ia_uso"), 1);
 }
 
 #[test]
@@ -747,4 +750,69 @@ fn resposta_vazia_da_indisponivel_e_nao_grava() {
     assert_eq!(r.unwrap_err().code(), "IA_RECUSA");
     assert_eq!(db.conversa(id).unwrap().mensagens.len(), 2);
     assert_eq!(contar(&dir, "mensagem"), 2);
+}
+
+#[test]
+fn uso_conta_resposta_que_falha_depois_do_message_start() {
+    let (dir, db) = banco();
+    let cofre = cofre_com_chave();
+    let (r, _) = pergunta(&db, &cofre, &fixture(), None, "#quebrado Oi");
+    assert_eq!(r.unwrap_err().code(), "IA_INDISPONIVEL");
+    assert_eq!(contar(&dir, "conversa"), 0);
+    assert_eq!(contar(&dir, "mensagem"), 0);
+    // O `message_start` de quebrado.sse: 500 de entrada e 1 de saída.
+    let u = db.uso_do_mes(hoje()).unwrap();
+    assert_eq!(
+        (u.entrada, u.saida, u.cache_leitura, u.cache_escrita),
+        (500, 1, 0, 0)
+    );
+
+    // Numa conversa existente: o uso soma, a conversa fica com as duas mensagens.
+    let id = pergunta(&db, &cofre, &fixture(), None, "Oi").0.unwrap();
+    let (r, _) = pergunta(&db, &cofre, &fixture(), Some(id), "#quebrado E agora?");
+    assert_eq!(r.unwrap_err().code(), "IA_INDISPONIVEL");
+    assert_eq!(db.conversa(id).unwrap().mensagens.len(), 2);
+    assert_eq!(db.uso_do_mes(hoje()).unwrap().entrada, 500 + 1200 + 500);
+}
+
+#[test]
+fn uso_conta_resposta_cancelada() {
+    let (dir, db) = banco();
+    let cofre = cofre_com_chave();
+    let cancelar = AtomicBool::new(false);
+    let mut n = 0;
+    let r = perguntar(
+        &db,
+        &cofre,
+        &fixture(),
+        hoje(),
+        None,
+        "Oi",
+        &cancelar,
+        &mut |_| {
+            n += 1;
+            if n == 3 {
+                cancelar.store(true, Ordering::SeqCst);
+            }
+        },
+    );
+    assert_eq!(r.unwrap_err().code(), "IA_CANCELADA");
+    assert_eq!(contar(&dir, "conversa"), 0);
+    assert_eq!(contar(&dir, "mensagem"), 0);
+    let u = db.uso_do_mes(hoje()).unwrap();
+    assert_eq!(u.entrada, 1200);
+    assert_eq!(u.cache_escrita, 1000);
+    assert_eq!(u.cache_leitura, 0);
+}
+
+#[test]
+fn erro_antes_do_message_start_nao_conta() {
+    let (dir, db) = banco();
+    let cofre = cofre_com_chave();
+    for p in ["#erro529 Oi", "#erro401 Oi"] {
+        let (r, _) = pergunta(&db, &cofre, &fixture(), None, p);
+        assert!(r.is_err(), "{p}");
+    }
+    assert_eq!(contar(&dir, "ia_uso"), 0);
+    assert_eq!(db.uso_do_mes(hoje()).unwrap().tokens, 0);
 }

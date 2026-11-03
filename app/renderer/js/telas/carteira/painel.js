@@ -5,6 +5,7 @@ import { modelosAplicaveis, saudacao } from "../../saudacao.js";
 import { dataDasFontes, dataDoMercado, statusDoMercado, textoNota } from "../../mercado.js";
 import { el } from "../_tabela.js";
 import { rotulosPeriodo } from "./periodo.js";
+import { colunaIa } from "./insights.js";
 import { altasEQuedas } from "./variacoes.js";
 
 // Cor por classe (tokens em telas.css) e dos benchmarks do gráfico de rentabilidade.
@@ -354,5 +355,8 @@ export async function painel(elemento, vigente, erro) {
   };
   caixaNumeros.append(numeros(p, meses));
   area.append(...desenhar(p, resumo));
-  elemento.replaceChildren(topo(p, meses, aoTrocar, fontes), caixaNumeros, area, el("p", textoNota(dataDasFontes(fontes)), "hint"));
+  // O corpo à esquerda e a coluna da IA (insights e notícias) à direita, como no protótipo.
+  const corpo = el("div", undefined, "painel-com-ia");
+  corpo.append(area, colunaIa(vigente));
+  elemento.replaceChildren(topo(p, meses, aoTrocar, fontes), caixaNumeros, corpo, el("p", textoNota(dataDasFontes(fontes)), "hint"));
 }

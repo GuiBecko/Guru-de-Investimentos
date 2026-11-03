@@ -8,8 +8,9 @@ use serde_json::{Value, json};
 
 use crate::db::{Db, classifica};
 use crate::error::CoreError;
-use crate::investimento::ErroCampo;
+use crate::investimento::{Classe, ErroCampo};
 
+use super::aporte::FocoAporte;
 use super::cliente::{ClienteIa, ErroIa, corpo_pedido};
 use super::cofre::{Cofre, validar_formato_chave};
 use super::contexto::FonteInterna;
@@ -24,6 +25,8 @@ pub struct ConversaResumo {
     pub id: i64,
     pub titulo: String,
     pub atualizada_em: String,
+    /// `None`: conversa do Assistente; a classe: chat do Próximo aporte.
+    pub foco: Option<Classe>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,6 +43,7 @@ pub struct Conversa {
     pub id: i64,
     pub titulo: String,
     pub modelo: String,
+    pub foco: Option<Classe>,
     pub fontes_internas: Vec<FonteInterna>,
     pub mensagens: Vec<MensagemGravada>,
 }
@@ -70,7 +74,7 @@ fn agora() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
-fn mes(hoje: NaiveDate) -> String {
+pub(crate) fn mes(hoje: NaiveDate) -> String {
     hoje.format("%Y-%m").to_string()
 }
 
@@ -107,6 +111,38 @@ fn ler_fontes_internas(texto: &str) -> Vec<FonteInterna> {
         .unwrap_or_default()
 }
 
+fn ler_foco(codigo: Option<String>) -> Option<Classe> {
+    codigo.as_deref().and_then(Classe::de_codigo)
+}
+
+/// Soma os tokens de uma resposta no mês e no modelo. Serve à transação de `gravar_troca` e às
+/// respostas perdidas depois do `message_start`.
+pub(crate) fn somar_uso(
+    conn: &rusqlite::Connection,
+    mes: &str,
+    modelo: &str,
+    uso: Uso,
+) -> Result<(), CoreError> {
+    conn.execute(
+        "INSERT INTO ia_uso (mes, modelo, entrada, saida, cache_leitura, cache_escrita) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
+         ON CONFLICT (mes, modelo) DO UPDATE SET \
+         entrada = entrada + excluded.entrada, saida = saida + excluded.saida, \
+         cache_leitura = cache_leitura + excluded.cache_leitura, \
+         cache_escrita = cache_escrita + excluded.cache_escrita",
+        params![
+            mes,
+            modelo,
+            uso.entrada,
+            uso.saida,
+            uso.cache_leitura,
+            uso.cache_escrita
+        ],
+    )
+    .map_err(classifica)?;
+    Ok(())
+}
+
 /// Os 60 primeiros caracteres da pergunta, numa linha só.
 fn titulo(pergunta: &str) -> String {
     pergunta
@@ -126,9 +162,23 @@ struct DadosConversa {
     historico: Vec<Value>,
 }
 
+/// A linha da conversa que nasce com a primeira pergunta.
+struct Nova {
+    titulo: String,
+    fontes_internas: String,
+    foco: Option<&'static str>,
+}
+
+/// Para onde vai a pergunta.
+pub(crate) enum Destino<'a> {
+    Existente(i64),
+    Assistente,
+    Aporte(&'a FocoAporte),
+}
+
 /// O que vai ser gravado no fim, de uma vez.
 struct Troca<'a> {
-    nova: Option<(String, String)>,
+    nova: Option<Nova>,
     conversa_id: Option<i64>,
     dados: &'a DadosConversa,
     pergunta: &'a Value,
@@ -147,7 +197,7 @@ impl Db {
         let mut st = self
             .conn
             .prepare(
-                "SELECT id, titulo, atualizada_em FROM conversa \
+                "SELECT id, titulo, atualizada_em, foco FROM conversa \
                  ORDER BY atualizada_em DESC, id DESC",
             )
             .map_err(classifica)?;
@@ -156,6 +206,7 @@ impl Db {
                 id: r.get(0)?,
                 titulo: r.get(1)?,
                 atualizada_em: r.get(2)?,
+                foco: ler_foco(r.get(3)?),
             })
         })
         .map_err(classifica)?
@@ -164,12 +215,12 @@ impl Db {
     }
 
     pub fn conversa(&self, id: i64) -> Result<Conversa, CoreError> {
-        let (titulo, modelo, fontes): (String, String, String) = self
+        let (titulo, modelo, fontes, foco): (String, String, String, Option<String>) = self
             .conn
             .query_row(
-                "SELECT titulo, modelo, fontes_internas FROM conversa WHERE id = ?1",
+                "SELECT titulo, modelo, fontes_internas, foco FROM conversa WHERE id = ?1",
                 [id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
             )
             .optional()
             .map_err(classifica)?
@@ -199,6 +250,7 @@ impl Db {
             id,
             titulo,
             modelo,
+            foco: ler_foco(foco),
             fontes_internas: ler_fontes_internas(&fontes),
             mensagens,
         })
@@ -290,17 +342,18 @@ impl Db {
         let tx = self.conn.unchecked_transaction().map_err(classifica)?;
         let quando = agora();
         let id = match (&t.nova, t.conversa_id) {
-            (Some((titulo, fontes)), _) => {
+            (Some(nova), _) => {
                 tx.execute(
                     "INSERT INTO conversa (titulo, modelo, contexto, fontes_internas, busca_web, \
-                     criada_em, atualizada_em) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+                     criada_em, atualizada_em, foco) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?7)",
                     params![
-                        titulo,
+                        nova.titulo,
                         t.dados.modelo,
                         t.dados.contexto,
-                        fontes,
+                        nova.fontes_internas,
                         t.dados.busca_web,
-                        quando
+                        quando,
+                        nova.foco
                     ],
                 )
                 .map_err(classifica)?;
@@ -342,79 +395,66 @@ impl Db {
             )
             .map_err(classifica)?;
         }
-        tx.execute(
-            "INSERT INTO ia_uso (mes, modelo, entrada, saida, cache_leitura, cache_escrita) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
-             ON CONFLICT (mes, modelo) DO UPDATE SET \
-             entrada = entrada + excluded.entrada, saida = saida + excluded.saida, \
-             cache_leitura = cache_leitura + excluded.cache_leitura, \
-             cache_escrita = cache_escrita + excluded.cache_escrita",
-            params![
-                t.mes,
-                t.dados.modelo,
-                t.uso.entrada,
-                t.uso.saida,
-                t.uso.cache_leitura,
-                t.uso.cache_escrita
-            ],
-        )
-        .map_err(classifica)?;
+        somar_uso(&tx, &t.mes, &t.dados.modelo, t.uso)?;
         tx.commit().map_err(classifica)?;
         Ok(id)
     }
 }
 
-/// Uma pergunta inteira: cria a conversa se `conversa_id` é None (título = 60 primeiros caracteres
-/// da pergunta, contexto congelado), envia, trata pause_turn (até 3) e grava a pergunta e a resposta
-/// numa transação só no fim. Qualquer erro devolve Err sem gravar nada. `progresso` recebe cada atualização.
+/// Envia, trata pause_turn (até 3) e devolve o acumulador com blocos. Recusa sem blocos vira
+/// IA_RECUSA e resposta sem blocos vira IA_INDISPONIVEL. Em qualquer Err depois de um
+/// `message_start`, soma o uso acumulado (melhor esforço: uma falha ao somar não troca o erro).
+/// Nenhuma mensagem é gravada aqui.
 #[allow(clippy::too_many_arguments)]
-pub fn perguntar(
+pub(crate) fn enviar_com_pausas(
     db: &Db,
-    cofre: &dyn Cofre,
     cliente: &dyn ClienteIa,
+    chave: &str,
     hoje: NaiveDate,
-    conversa_id: Option<i64>,
-    pergunta: &str,
+    modelo: &str,
+    corpo: &dyn Fn(&[Value]) -> Value,
+    mensagens: &[Value],
     cancelar: &AtomicBool,
     progresso: &mut dyn FnMut(Progresso),
-) -> Result<i64, CoreError> {
-    let chave = cofre
-        .ler()?
-        .filter(|c| !c.is_empty())
-        .ok_or(ErroIa::SemChave)?;
-    let (dados, nova) = match conversa_id {
-        Some(id) => (db.dados_conversa(id)?, None),
-        None => {
-            let config = db.config_ia()?;
-            let contexto = db.contexto_montado(hoje)?;
-            let nova = (
-                titulo(pergunta),
-                fontes_internas_json(&contexto.fontes_internas),
-            );
-            let dados = DadosConversa {
-                contexto: contexto.texto,
-                modelo: config.modelo,
-                busca_web: config.busca_web,
-                historico: Vec::new(),
-            };
-            (dados, Some(nova))
-        }
-    };
-    let msg_pergunta = json!({"role": "user", "content": pergunta});
-    let mut mensagens = dados.historico.clone();
-    mensagens.push(msg_pergunta.clone());
-
+) -> Result<Acumulador, CoreError> {
     let mut acumulador = Acumulador::novo();
+    match enviar_partes(
+        &mut acumulador,
+        cliente,
+        chave,
+        corpo,
+        mensagens,
+        cancelar,
+        progresso,
+    ) {
+        Ok(()) => Ok(acumulador),
+        Err(erro) => {
+            if acumulador.comecou() {
+                let _ = somar_uso(&db.conn, &mes(hoje), modelo, acumulador.uso());
+            }
+            Err(erro)
+        }
+    }
+}
+
+fn enviar_partes(
+    acumulador: &mut Acumulador,
+    cliente: &dyn ClienteIa,
+    chave: &str,
+    corpo: &dyn Fn(&[Value]) -> Value,
+    mensagens: &[Value],
+    cancelar: &AtomicBool,
+    progresso: &mut dyn FnMut(Progresso),
+) -> Result<(), CoreError> {
     let mut pausas = 0;
     loop {
-        let mut pedido = mensagens.clone();
+        let mut pedido = mensagens.to_vec();
         if !acumulador.blocos().is_empty() {
             // Continuação de um `pause_turn`: a resposta parcial vai como mensagem da IA.
             pedido.push(json!({"role": "assistant", "content": acumulador.blocos()}));
         }
-        let (corpo, _beta) = corpo_pedido(&dados.modelo, &dados.contexto, dados.busca_web, &pedido);
         let mut falha = None;
-        cliente.enviar(&chave, &corpo, cancelar, &mut |e| {
+        cliente.enviar(chave, &corpo(&pedido), cancelar, &mut |e| {
             if falha.is_some() {
                 return;
             }
@@ -439,7 +479,6 @@ pub fn perguntar(
         }
         break;
     }
-
     if acumulador.blocos().is_empty() {
         // Nenhum bloco em nenhuma parte: uma mensagem da IA vazia quebraria o histórico
         // (a API recusa), então nada é gravado.
@@ -450,6 +489,89 @@ pub fn perguntar(
         };
         return Err(erro.into());
     }
+    Ok(())
+}
+
+/// Uma pergunta inteira: cria a conversa se `conversa_id` é None (título = 60 primeiros caracteres
+/// da pergunta, contexto congelado), envia, trata pause_turn (até 3) e grava a pergunta e a resposta
+/// numa transação só no fim. Qualquer erro devolve Err sem gravar mensagem; os tokens de uma
+/// resposta perdida depois do `message_start` entram no uso. `progresso` recebe cada atualização.
+#[allow(clippy::too_many_arguments)]
+pub fn perguntar(
+    db: &Db,
+    cofre: &dyn Cofre,
+    cliente: &dyn ClienteIa,
+    hoje: NaiveDate,
+    conversa_id: Option<i64>,
+    pergunta: &str,
+    cancelar: &AtomicBool,
+    progresso: &mut dyn FnMut(Progresso),
+) -> Result<i64, CoreError> {
+    let destino = conversa_id.map_or(Destino::Assistente, Destino::Existente);
+    perguntar_com(
+        db, cofre, cliente, hoje, destino, pergunta, cancelar, progresso,
+    )
+}
+
+/// `perguntar` para qualquer destino: conversa existente, nova do Assistente ou nova do aporte.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn perguntar_com(
+    db: &Db,
+    cofre: &dyn Cofre,
+    cliente: &dyn ClienteIa,
+    hoje: NaiveDate,
+    destino: Destino,
+    pergunta: &str,
+    cancelar: &AtomicBool,
+    progresso: &mut dyn FnMut(Progresso),
+) -> Result<i64, CoreError> {
+    let chave = cofre
+        .ler()?
+        .filter(|c| !c.is_empty())
+        .ok_or(ErroIa::SemChave)?;
+    let (dados, nova, conversa_id) = match destino {
+        Destino::Existente(id) => (db.dados_conversa(id)?, None, Some(id)),
+        Destino::Assistente | Destino::Aporte(_) => {
+            let (contexto, foco) = match destino {
+                Destino::Aporte(f) => {
+                    // `contexto_aporte` já recusou um código de classe desconhecido.
+                    let contexto = db.contexto_aporte(hoje, f)?;
+                    (contexto, Classe::de_codigo(&f.classe).map(|c| c.codigo()))
+                }
+                _ => (db.contexto_montado(hoje)?, None),
+            };
+            let config = db.config_ia()?;
+            let nova = Nova {
+                titulo: titulo(pergunta),
+                fontes_internas: fontes_internas_json(&contexto.fontes_internas),
+                foco,
+            };
+            let dados = DadosConversa {
+                contexto: contexto.texto,
+                modelo: config.modelo,
+                busca_web: config.busca_web,
+                historico: Vec::new(),
+            };
+            (dados, Some(nova), None)
+        }
+    };
+    let msg_pergunta = json!({"role": "user", "content": pergunta});
+    let mut mensagens = dados.historico.clone();
+    mensagens.push(msg_pergunta.clone());
+
+    let corpo =
+        |pedido: &[Value]| corpo_pedido(&dados.modelo, &dados.contexto, dados.busca_web, pedido).0;
+    let acumulador = enviar_com_pausas(
+        db,
+        cliente,
+        &chave,
+        hoje,
+        &dados.modelo,
+        &corpo,
+        &mensagens,
+        cancelar,
+        progresso,
+    )?;
 
     let mut fim = acumulador.progresso();
     if !fim.terminado {
@@ -459,6 +581,7 @@ pub fn perguntar(
     }
     let resposta = json!({"role": "assistant", "content": acumulador.blocos()});
     let aviso = (acumulador.stop_reason() == Some("refusal")).then_some(AVISO_RECUSA);
+    let uso = acumulador.uso();
     db.gravar_troca(&Troca {
         nova,
         conversa_id,
@@ -469,8 +592,13 @@ pub fn perguntar(
         resposta_texto: &fim.texto,
         fontes: &fim.fontes,
         aviso,
-        uso: acumulador.uso(),
+        uso,
         mes: mes(hoje),
+    })
+    .inspect_err(|_| {
+        // A transação voltou atrás com o uso dentro: soma fora dela, em melhor esforço (o erro
+        // que importa é o da gravação).
+        let _ = somar_uso(&db.conn, &mes(hoje), &dados.modelo, uso);
     })
 }
 
@@ -569,6 +697,50 @@ mod testes {
         assert!(r.is_empty());
         assert_eq!(cofre.ler().unwrap().as_deref(), Some(nova));
         assert_eq!(db.config_ia().unwrap().chave_final.as_deref(), Some("0000"));
+    }
+
+    #[test]
+    fn gravacao_falhando_ainda_soma_o_uso_uma_vez() {
+        use crate::ia::cliente::ClienteFixture;
+        use crate::ia::cofre::CofreMemoria;
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path()).unwrap();
+        let cofre = CofreMemoria::default();
+        cofre.gravar("sk-ant-api03-chave-de-teste-0000").unwrap();
+        let cliente = ClienteFixture {
+            pasta: std::path::PathBuf::from(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/fixtures/ia"
+            )),
+        };
+        let hoje = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
+        let pergunta = |db: &Db| {
+            perguntar(
+                db,
+                &cofre,
+                &cliente,
+                hoje,
+                None,
+                "Oi?",
+                &AtomicBool::new(false),
+                &mut |_| {},
+            )
+        };
+        db.conn
+            .execute_batch(
+                "CREATE TRIGGER falha BEFORE INSERT ON mensagem \
+                 BEGIN SELECT RAISE(ABORT, 'falha'); END;",
+            )
+            .unwrap();
+        assert!(pergunta(&db).is_err());
+        // Nada da troca ficou, mas a resposta foi paga.
+        assert!(db.listar_conversas().unwrap().is_empty());
+        let uma = db.uso_do_mes(hoje).unwrap().tokens;
+        assert!(uma > 0);
+        // A mesma resposta gravada soma o mesmo tanto: a falha não contou em dobro.
+        db.conn.execute_batch("DROP TRIGGER falha;").unwrap();
+        pergunta(&db).unwrap();
+        assert_eq!(db.uso_do_mes(hoje).unwrap().tokens, 2 * uma);
     }
 
     #[test]

@@ -1,0 +1,84 @@
+event: message_start
+data: {"type":"message_start","message":{"id":"msg_noticias01","type":"message","role":"assistant","model":"claude-opus-5-5","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":2500,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":1}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Vou buscar notícias da última semana sobre os ativos da carteira."}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"EqQBCkYIBxgCKkBhc3NpbmF0dXJhLWRlLXRlc3Rl"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"server_tool_use","id":"srvtoolu_01Noticias","name":"web_search","input":{}}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"query\": \"notícias ITUB4 HGLG11 WEGE3 Tesouro Direto outubro 2026\"}"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1}
+
+event: content_block_start
+data: {"type":"content_block_start","index":2,"content_block":{"type":"web_search_tool_result","tool_use_id":"srvtoolu_01Noticias","content":[{"type":"web_search_result","url":"https://www.infomoney.com.br/mercados/itau-lucro-3t26","title":"Itaú tem lucro recorde no 3º trimestre","encrypted_content":"EqgfCioIARgBIiRjb250ZXVkby1jaWZyYWRv","page_age":"October 29, 2026"},{"type":"web_search_result","url":"https://valor.globo.com/financas/tesouro-direto-recorde","title":"Tesouro Direto bate recorde de investidores","encrypted_content":"EqgfCioIARgBIiRjb250ZXVkby1jaWZyYWRv","page_age":"October 28, 2026"},{"type":"web_search_result","url":"https://www.fiis.com.br/hglg11/dividendo-novembro","title":"HGLG11 anuncia dividendo","encrypted_content":"EqgfCioIARgBIiRjb250ZXVkby1jaWZyYWRv","page_age":"October 27, 2026"},{"type":"web_search_result","url":"https://exame.com/negocios/weg-amplia-fabrica","title":"WEG amplia fábrica","encrypted_content":"EqgfCioIARgBIiRjb250ZXVkby1jaWZyYWRv"},{"type":"web_search_result","url":"https://www.moneytimes.com.br/xpto-oferta","title":"XPTO conclui oferta","encrypted_content":"EqgfCioIARgBIiRjb250ZXVkby1jaWZyYWRv","page_age":"October 26, 2026"},{"type":"web_search_result","url":"https://www.b3.com.br/noticias/ibovespa-outubro","title":"Ibovespa fecha outubro em alta","encrypted_content":"EqgfCioIARgBIiRjb250ZXVkby1jaWZyYWRv","page_age":"October 31, 2026"},{"type":"web_search_result","url":"http://www.jornal-sem-tls.com.br/copom-selic","title":"Copom mantém a Selic","encrypted_content":"EqgfCioIARgBIiRjb250ZXVkby1jaWZyYWRv","page_age":"October 22, 2026"},{"type":"web_search_result","url":"https://www.ibge.gov.br/ipca-outubro","title":"IPCA de outubro","encrypted_content":"EqgfCioIARgBIiRjb250ZXVkby1jaWZyYWRv","page_age":"October 24, 2026"}]}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":2}
+
+event: content_block_start
+data: {"type":"content_block_start","index":3,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":3,"delta":{"type":"text_delta","text":"- ITUB4 | "}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":3}
+
+event: content_block_start
+data: {"type":"content_block_start","index":4,"content_block":{"type":"text","text":"","citations":[]}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":4,"delta":{"type":"text_delta","text":"Itaú Unibanco tem "}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":4,"delta":{"type":"text_delta","text":"lucro recorde no terceiro trimestre"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":4,"delta":{"type":"citations_delta","citation":{"type":"web_search_result_location","cited_text":"lucro recorde no terceiro trimestre","url":"https://www.infomoney.com.br/mercados/itau-lucro-3t26","title":"Itaú tem lucro recorde no 3º trimestre","encrypted_index":"EpcBCioIARgBIiRpbmRpY2UtZGUtdGVzdGU="}}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":4}
+
+event: content_block_start
+data: {"type":"content_block_start","index":5,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":5,"delta":{"type":"text_delta","text":"\n- Renda fixa | "}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":5}
+
+event: content_block_start
+data: {"type":"content_block_start","index":6,"content_block":{"type":"text","text":"","citations":[]}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":6,"delta":{"type":"text_delta","text":"Tesouro Direto bate recorde de investidores em outubro"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":6,"delta":{"type":"citations_delta","citation":{"type":"web_search_result_location","cited_text":"Tesouro Direto bate recorde de investidores em outubro","url":"https://valor.globo.com/financas/tesouro-direto-recorde","title":"Tesouro Direto bate recorde de investidores","encrypted_index":"EpcBCioIARgBIiRpbmRpY2UtZGUtdGVzdGU="}}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":6}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"pause_turn","stop_sequence":null},"usage":{"output_tokens":300}}
+
+event: message_stop
+data: {"type": "message_stop"}
+

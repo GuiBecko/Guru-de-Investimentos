@@ -21,7 +21,10 @@ export function colunaConversas({ lista, atualId, travada, aoNova, aoAbrir, aoAp
     const abrir = el("button", undefined, "abrir");
     abrir.type = "button";
     abrir.disabled = travada;
-    abrir.append(el("span", c.titulo, "titulo-conversa"), el("small", dataLocal(c.atualizadaEm)));
+    abrir.append(el("span", c.titulo, "titulo-conversa"));
+    // A conversa nascida no Próximo aporte leva a etiqueta da classe.
+    if (c.foco) abrir.append(el("span", `Próximo aporte · ${c.focoRotulo ?? c.foco}`, "pill etiqueta-foco"));
+    abrir.append(el("small", dataLocal(c.atualizadaEm)));
     if (c.id === atualId) {
       li.classList.add("on");
       abrir.setAttribute("aria-current", "true");
