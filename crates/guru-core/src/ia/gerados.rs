@@ -350,7 +350,9 @@ pub fn gerar_insights(
 }
 
 /// Busca as notícias com a busca na web e grava a lista (vazia também) com a data. Com
-/// "Buscar na web" desligada, nada é enviado. Erro: nada muda no ia_gerado.
+/// "Buscar na web" desligada, nada é enviado. Erro: nada muda no ia_gerado; uma resposta
+/// parada por `refusal` (IA_RECUSA), `max_tokens` ou ainda em `pause_turn` depois das
+/// continuações (IA_INDISPONIVEL) também é erro, com os tokens somados no uso.
 pub fn buscar_noticias(
     db: &Db,
     cofre: &dyn Cofre,
@@ -378,6 +380,17 @@ pub fn buscar_noticias(
         cancelar,
         progresso,
     )?;
+    // Uma resposta que não terminou bem daria uma lista parcial: as notícias guardadas ficam.
+    let interrompida = match acumulador.stop_reason() {
+        Some("refusal") => Some(ErroIa::Recusa),
+        Some("max_tokens" | "pause_turn") => Some(ErroIa::Indisponivel),
+        _ => None,
+    };
+    if let Some(erro) = interrompida {
+        // Melhor esforço: o erro que importa é o da resposta.
+        let _ = somar_uso(&db.conn, &mes(hoje), &config.modelo, acumulador.uso());
+        return Err(erro.into());
+    }
     let etiquetas = db.etiquetas_noticias(hoje)?;
     let itens = ler_noticias(
         acumulador.blocos(),

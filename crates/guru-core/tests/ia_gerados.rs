@@ -743,3 +743,43 @@ fn mercado_leva_as_3_noticias_mais_recentes() {
             .contains("Notícias da carteira (buscadas em 30/10/2026):")
     );
 }
+
+/// Uma busca que não terminou bem (`refusal`, `max_tokens` ou `pause_turn` depois das 3
+/// continuações) não troca as notícias guardadas, mas os tokens dela contam.
+fn interrompida_mantem_as_anteriores(marca: &str, codigo: &str, chamadas: usize, saida: i64) {
+    let (_d, db) = banco();
+    carteira(&db);
+    let cofre = cofre_com_chave();
+    noticias(&db, &cofre, &ClienteFixture { pasta: pasta() }).unwrap();
+    let antes = db.painel_ia().unwrap();
+    assert_eq!(antes.noticias.as_ref().unwrap().itens.len(), 6);
+    let uso = db.uso_do_mes(hoje()).unwrap().tokens;
+
+    configurar(&db, marca, false, true);
+    let g = Gravador::novo();
+    let e = noticias(&db, &cofre, &g).unwrap_err();
+    assert_eq!(e.code(), codigo, "{marca}");
+    assert_eq!(g.corpos().len(), chamadas, "{marca}");
+    assert_eq!(db.painel_ia().unwrap(), antes, "{marca}");
+    assert_eq!(
+        db.uso_do_mes(hoje()).unwrap().tokens,
+        uso + saida,
+        "{marca}"
+    );
+}
+
+#[test]
+fn noticias_recusadas_mantem_as_anteriores() {
+    interrompida_mantem_as_anteriores("#noticias-recusa", "IA_RECUSA", 1, 2800);
+}
+
+#[test]
+fn noticias_cortadas_em_max_tokens_mantem_as_anteriores() {
+    interrompida_mantem_as_anteriores("#noticias-max-tokens", "IA_INDISPONIVEL", 1, 2800);
+}
+
+#[test]
+fn noticias_ainda_pausadas_mantem_as_anteriores() {
+    // A primeira parte e as 3 continuações.
+    interrompida_mantem_as_anteriores("#noticias-pausa", "IA_INDISPONIVEL", 4, 4 * 2800);
+}

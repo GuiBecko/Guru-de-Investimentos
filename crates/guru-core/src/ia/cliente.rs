@@ -391,6 +391,12 @@ impl ClienteIa for ClienteFixture {
         } else if pergunta == PEDIDO_NOTICIAS {
             Some(if sistema.contains("#noticias-vazias") {
                 "noticias_vazias.sse"
+            } else if sistema.contains("#noticias-recusa") {
+                "noticias_recusa.sse"
+            } else if sistema.contains("#noticias-max-tokens") {
+                "noticias_max_tokens.sse"
+            } else if sistema.contains("#noticias-pausa") {
+                "noticias_pausa.sse"
             } else {
                 "noticias.sse"
             })
