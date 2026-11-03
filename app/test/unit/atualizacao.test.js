@@ -234,7 +234,16 @@ test("dev_sem_teste_nao_consulta", async () => {
 test("formato_instalado", () => {
   assert.equal(formatoInstalado({ empacotado: true, plataforma: "win32", env: {} }), "nsis");
   assert.equal(formatoInstalado({ empacotado: true, plataforma: "darwin", env: {} }), "dmg");
-  assert.equal(formatoInstalado({ empacotado: true, plataforma: "linux", env: { APPIMAGE: "/x/Guru.AppImage" } }), "appimage");
+  assert.equal(
+    formatoInstalado({ empacotado: true, plataforma: "linux", env: { APPIMAGE: "/x/Guru.AppImage", APPDIR: "/tmp/.mount_Guru" }, execPath: "/tmp/.mount_Guru/guru" }),
+    "appimage",
+  );
+  // APPIMAGE herdado de outro AppImage, com o app rodando do .deb: não é AppImage.
+  assert.equal(
+    formatoInstalado({ empacotado: true, plataforma: "linux", env: { APPIMAGE: "/x/Outro.AppImage", APPDIR: "/tmp/.mount_Outro" }, execPath: "/opt/Guru de Investimentos/guru" }),
+    "deb",
+  );
+  assert.equal(formatoInstalado({ empacotado: true, plataforma: "linux", env: { APPIMAGE: "/x/Guru.AppImage" }, execPath: "/opt/x/guru" }), "deb");
   assert.equal(formatoInstalado({ empacotado: true, plataforma: "linux", env: {} }), "deb");
   assert.equal(formatoInstalado({ empacotado: false, plataforma: "win32", env: {} }), "dev");
 });

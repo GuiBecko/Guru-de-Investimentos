@@ -129,7 +129,7 @@ function montarAtualizacao({ app, net, env = process.env, plataforma = process.p
   }
   return criarAtualizacao({
     versaoAtual,
-    formato: formatoInstalado({ empacotado: app.isPackaged, plataforma, env }),
+    formato: formatoInstalado({ empacotado: app.isPackaged, plataforma, env, execPath: process.execPath }),
     arquivoConfig,
     buscarUltima: criarBuscarUltima({ net, versaoApp: versaoAtual }),
     criarInstalador: criarInstaladorReal,

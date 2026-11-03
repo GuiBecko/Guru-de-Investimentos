@@ -51,11 +51,14 @@ function lerRelease(json, _versaoAtual) {
 }
 
 // Como o app foi instalado. Linux fora do AppImage é tratado como .deb.
-function formatoInstalado({ empacotado, plataforma, env }) {
+function formatoInstalado({ empacotado, plataforma, env, execPath = "" }) {
   if (!empacotado) return "dev";
   if (plataforma === "win32") return "nsis";
   if (plataforma === "darwin") return "dmg";
-  return env && env.APPIMAGE ? "appimage" : "deb";
+  // APPIMAGE pode vir herdado de outro AppImage que abriu o app: só vale se este processo roda de
+  // dentro da pasta montada do AppImage (APPDIR), senão a atualização sobrescreveria outro arquivo.
+  const appimage = env && env.APPIMAGE && env.APPDIR && execPath.startsWith(env.APPDIR);
+  return appimage ? "appimage" : "deb";
 }
 
 // Sem arquivo, ilegível ou com outro tipo: ligado (o próximo salvarConfig regrava o arquivo).

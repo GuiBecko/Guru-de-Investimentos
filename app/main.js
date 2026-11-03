@@ -305,8 +305,9 @@ function criarJanela() {
   }
 
   // A procura de abertura só começa com a página carregada, para não atrasar a abertura.
+  // Na tela de erro (núcleo indisponível) ninguém mostraria o resultado: não procura.
   janela.webContents.once("did-finish-load", () => {
-    if (atualizacao) atualizacao.aoAbrir();
+    if (atualizacao && core) atualizacao.aoAbrir();
   });
 
   if (core) {
