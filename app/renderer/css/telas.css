@@ -281,3 +281,64 @@ svg.mini { width: 100%; max-width: 120px; height: 24px; }
 .tbl tbody.item[hidden], .tbl tbody.iguais-linha[hidden] { display: none; }
 .tbl td select { font: 400 12.5px var(--f-body); color: var(--ink); background: var(--app-card); border: 1px solid var(--line-strong); padding: 5px 8px; max-width: 220px; }
 .tbl td select:focus-visible { outline: 2px solid var(--accent); }
+
+/* Configurar IA: duas colunas, chave liga/desliga e blocos do contexto. */
+.ia-grade { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 14px; align-items: start; }
+.ia-grade .opt { cursor: default; display: grid; gap: 4px; }
+.ia-grade .opt:hover { border-color: var(--line-strong); }
+.ia-grade .opt.sel:hover { border-color: var(--accent); }
+.ia-grade label.row { cursor: pointer; }
+input[role="switch"] { appearance: none; flex: none; width: 34px; height: 18px; margin: 0; border: 1px solid var(--line-strong); background: var(--app-card); position: relative; cursor: pointer; }
+input[role="switch"]::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; background: var(--muted); }
+input[role="switch"]:checked { background: var(--accent-soft); border-color: var(--accent); }
+input[role="switch"]:checked::after { left: 18px; background: var(--accent); }
+input[role="switch"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.so-leitor { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.ctx-block { border-top: 1px solid var(--line); padding: 8px 0 2px; display: grid; gap: 6px; }
+.ctx-block .hd { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.ctx-block .texto-parte { margin: 0; font-size: 12px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 5.5em; overflow: hidden; }
+.ctx-block .bd { display: grid; gap: 6px; }
+button.link { font: 400 12px var(--f-body); color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+button.link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.acoes-chave { justify-content: flex-start; }
+
+/* Assistente: conversas, chat com balões e o painel "O que a IA está vendo". */
+.assistente { display: grid; grid-template-columns: 200px minmax(0, 1fr) 300px; gap: 14px; align-items: stretch; flex: 1; min-height: 0; }
+.conversas { display: grid; gap: 10px; align-content: start; min-width: 0; }
+.lista-conversas { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.lista-conversas li { display: grid; gap: 2px; padding: 6px 8px; border: 1px solid transparent; }
+.lista-conversas li.on { border-color: var(--accent); background: var(--accent-soft); }
+.lista-conversas .abrir { font: 400 12.5px var(--f-body); color: var(--ink); background: none; border: 0; padding: 0; text-align: left; cursor: pointer; display: grid; gap: 1px; min-width: 0; }
+.lista-conversas .abrir:disabled, button.link:disabled { cursor: not-allowed; opacity: 0.5; }
+.lista-conversas .abrir:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.titulo-conversa { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lista-conversas button.link { justify-self: start; font-size: 11px; }
+.chat { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 360px; }
+.mensagens { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.bolha { padding: 9px 12px; max-width: 86%; clip-path: var(--pix); overflow-wrap: anywhere; }
+.bolha.eu { align-self: flex-end; white-space: pre-wrap; color: #fff; background-color: var(--brand); background-image: linear-gradient(180deg, var(--brand-hi), var(--brand)); }
+.bolha.ia { align-self: flex-start; background: var(--app-card); border: 1px solid var(--line); display: grid; gap: 8px; }
+.bolha.ia p, .bolha.ia ul, .bolha.ia ol { margin: 0; }
+.bolha.ia ul, .bolha.ia ol { padding-left: 20px; }
+.bolha sup a { font: 600 10px var(--f-mono); text-decoration: none; color: var(--accent); background: var(--accent-soft); padding: 0 4px; margin-left: 2px; }
+.bolha sup a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.aviso-ia { color: var(--warn); }
+.sugestoes { display: flex; flex-wrap: wrap; gap: 8px; }
+.sugestoes[hidden] { display: none; }
+.buscando { margin: 0; font: 400 11px var(--f-mono); color: var(--muted); }
+.buscando:empty { display: none; }
+.campo-pergunta { display: flex; gap: 8px; align-items: flex-end; }
+.campo-pergunta textarea { flex: 1; min-width: 0; resize: vertical; font: 400 13px var(--f-body); color: var(--ink); background: var(--app-card); border: 1px solid var(--line-strong); padding: 7px 9px; }
+.campo-pergunta textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.chat .erro { margin: 0; }
+.chat .erro[hidden] { display: none; }
+.vendo { align-content: start; overflow-y: auto; min-height: 0; }
+.vendo .rotulo-sec { font: 500 10.5px var(--f-mono); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 4px; }
+.fontes { display: grid; gap: 6px; }
+.src { display: grid; gap: 3px; padding: 9px 10px; border: 1px solid var(--line); clip-path: var(--pix); min-width: 0; }
+.src:focus-visible, .src:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+.src .n { font: 600 10px var(--f-mono); color: var(--accent); background: var(--accent-soft); padding: 1px 5px; }
+.src a { font-weight: 500; color: var(--accent); text-decoration: none; overflow-wrap: anywhere; }
+.src a:hover { text-decoration: underline; }
+.src .dom { font: 10.5px var(--f-mono); color: var(--muted); word-break: break-all; }
+.src .took { font-size: 11px; color: var(--muted); }

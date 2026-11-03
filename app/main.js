@@ -135,6 +135,18 @@ const canais = {
   "importacao:escolher": () => escolherPlanilhaB3(),
   "importacao:aplicar": (token, decisoes) => nucleo().aplicarImportacao(token, decisoes),
   "importacao:ultima": () => nucleo().ultimaImportacao(),
+  "ia:config": () => nucleo().configIa(),
+  "ia:salvarConfig": (dados) => nucleo().salvarConfigIa(dados),
+  "ia:salvarChave": (chave) => nucleo().salvarChaveIa(chave),
+  "ia:removerChave": () => nucleo().removerChaveIa(),
+  "ia:contexto": () => nucleo().contextoIa(),
+  "ia:salvarParte": (parte, ligada, textoEditado) => nucleo().salvarParteContexto(parte, ligada, textoEditado ?? null),
+  "ia:conversas": () => nucleo().conversas(),
+  "ia:conversa": (id) => nucleo().conversa(id),
+  "ia:apagarConversa": (id) => nucleo().apagarConversa(id),
+  "ia:perguntar": (conversaId, pergunta) => nucleo().perguntarIa(conversaId ?? null, pergunta),
+  "ia:progresso": (pedido) => nucleo().iaProgresso(pedido),
+  "ia:cancelar": (pedido) => nucleo().cancelarIa(pedido),
 };
 for (const [canal, handler] of Object.entries(canais)) {
   ipcMain.handle(canal, tratar(handler));
@@ -156,6 +168,10 @@ function abrirNucleo() {
     opcoes.pastaFixtures = process.env.GURU_MERCADO_FIXTURES;
     if (process.env.GURU_MERCADO_HOJE) opcoes.hoje = process.env.GURU_MERCADO_HOJE;
   }
+  // Assistente de IA, também só fora do app empacotado: respostas gravadas no lugar da rede e
+  // cofre em memória. Empacotado, o cofre é o do sistema e o cliente é sempre o HTTP.
+  if (!app.isPackaged && process.env.GURU_IA_FIXTURES) opcoes.pastaIa = process.env.GURU_IA_FIXTURES;
+  if (!app.isPackaged && process.env.GURU_IA_COFRE === "memoria") opcoes.cofreMemoria = true;
   return Core.open(app.getPath("userData"), opcoes);
 }
 

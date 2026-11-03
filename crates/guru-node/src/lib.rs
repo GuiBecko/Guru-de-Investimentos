@@ -6,6 +6,7 @@ use napi::bindgen_prelude::{AsyncTask, Buffer};
 use napi_derive::napi;
 
 mod aporte;
+mod ia;
 mod importacao;
 mod investimentos;
 mod mercado;
@@ -13,6 +14,10 @@ mod metas;
 mod painel;
 mod perfil;
 use aporte::ResultadoAporteJs;
+use ia::{
+    ConfigIaEntradaJs, ConfigIaJs, ConfigSalvaJs, ContextoIaJs, ConversaJs, ConversaResumoJs, Ia,
+    ModeloJs, PedidoJs, ProgressoIaJs, RemoverChave, SalvarChave, UsoIaJs,
+};
 use importacao::{ComparacaoGuardada, ComparacaoJs, DecisaoJs, ResultadoImportacaoJs};
 use investimentos::{
     Catalogo, ErroCampoJs, InvestimentoJs, NovoInvestimentoJs, ResultadoGravacao, ResumoJs,
@@ -38,6 +43,8 @@ pub struct Core {
     modo_teste: Option<ModoTeste>,
     /// Última comparação de importação; só ela pode ser aplicada.
     importacao: Mutex<Option<ComparacaoGuardada>>,
+    /// Cofre, cliente e pedidos do assistente de IA.
+    ia: Ia,
 }
 
 fn to_js(e: CoreError) -> napi::Error<String> {
@@ -55,13 +62,21 @@ fn erro_interno() -> napi::Error<String> {
 impl Core {
     #[napi(factory)]
     pub fn open(data_dir: String, opcoes: Option<OpcoesCore>) -> napi::Result<Core, String> {
-        let modo_teste = mercado::modo_teste(opcoes)?;
+        let modo_teste = mercado::modo_teste(opcoes.as_ref())?;
+        let ia = Ia::novo(
+            opcoes.as_ref().and_then(|o| o.pasta_ia.clone()),
+            opcoes
+                .as_ref()
+                .and_then(|o| o.cofre_memoria)
+                .unwrap_or(false),
+        );
         let db = Db::open(Path::new(&data_dir)).map_err(to_js)?;
         Ok(Core {
             db: Mutex::new(db),
             pasta_dados: PathBuf::from(data_dir),
             modo_teste,
             importacao: Mutex::new(None),
+            ia,
         })
     }
 
@@ -370,6 +385,134 @@ impl Core {
             }
             Ok(importacao::resultado(r.aplicadas, r.erros))
         })
+    }
+
+    #[napi]
+    pub fn config_ia(&self) -> napi::Result<ConfigIaJs, String> {
+        let db = self.db()?;
+        let c = db.config_ia().map_err(to_js)?;
+        let uso = db.uso_do_mes(hoje_real()).map_err(to_js)?;
+        Ok(ConfigIaJs {
+            modelo: c.modelo,
+            modelos: guru_core::MODELOS
+                .iter()
+                .map(|(codigo, rotulo)| ModeloJs {
+                    codigo: (*codigo).to_string(),
+                    rotulo: (*rotulo).to_string(),
+                })
+                .collect(),
+            instrucoes: c.instrucoes,
+            apenas_percentuais: c.apenas_percentuais,
+            nomes_instituicoes: c.nomes_instituicoes,
+            busca_web: c.busca_web,
+            chave: ia::mascarar(c.chave_final),
+            uso: UsoIaJs {
+                tokens: uso.tokens,
+                custo_centesimos_dolar: uso.custo_centesimos_dolar,
+            },
+        })
+    }
+
+    #[napi]
+    pub fn salvar_config_ia(
+        &self,
+        dados: ConfigIaEntradaJs,
+    ) -> napi::Result<ConfigSalvaJs, String> {
+        let r = self
+            .db()?
+            .salvar_config_ia(
+                &dados.modelo,
+                &dados.instrucoes,
+                dados.apenas_percentuais,
+                dados.nomes_instituicoes,
+                dados.busca_web,
+            )
+            .map_err(to_js)?;
+        Ok(ConfigSalvaJs {
+            erros: erros(r.erros),
+            edicoes_restauradas: r.edicoes_restauradas,
+        })
+    }
+
+    /// Assíncrono: valida a chave na Anthropic (rede), com conexão própria.
+    #[napi]
+    pub fn salvar_chave_ia(&self, chave: String) -> AsyncTask<SalvarChave> {
+        ia::tarefa_chave(self.pasta_dados.clone(), &self.ia, chave)
+    }
+
+    /// Assíncrono: o cofre do sistema pode demorar, e a thread principal não espera por ele.
+    #[napi]
+    pub fn remover_chave_ia(&self) -> AsyncTask<RemoverChave> {
+        ia::tarefa_remover_chave(self.pasta_dados.clone(), &self.ia)
+    }
+
+    #[napi]
+    pub fn contexto_ia(&self) -> napi::Result<ContextoIaJs, String> {
+        let db = self.db()?;
+        let hoje = self.data_mercado();
+        let partes = db.partes_contexto(hoje).map_err(to_js)?;
+        let tokens = db.contexto_montado(hoje).map_err(to_js)?.tokens;
+        Ok(ContextoIaJs {
+            partes: partes.into_iter().map(ia::parte).collect(),
+            tokens,
+        })
+    }
+
+    #[napi]
+    pub fn salvar_parte_contexto(
+        &self,
+        parte: String,
+        ligada: bool,
+        texto_editado: Option<String>,
+    ) -> napi::Result<Vec<ErroCampoJs>, String> {
+        let e = self
+            .db()?
+            .salvar_parte_contexto(&parte, ligada, texto_editado.as_deref())
+            .map_err(to_js)?;
+        Ok(erros(e))
+    }
+
+    #[napi]
+    pub fn conversas(&self) -> napi::Result<Vec<ConversaResumoJs>, String> {
+        let l = self.db()?.listar_conversas().map_err(to_js)?;
+        Ok(l.into_iter().map(ia::resumo).collect())
+    }
+
+    #[napi]
+    pub fn conversa(&self, id: i64) -> napi::Result<ConversaJs, String> {
+        let c = self.db()?.conversa(id).map_err(to_js)?;
+        Ok(ia::conversa(c))
+    }
+
+    #[napi]
+    pub fn apagar_conversa(&self, id: i64) -> napi::Result<(), String> {
+        self.db()?.apagar_conversa(id).map_err(to_js)
+    }
+
+    /// Devolve já, com o número do pedido; a resposta chega por `iaProgresso`.
+    #[napi]
+    pub fn perguntar_ia(
+        &self,
+        conversa_id: Option<i64>,
+        pergunta: String,
+    ) -> napi::Result<PedidoJs, String> {
+        let pedido = self.ia.perguntar(
+            self.pasta_dados.clone(),
+            self.data_mercado(),
+            conversa_id,
+            pergunta,
+        )?;
+        Ok(PedidoJs { pedido })
+    }
+
+    #[napi]
+    pub fn ia_progresso(&self, pedido: u32) -> napi::Result<ProgressoIaJs, String> {
+        self.ia.progresso(pedido)
+    }
+
+    #[napi]
+    pub fn cancelar_ia(&self, pedido: u32) {
+        self.ia.cancelar(pedido);
     }
 
     #[napi]

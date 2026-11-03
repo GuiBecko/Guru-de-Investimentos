@@ -19,7 +19,7 @@ test("clicar no menu troca a tela e marca o item", async () => {
     await expect(conteudo.getByRole("heading", { name: "Carteira" })).toBeVisible();
     await page.getByRole("link", { name: "Assistente" }).click();
     await expect(conteudo.getByRole("heading", { name: "Assistente" })).toBeVisible();
-    await expect(conteudo).toContainText("Em construção");
+    await expect(conteudo).toContainText("Para conversar com a IA, configure a sua chave.");
     await expect(page.locator("nav a.on")).toHaveCount(1);
     await expect(page.locator("nav a.on")).toHaveText("Assistente");
   } finally {

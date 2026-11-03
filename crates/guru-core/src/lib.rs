@@ -1,6 +1,7 @@
 mod aporte;
 mod db;
 mod error;
+mod ia;
 mod importacao;
 mod investimento;
 mod mercado;
@@ -44,4 +45,11 @@ pub use painel::{
 
 pub use aporte::{
     Aporte, ParteAporte, ResultadoAporte, Situacao as SituacaoAporte, dividir_aporte,
+};
+
+pub use ia::{
+    Acumulador, ClienteFixture, ClienteHttp, ClienteIa, Cofre, CofreMemoria, CofreSistema,
+    ConfigIa, ConfigSalva, ContextoMontado, Conversa, ConversaResumo, ErroIa, Fonte, FonteInterna,
+    MODELOS, MensagemGravada, ParteContexto, Progresso as ProgressoIa, UsoMes, corpo_pedido,
+    estimar_tokens, perguntar, remover_chave, salvar_chave, validar_formato_chave,
 };

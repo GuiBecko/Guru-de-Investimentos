@@ -13,6 +13,21 @@ test("rejeita com Error que carrega o code e a message", async () => {
   );
 });
 
+const IA = [
+  "config",
+  "salvarConfig",
+  "salvarChave",
+  "removerChave",
+  "contexto",
+  "salvarParte",
+  "conversas",
+  "conversa",
+  "apagarConversa",
+  "perguntar",
+  "progresso",
+  "cancelar",
+];
+
 test("api.investimentos e api.carteira repassam à ponte e desembrulham", async () => {
   const chamadas = [];
   const canal = (nome) => (...args) => {
@@ -35,6 +50,7 @@ test("api.investimentos e api.carteira repassam à ponte e desembrulham", async 
       aporte: { dividir: canal("dividir") },
       mercado: Object.fromEntries(["atualizar", "status"].map((n) => [n, canal(n)])),
       importacao: Object.fromEntries(["escolher", "aplicar", "ultima"].map((n) => [n, canal(n)])),
+      ia: Object.fromEntries(IA.map((n) => [n, canal(n)])),
     },
   };
   try {
@@ -70,6 +86,14 @@ test("api.investimentos e api.carteira repassam à ponte e desembrulham", async 
     assert.equal(await api.importacao.aplicar("tk", [{ chave: "a" }]), "aplicar");
     assert.deepEqual(chamadas.at(-1), ["aplicar", "tk", [{ chave: "a" }]]);
     assert.equal(await api.importacao.ultima(), "ultima");
+    for (const n of IA) assert.equal(await api.ia[n](), n);
+    assert.deepEqual(Object.keys(api.ia), IA);
+    await api.ia.salvarParte("carteira", true, null);
+    assert.deepEqual(chamadas.at(-1), ["salvarParte", "carteira", true, null]);
+    await api.ia.perguntar(null, "Oi");
+    assert.deepEqual(chamadas.at(-1), ["perguntar", null, "Oi"]);
+    await api.ia.progresso(7);
+    assert.deepEqual(chamadas.at(-1), ["progresso", 7]);
   } finally {
     delete globalThis.window;
   }

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+keyring = "4.2.0"
 chrono = { version = "0.4.45", default-features = false, features = ["alloc", "now"] }
 quick-xml = "0.42.0"
 rusqlite = { version = "0.40", features = ["bundled"] }
