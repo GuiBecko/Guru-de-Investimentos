@@ -49,6 +49,7 @@ test("Sobre e avisos: versão, os seis textos de AVISOS e os avisos de terceiros
     await terceiros.getByRole("button", { name: "Ver avisos de terceiros" }).click();
     const pre = terceiros.locator("pre");
     await expect(pre).toContainText("== serde ");
+    await expect(pre).toContainText("== electron-updater 6.8.10 (MIT) ==");
     await expect(pre).toContainText("SIL OPEN FONT LICENSE");
     await expect(pre).toContainText("O Electron e o Chromium trazem as próprias licenças");
 

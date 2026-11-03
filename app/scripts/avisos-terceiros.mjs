@@ -10,6 +10,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 // CDLA-Permissive-2.0: só o webpki-roots (os certificados raiz da Mozilla, usados pelo ureq) usa;
 // é uma licença permissiva de dados, sem copyleft.
+// Python-2.0 (a licença da PSF): só o argparse, que o js-yaml do electron-updater usa.
+// BlueOak-1.0.0: só o sax, que o builder-util-runtime do electron-updater usa. As duas são
+// permissivas, sem copyleft, e o texto delas vai junto no arquivo gerado.
 const ACEITAS = new Set([
   "MIT",
   "Apache-2.0",
@@ -26,6 +29,8 @@ const ACEITAS = new Set([
   "MPL-2.0",
   "OFL-1.1",
   "CDLA-Permissive-2.0",
+  "Python-2.0",
+  "BlueOak-1.0.0",
 ]);
 
 const RODAPE =

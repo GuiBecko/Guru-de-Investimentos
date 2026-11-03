@@ -36,11 +36,12 @@ test("crates, pacote do addon e Cargo.lock têm a versão do app", () => {
 
 test("electron, electron-builder e electron-updater ficam em versão exata", () => {
   const todas = { ...pacoteApp.dependencies, ...pacoteApp.devDependencies };
-  for (const nome of ["electron", "electron-builder"]) {
+  for (const nome of ["electron", "electron-builder", "electron-updater"]) {
     assert.ok(todas[nome], `${nome} fora do package.json`);
   }
+  // O electron-updater roda no app instalado: vai em dependencies, não em devDependencies.
+  assert.equal(pacoteApp.dependencies["electron-updater"], "6.8.10");
   for (const nome of ["electron", "electron-builder", "electron-updater"]) {
-    if (todas[nome] === undefined) continue; // electron-updater entra numa tarefa seguinte
     assert.doesNotMatch(todas[nome], /^[\^~]/, `${nome} com faixa: ${todas[nome]}`);
   }
 });

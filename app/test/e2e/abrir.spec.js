@@ -82,6 +82,7 @@ test("a ponte expõe só os canais do app e nada do Electron ou do Node", async 
       "mercado",
       "importacao",
       "ia",
+      "atualizacao",
     ]);
     expect(await page.evaluate(() => Object.keys(window.guru.app))).toEqual(["info", "avisosTerceiros"]);
     expect(await page.evaluate(() => Object.keys(window.guru.investimentos))).toEqual([
@@ -136,6 +137,13 @@ test("a ponte expõe só os canais do app e nada do Electron ou do Node", async 
       "painel",
       "gerarInsights",
       "buscarNoticias",
+    ]);
+    expect(await page.evaluate(() => Object.keys(window.guru.atualizacao))).toEqual([
+      "estado",
+      "procurar",
+      "salvarConfig",
+      "baixar",
+      "reiniciar",
     ]);
     expect(await page.evaluate(() => typeof window.ipcRenderer)).toBe("undefined");
     expect(await page.evaluate(() => typeof window.require)).toBe("undefined");

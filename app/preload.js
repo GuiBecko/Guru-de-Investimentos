@@ -68,4 +68,11 @@ contextBridge.exposeInMainWorld("guru", {
     gerarInsights: () => ipcRenderer.invoke("ia:gerarInsights"),
     buscarNoticias: () => ipcRenderer.invoke("ia:buscarNoticias"),
   },
+  atualizacao: {
+    estado: () => ipcRenderer.invoke("atualizacao:estado"),
+    procurar: () => ipcRenderer.invoke("atualizacao:procurar"),
+    salvarConfig: (dados) => ipcRenderer.invoke("atualizacao:salvarConfig", dados),
+    baixar: () => ipcRenderer.invoke("atualizacao:baixar"),
+    reiniciar: () => ipcRenderer.invoke("atualizacao:reiniciar"),
+  },
 });

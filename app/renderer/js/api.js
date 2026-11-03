@@ -75,4 +75,11 @@ export const api = {
     gerarInsights: () => desembrulhar(window.guru.ia.gerarInsights()),
     buscarNoticias: () => desembrulhar(window.guru.ia.buscarNoticias()),
   },
+  atualizacao: {
+    estado: () => desembrulhar(window.guru.atualizacao.estado()),
+    procurar: () => desembrulhar(window.guru.atualizacao.procurar()),
+    salvarConfig: (dados) => desembrulhar(window.guru.atualizacao.salvarConfig(dados)),
+    baixar: () => desembrulhar(window.guru.atualizacao.baixar()),
+    reiniciar: () => desembrulhar(window.guru.atualizacao.reiniciar()),
+  },
 };

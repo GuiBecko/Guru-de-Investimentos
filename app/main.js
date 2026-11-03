@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, net, shell } = require("electron");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -6,6 +6,7 @@ const { pathToFileURL } = require("node:url");
 const { origemPermitida } = require("./main/origem.js");
 const { normalizarErro } = require("./main/erro.js");
 const { executarSmoke } = require("./main/smoke.js");
+const { montarAtualizacao } = require("./main/atualizacao-electron.js");
 
 // Smoke do pacote: uma opção, não uma variável, porque vale também no app empacotado. Pasta
 // temporária, cofre em memória, nenhuma janela e nenhuma rede; o processo só imprime e sai.
@@ -66,6 +67,8 @@ if (process.env.GURU_JANELA_OCULTA === "1" && !app.isPackaged) {
 
 let janela = null;
 let core = null;
+// Criada depois do whenReady e nunca no smoke (que não chama a rede).
+let atualizacao = null;
 
 const URL_ESPERADA = pathToFileURL(path.join(__dirname, "renderer", "index.html")).href;
 
@@ -116,6 +119,15 @@ ipcMain.handle(
     }
   }),
 );
+
+function atualizador() {
+  if (!atualizacao) {
+    const erro = new Error("A procura de atualizações só funciona no app instalado.");
+    erro.code = "ATUALIZACAO_INDISPONIVEL";
+    throw erro;
+  }
+  return atualizacao;
+}
 
 function nucleo() {
   if (!core) {
@@ -211,6 +223,11 @@ const canais = {
   "ia:painel": () => nucleo().painelIa(),
   "ia:gerarInsights": () => nucleo().gerarInsightsIa(),
   "ia:buscarNoticias": () => nucleo().buscarNoticiasIa(),
+  "atualizacao:estado": () => atualizador().estado(),
+  "atualizacao:procurar": () => atualizador().procurar(),
+  "atualizacao:salvarConfig": (dados) => atualizador().salvarConfig(dados),
+  "atualizacao:baixar": () => atualizador().baixar(),
+  "atualizacao:reiniciar": () => atualizador().reiniciar(),
 };
 for (const [canal, handler] of Object.entries(canais)) {
   ipcMain.handle(canal, tratar(handler));
@@ -287,6 +304,11 @@ function criarJanela() {
     codigo = e.code || "ADDON_INDISPONIVEL";
   }
 
+  // A procura de abertura só começa com a página carregada, para não atrasar a abertura.
+  janela.webContents.once("did-finish-load", () => {
+    if (atualizacao) atualizacao.aoAbrir();
+  });
+
   if (core) {
     janela.loadFile(path.join(__dirname, "renderer", "index.html"));
   } else {
@@ -308,6 +330,14 @@ if (SMOKE) {
   });
   // Idioma fixo: campos de data e números se comportam igual em qualquer máquina.
   app.commandLine.appendSwitch("lang", "pt-BR");
-  app.whenReady().then(criarJanela);
+  app.whenReady().then(() => {
+    try {
+      atualizacao = montarAtualizacao({ app, net });
+    } catch (e) {
+      // Só o feed de teste malformado chega aqui; o app abre sem procurar atualizações.
+      console.error("Falha ao preparar a atualização:", e);
+    }
+    criarJanela();
+  });
   app.on("window-all-closed", () => app.quit());
 }

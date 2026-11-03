@@ -1,8 +1,9 @@
-// Sobre e avisos: a versão, o lugar das atualizações, os textos legais (todos de avisos.js) e os
+// Sobre e avisos: a versão, as atualizações, os textos legais (todos de avisos.js) e os
 // avisos de terceiros, que só são lidos no clique.
 import { api } from "../api.js";
 import { AVISOS, CARTOES_SOBRE } from "../avisos.js";
 import { el } from "./_tabela.js";
+import { montarSecao } from "../atualizacao.js";
 
 const REPOSITORIO = "https://github.com/GuiBecko/Guru-de-Investimentos";
 const FALHA_TERCEIROS = "Não foi possível carregar os avisos de terceiros.";
@@ -41,11 +42,13 @@ function blocoApp(vigente) {
   return s;
 }
 
-function blocoAtualizacoes() {
+// O ajuste, "Procurar agora", a linha do estado e os botões da versão nova (ver atualizacao.js).
+function blocoAtualizacoes(vigente) {
   const s = secao("Atualizações");
   const lugar = el("div");
   lugar.dataset.testid = "sobre-atualizacoes";
   s.append(lugar);
+  montarSecao(lugar, vigente);
   return s;
 }
 
@@ -89,7 +92,7 @@ export function render(raiz, _parametros, vigente) {
   const pagina = el("div", undefined, "sobre");
   pagina.append(
     blocoApp(vigente),
-    blocoAtualizacoes(),
+    blocoAtualizacoes(vigente),
     avisos,
     el("div", AVISOS.REVISAO_JURIDICA, "faixa"),
     blocoTerceiros(vigente),

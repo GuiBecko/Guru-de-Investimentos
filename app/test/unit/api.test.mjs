@@ -31,6 +31,8 @@ const IA = [
   "buscarNoticias",
 ];
 
+const ATUALIZACAO = ["estado", "procurar", "salvarConfig", "baixar", "reiniciar"];
+
 test("api.investimentos e api.carteira repassam à ponte e desembrulham", async () => {
   const chamadas = [];
   const canal = (nome) => (...args) => {
@@ -54,6 +56,7 @@ test("api.investimentos e api.carteira repassam à ponte e desembrulham", async 
       mercado: Object.fromEntries(["atualizar", "status"].map((n) => [n, canal(n)])),
       importacao: Object.fromEntries(["escolher", "aplicar", "ultima"].map((n) => [n, canal(n)])),
       ia: Object.fromEntries(IA.map((n) => [n, canal(n)])),
+      atualizacao: Object.fromEntries(ATUALIZACAO.map((n) => [n, canal(n)])),
     },
   };
   try {
@@ -103,6 +106,10 @@ test("api.investimentos e api.carteira repassam à ponte e desembrulham", async 
     assert.deepEqual(chamadas.at(-1), ["perguntar", null, "Oi", foco]);
     await api.ia.progresso(7);
     assert.deepEqual(chamadas.at(-1), ["progresso", 7]);
+    for (const n of ATUALIZACAO) assert.equal(await api.atualizacao[n](), n);
+    assert.deepEqual(Object.keys(api.atualizacao), ATUALIZACAO);
+    await api.atualizacao.salvarConfig({ procurarAoAbrir: false });
+    assert.deepEqual(chamadas.at(-1), ["salvarConfig", { procurarAoAbrir: false }]);
   } finally {
     delete globalThis.window;
   }
