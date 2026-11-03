@@ -33,11 +33,22 @@ jobs:
   app:
     name: App (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # A arquitetura do pacote é a do runner: macos-latest é arm64. O macOS
+        # x64 (macos-15-intel) só roda na release.
+        include:
+          - os: ubuntu-latest
+            arch: x64
+          - os: windows-latest
+            arch: x64
+          - os: macos-latest
+            arch: arm64
+    env:
+      # O CI nunca assina: sem certificado, o macOS fica com a assinatura ad hoc.
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -67,6 +78,10 @@ jobs:
       - name: Testes unitários do app
         working-directory: app
         run: npm test
+      - name: Conferir os avisos de terceiros
+        if: runner.os == 'Linux'
+        working-directory: app
+        run: npm run avisos:conferir
 
       # O Electron em Ubuntu 24.04 não abre janelas com sandbox quando o
       # AppArmor restringe namespaces de usuário sem perfil. Liberamos isso só
@@ -82,6 +97,58 @@ jobs:
         if: runner.os != 'Linux'
         working-directory: app
         run: npx playwright test
+
+      # O pacote é provado em todo evento: empacota sem instalador e roda o
+      # smoke na pasta desempacotada. O passo falha se o código não for 0 ou se
+      # a saída não tiver GURU_SMOKE_OK.
+      - name: Empacotar sem instalador
+        working-directory: app
+        run: npm run dist:dir -- --${{ matrix.arch }}
+      - name: Smoke do pacote (Linux)
+        if: runner.os == 'Linux'
+        working-directory: app
+        shell: bash
+        run: |
+          saida="$(xvfb-run -a dist/linux-unpacked/guru-de-investimentos --guru-smoke)"
+          echo "$saida"
+          grep -q '^GURU_SMOKE_OK ' <<<"$saida"
+      - name: Smoke do pacote (Windows)
+        if: runner.os == 'Windows'
+        working-directory: app
+        shell: bash
+        run: |
+          saida="$("dist/win-unpacked/Guru de Investimentos.exe" --guru-smoke)"
+          echo "$saida"
+          grep -q '^GURU_SMOKE_OK ' <<<"$saida"
+      - name: Smoke do pacote (macOS)
+        if: runner.os == 'macOS'
+        working-directory: app
+        shell: bash
+        run: |
+          saida="$("dist/mac-arm64/Guru de Investimentos.app/Contents/MacOS/Guru de Investimentos" --guru-smoke)"
+          echo "$saida"
+          grep -q '^GURU_SMOKE_OK ' <<<"$saida"
+
+      # Os instaladores completos só no push para a main, como artefatos de 7
+      # dias. Nada é publicado: o script dist leva --publish never.
+      - name: Gerar os instaladores (main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: app
+        run: npm run dist -- --${{ matrix.arch }}
+      - name: Guardar os instaladores (main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: instaladores-${{ matrix.os }}
+          path: |
+            app/dist/*.exe
+            app/dist/*.dmg
+            app/dist/*.AppImage
+            app/dist/*.deb
+            app/dist/*.blockmap
+            app/dist/latest*.yml
+          retention-days: 7
+          if-no-files-found: error
 
       - name: Anexar relatório do Playwright em caso de falha
         if: failure()

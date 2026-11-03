@@ -6,13 +6,14 @@ Como o Guru de Investimentos é montado por dentro. O que o app faz está em [`m
 
 | Camada | Tecnologia |
 |--------|------------|
-| Janela e empacotamento | Electron |
+| Janela | Electron |
 | Interface | HTML, CSS e JavaScript puros, sem framework e sem etapa de build |
 | Regras, dados e rede | Rust |
 | Ponte entre os dois | Addon nativo Node com [napi-rs](https://napi.rs) |
 | Banco local | SQLite, via `rusqlite` com a biblioteca embutida (`bundled`) |
 | Chave da IA | Cofre do sistema operacional, via crate `keyring` |
 | HTTP | `ureq` |
+| Empacotamento e atualização | Empacotamento: electron-builder 26.17.0; atualização: electron-updater 6.8.10 |
 
 ## Camadas
 
@@ -80,7 +81,7 @@ A migração `0005` acrescenta `investimentos.codigo_b3` (código do ativo na pl
 
 ## Rede
 
-Só o `guru-core` acessa a rede, e só estes destinos. Qualquer outra URL é recusada antes da requisição. Cada requisição tem timeout de 60 s e `User-Agent: GuruDeInvestimentos/<versão>`.
+Só o `guru-core` acessa a rede, e só estes destinos, com uma exceção: a procura e o download de atualizações, que ficam no processo principal (`app/main/atualizacao-electron.js`, fase 7). No `guru-core`, qualquer outra URL é recusada antes da requisição, e cada requisição tem timeout de 60 s e `User-Agent: GuruDeInvestimentos/<versão>`.
 
 Só a Anthropic recebe dado do usuário, com a chave dele e só as partes do contexto que ele deixou ligadas. As fontes de mercado recebem só datas e códigos de série nas URLs.
 
@@ -92,6 +93,10 @@ Só a Anthropic recebe dado do usuário, com a chave dele e só as partes do con
 | `https://api.anthropic.com/v1/messages` (POST) | Perguntas ao Claude, com a chave do usuário | 6a |
 | `https://api.anthropic.com/v1/messages` (POST) | Insights e notícias do painel da Carteira, só pelos botões | 6b |
 | `https://api.anthropic.com/v1/models?limit=1` (GET) | Conferir a chave ao salvar, sem custo | 6a |
+| `https://api.github.com/repos/GuiBecko/Guru-de-Investimentos/releases/latest` (GET) | Procurar uma versão nova: ao abrir o app, se "Procurar atualizações ao abrir o app" estiver ligada, e pelo botão "Procurar agora". Processo principal. | 7 |
+| `https://github.com/GuiBecko/Guru-de-Investimentos/releases…` e `*.githubusercontent.com` | Baixar a versão nova pelo electron-updater (`releases.atom`, o `latest.yml` ou `latest-linux.yml` da tag e o instalador, com o redirecionamento do GitHub), só depois do clique em "Baixar e instalar", no Windows e no AppImage. Processo principal. | 7 |
+
+Os pedidos ao GitHub não levam nenhum dado do usuário: só a versão do app no `User-Agent` (`GuruDeInvestimentos/<versão>`), além do IP. A procura leva `Accept: application/vnd.github+json`, tem prazo de 30 s e trata uma resposta acima de 1 MB como erro. Fora do app empacotado, sem `GURU_TESTE_ATUALIZACAO`, nada é consultado.
 
 Os três pedidos à Anthropic levam os cabeçalhos `x-api-key`, `anthropic-version: 2026-10-21`, `content-type: application/json` e o mesmo `User-Agent`. Com Opus e Sonnet, os pedidos a `/v1/messages` (perguntas, insights e notícias) levam também `anthropic-beta: server-side-fallback-2026-07-01`. Prazos: 60 s para conectar e 10 min para a resposta inteira (30 s no total para conferir a chave). Uma resposta acima de 8 MB é cortada com erro. A resposta chega por streaming (SSE) e é lida numa thread do addon, com conexão própria ao banco; a tela acompanha o pedido a cada 150 ms e pode pará-lo.
 
@@ -172,6 +177,8 @@ Guru-de-Investimentos/
 
 A CI (GitHub Actions) roda fmt, clippy e os testes do núcleo Rust só em Linux; o addon (build e testes) e o app (testes unitários e E2E) rodam em Linux, Windows e macOS.
 
+O pacote também é provado na CI. Em todo PR, nos três sistemas, `npm run dist:dir` empacota sem instalador e o smoke (`--guru-smoke`) roda na pasta desempacotada; o passo falha sem `GURU_SMOKE_OK` ou com código diferente de 0. No Linux, a CI confere também os avisos de terceiros (`npm run avisos:conferir`). No push para a `main`, a CI gera os instaladores completos e os guarda como artefatos por 7 dias. O `app/test/unit/workflows.test.js` confere nos `.yml` que nenhum passo publica.
+
 ### Modo de teste de mercado
 
 Os testes do núcleo nunca acessam a rede: usam a pasta `crates/guru-core/tests/fixtures/` (dados reais de 28/10/2026) e um `Baixador` falso.
@@ -182,6 +189,23 @@ Nos e2e, o app lê os arquivos de uma pasta em vez de baixar, com duas variávei
 - `GURU_MERCADO_HOJE=AAAA-MM-DD`: data que substitui "hoje" só nos dados de mercado (atualização e valorização). Os e2e usam `2026-10-28`.
 
 As duas valem só fora do app empacotado.
+
+## Distribuição e atualização
+
+O electron-builder empacota o app com a configuração de `app/electron-builder.yml`, sempre com `--publish never`.
+
+- **Formatos e arquiteturas:** Windows x64 (NSIS), macOS arm64 e macOS x64 em dois `.dmg` separados, e Linux x64 (AppImage e `.deb`). A configuração não lista arquiteturas: cada runner constrói a própria, e o workflow passa `--x64` ou `--arm64`. Não há DMG universal.
+- **Addon:** o addon napi é construído no runner de cada sistema e arquitetura e entra no pacote pelo `node_modules`. O `.node` fica fora do asar (`asarUnpack`), e o código Rust e os testes do addon ficam fora do pacote.
+- **Fusíveis do Electron:** `RunAsNode`, `NODE_OPTIONS` e os argumentos de inspeção desligados, e `OnlyLoadAppFromAsar` ligado. A integridade do asar fica de fora, porque no macOS ela depende de assinatura.
+- **Assinatura pendente:** o projeto não tem certificado. O Windows sai sem assinatura, e o macOS com a assinatura ad hoc e sem notarização. Os workflows passam os segredos de assinatura só quando eles existem; ligar a assinatura depois é cadastrar os segredos e trocar `notarize: false` por `true`.
+- **Smoke do pacote:** `--guru-smoke` abre o núcleo numa pasta temporária com o cofre em memória, confere o conteúdo do pacote, imprime `GURU_SMOKE_OK` e sai com 0, sem janela e sem rede.
+- **Release:** uma tag `v*` dispara o `.github/workflows/release.yml`, que confere que a tag é `v` + a versão do `app/package.json`, constrói os instaladores em `ubuntu-latest`, `windows-latest`, `macos-latest` (arm64) e `macos-15-intel` (x64), roda o smoke em cada um e cria a release em rascunho, com o `SHA256SUMS.txt`. Quem publica é uma pessoa.
+- **Atualização:** a procura é do processo principal e consulta a última release publicada. Só no Windows (NSIS) e no AppImage o electron-updater baixa e instala, e só pelos cliques em "Baixar e instalar" e "Reiniciar e atualizar". No macOS e no `.deb`, o app mostra a versão nova e o link "Ver no GitHub".
+- **`atualizacao.json`:** na pasta de dados, guarda `{ "procurarAoAbrir": true|false }`, o ajuste "Procurar atualizações ao abrir o app". É assunto da casca Electron, não do banco.
+
+### Modo de teste da atualização
+
+Nos e2e, `GURU_TESTE_ATUALIZACAO=<arquivo.json>` troca a API do GitHub por esse arquivo, no formato `{ "formato": "nsis"|"appimage"|"dmg"|"deb", "ultima": { "tag", "html_url" } | null, "erro": true|false }`. O instalador falso avança o progresso em 0, 50 e 100 e, em "Reiniciar e atualizar", só muda o estado, sem fechar o app. A variável vale só fora do app empacotado.
 
 ## Em aberto
 
