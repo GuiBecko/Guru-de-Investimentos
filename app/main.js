@@ -1,12 +1,57 @@
 const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { origemPermitida } = require("./main/origem.js");
 const { normalizarErro } = require("./main/erro.js");
+const { executarSmoke } = require("./main/smoke.js");
+
+// Smoke do pacote: uma opção, não uma variável, porque vale também no app empacotado. Pasta
+// temporária, cofre em memória, nenhuma janela e nenhuma rede; o processo só imprime e sai.
+const SMOKE = process.argv.includes("--guru-smoke");
+const PRAZO_SMOKE_MS = 30000;
+if (SMOKE) {
+  const pasta = fs.mkdtempSync(path.join(os.tmpdir(), "guru-smoke-"));
+  app.setPath("userData", pasta);
+  app.dock?.hide();
+  const sair = (codigo) => {
+    try {
+      fs.rmSync(pasta, { recursive: true, force: true });
+    } catch (e) {
+      console.error("Não foi possível apagar a pasta do smoke:", e.message);
+    }
+    app.exit(codigo);
+  };
+  setTimeout(() => {
+    console.log(`GURU_SMOKE_FALHOU PRAZO: o smoke passou de ${PRAZO_SMOKE_MS / 1000} s.`);
+    sair(2);
+  }, PRAZO_SMOKE_MS);
+  app
+    .whenReady()
+    .then(() =>
+      executarSmoke({
+        pasta,
+        versaoApp: app.getVersion(),
+        empacotado: app.isPackaged,
+        abrirCore: (dir, opcoes) => require("@guru/core-node").Core.open(dir, opcoes),
+        existe: (caminho) => fs.existsSync(caminho),
+        listar: (dir) => fs.readdirSync(dir),
+        dirApp: app.getAppPath(),
+        dirRecursos: process.resourcesPath,
+        plataforma: process.platform,
+        arquitetura: process.arch,
+        log: (linha) => console.log(linha),
+      }),
+    )
+    .then(sair, (e) => {
+      console.log(`GURU_SMOKE_FALHOU ADDON_INDISPONIVEL: ${e && e.message}`);
+      sair(1);
+    });
+}
 
 // Variáveis de teste (GURU_*) só valem fora do app empacotado.
-if (process.env.GURU_DATA_DIR && !app.isPackaged) {
+if (process.env.GURU_DATA_DIR && !app.isPackaged && !SMOKE) {
   app.setPath("userData", process.env.GURU_DATA_DIR);
 }
 
@@ -52,7 +97,7 @@ ipcMain.handle(
       erro.code = forcado;
       throw erro;
     }
-    return nucleo().info();
+    return { ...nucleo().info(), versaoApp: app.getVersion() };
   }),
 );
 
@@ -235,7 +280,9 @@ function criarJanela() {
   }
 }
 
-if (!app.requestSingleInstanceLock()) {
+if (SMOKE) {
+  // Tratado no topo: sem trava de instância única, sem janela.
+} else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => {

@@ -3,7 +3,8 @@ import { iniciar } from "./router.js";
 import { iniciarMercado } from "./mercado.js";
 import { atualizarUltimaImportacao } from "./importacao-ultima.js";
 
-function mostrarVersoes(core, esquema) {
+function mostrarVersoes(versaoApp, core, esquema) {
+  document.querySelector('[data-testid="app-version"]').textContent = versaoApp;
   document.querySelector('[data-testid="core-version"]').textContent = core;
   document.querySelector('[data-testid="schema-version"]').textContent = esquema;
 }
@@ -16,10 +17,10 @@ try {
 
 api.app
   .info()
-  .then((info) => mostrarVersoes(info.coreVersion, String(info.schemaVersion)))
+  .then((info) => mostrarVersoes(info.versaoApp, info.coreVersion, String(info.schemaVersion)))
   .catch((e) => {
     console.error("Falha ao ler as versões:", e);
-    mostrarVersoes("—", "—");
+    mostrarVersoes("—", "—", "—");
   });
 
 iniciarMercado(document.querySelector('[data-testid="mercado"]'));

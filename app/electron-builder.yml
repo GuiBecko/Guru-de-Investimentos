@@ -1,0 +1,26 @@
+appId: io.github.guibecko.guru-de-investimentos
+productName: Guru de Investimentos
+artifactName: Guru-de-Investimentos-${version}-${os}-${arch}.${ext}
+directories: { output: dist, buildResources: build }
+npmRebuild: false
+asar: true
+files:
+  - main.js
+  - preload.js
+  - main/**
+  - renderer/**
+  - avisos-terceiros.txt
+  - package.json
+  - "!node_modules/@guru/core-node/{src,test,node_modules,Cargo.toml,build.rs,package-lock.json}"
+asarUnpack: ["node_modules/@guru/core-node/*.node"]
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  onlyLoadAppFromAsar: true
+publish: { provider: github, owner: GuiBecko, repo: Guru-de-Investimentos, releaseType: release }
+win: { target: nsis }
+nsis: { oneClick: true, perMachine: false, deleteAppDataOnUninstall: false }
+mac: { target: dmg, category: public.app-category.finance, notarize: false }
+linux: { target: [AppImage, deb], category: Office, synopsis: Carteira de investimentos com IA }
+deb: { maintainer: "Guilherme Becker <GuiBecko@users.noreply.github.com>" }

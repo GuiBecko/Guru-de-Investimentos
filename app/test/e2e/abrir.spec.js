@@ -27,10 +27,32 @@ test("abre com título e mostra a versão do esquema", async () => {
     expect(await page.title()).toBe("Guru de Investimentos");
     await expect(page.getByTestId("schema-version")).toHaveText("7");
     await expect(page.getByTestId("core-version")).not.toBeEmpty();
+    await expect(page.getByTestId("app-version")).toHaveText("0.9.0");
     expect(fs.existsSync(path.join(dataDir, "guru.db"))).toBe(true);
   } finally {
     await app.close();
   }
+});
+
+test("--guru-smoke abre o núcleo numa pasta temporária, não cria janela e sai com 0", async () => {
+  // Sem GURU_DATA_DIR: o smoke cria e apaga a própria pasta temporária.
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== "GURU_DATA_DIR"));
+  const smoke = spawn(require("electron"), [".", "--guru-smoke"], { cwd: appDir, env, stdio: ["ignore", "pipe", "pipe"] });
+  let saida = "";
+  smoke.stdout.on("data", (d) => (saida += d));
+  smoke.stderr.on("data", (d) => (saida += d));
+  const codigo = await new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      smoke.kill();
+      resolve(null);
+    }, 25000);
+    smoke.once("exit", (c) => {
+      clearTimeout(timer);
+      resolve(c);
+    });
+  });
+  expect(saida).toMatch(/GURU_SMOKE_OK app=0\.9\.0 nucleo=0\.9\.0 esquema=7/);
+  expect(codigo).toBe(0);
 });
 
 test("a interface não tem acesso ao Node", async () => {
