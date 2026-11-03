@@ -79,7 +79,8 @@ fn salvar_config_valida_modelo_e_instrucoes() {
     let (_d, db) = banco();
     let erros = db
         .salvar_config_ia("gpt-9", &"a".repeat(4001), false, true, false)
-        .unwrap();
+        .unwrap()
+        .erros;
     assert_eq!(
         erros,
         vec![
@@ -100,7 +101,7 @@ fn salvar_config_valida_modelo_e_instrucoes() {
     let ok = db
         .salvar_config_ia("claude-haiku-5-5", "Seja breve.", false, true, false)
         .unwrap();
-    assert!(ok.is_empty());
+    assert!(ok.erros.is_empty());
     let c = db.config_ia().unwrap();
     assert_eq!(c.modelo, "claude-haiku-5-5");
     assert_eq!(c.instrucoes, "Seja breve.");
@@ -295,6 +296,10 @@ fn formato_da_chave() {
         "sk-ant-curta",
         "sk-ant-com espaco 123456789012345",
         &format!("sk-ant-{}", "a".repeat(300)),
+        "sk-ant-api03-acentuação-1234",
+        "sk-ant-api03-controle\u{7}-1234",
+        "sk-ant-api03-tab\tno-meio-1234",
+        "sk-ant-api03-del\u{7f}-123456",
     ] {
         let e = validar_formato_chave(ruim).expect(ruim);
         assert_eq!(e.campo, "chave");
@@ -302,6 +307,8 @@ fn formato_da_chave() {
         assert!(!e.mensagem.contains(ruim));
     }
     assert!(validar_formato_chave("sk-ant-api03-abcdefghijklmnop").is_none());
+    // Espaços e quebra de linha nas pontas (colar a chave) não contam.
+    assert!(validar_formato_chave("  sk-ant-api03-abcdefghijklmnop\n").is_none());
 }
 
 #[test]
@@ -323,4 +330,100 @@ fn erro_do_cofre_tem_codigo_proprio() {
         e.to_string(),
         "Não foi possível usar o cofre de senhas do sistema."
     );
+}
+
+fn carteira(db: &Db) -> guru_core::ParteContexto {
+    db.partes_contexto(hoje())
+        .unwrap()
+        .into_iter()
+        .find(|p| p.parte == "carteira")
+        .unwrap()
+}
+
+#[test]
+fn ligar_apenas_percentuais_volta_carteira_e_metas_editadas_ao_automatico() {
+    let (_d, db) = banco();
+    criar(
+        &db,
+        &cdb(1_000_000, "Banco Fictício", "Banco Fictício", None),
+    );
+    let r = db
+        .salvar_config_ia("claude-opus-5-5", "", false, true, true)
+        .unwrap();
+    assert!(r.erros.is_empty() && !r.edicoes_restauradas);
+    db.salvar_parte_contexto("carteira", true, Some("Tenho R$ 10.000,00 no CDB."))
+        .unwrap();
+    db.salvar_parte_contexto("metas", true, Some("Meta de R$ 50.000,00."))
+        .unwrap();
+    db.salvar_parte_contexto("perfil", true, Some("Meu perfil."))
+        .unwrap();
+    assert!(db.contexto_montado(hoje()).unwrap().texto.contains("R$"));
+
+    let r = db
+        .salvar_config_ia("claude-opus-5-5", "", true, true, true)
+        .unwrap();
+    assert!(r.erros.is_empty() && r.edicoes_restauradas);
+    let texto = db.contexto_montado(hoje()).unwrap().texto;
+    assert!(!texto.contains("R$"), "{texto}");
+    let partes = db.partes_contexto(hoje()).unwrap();
+    for p in &partes {
+        // Perfil não depende das chaves: a edição fica.
+        assert_eq!(p.editado, p.parte == "perfil", "{}", p.parte);
+    }
+    // Salvar de novo, sem mudar a privacidade, não restaura nada.
+    let r = db
+        .salvar_config_ia("claude-opus-5-5", "", true, true, true)
+        .unwrap();
+    assert!(!r.edicoes_restauradas);
+}
+
+#[test]
+fn desligar_nomes_das_instituicoes_volta_so_a_carteira() {
+    let (_d, db) = banco();
+    db.salvar_config_ia("claude-opus-5-5", "", true, true, true)
+        .unwrap();
+    db.salvar_parte_contexto("carteira", true, Some("Tudo no Banco Fictício."))
+        .unwrap();
+    db.salvar_parte_contexto("metas", true, Some("Minhas metas."))
+        .unwrap();
+    let r = db
+        .salvar_config_ia("claude-opus-5-5", "", true, false, true)
+        .unwrap();
+    assert!(r.edicoes_restauradas);
+    assert!(!carteira(&db).editado);
+    assert!(
+        db.partes_contexto(hoje())
+            .unwrap()
+            .iter()
+            .any(|p| p.parte == "metas" && p.editado)
+    );
+}
+
+#[test]
+fn afrouxar_a_privacidade_mantem_as_edicoes() {
+    let (_d, db) = banco();
+    db.salvar_config_ia("claude-opus-5-5", "", true, false, true)
+        .unwrap();
+    db.salvar_parte_contexto("carteira", true, Some("Minha carteira."))
+        .unwrap();
+    // Desligar "Apenas percentuais" e ligar "Nome das instituições" só afrouxam.
+    let r = db
+        .salvar_config_ia("claude-opus-5-5", "", false, true, true)
+        .unwrap();
+    assert!(!r.edicoes_restauradas);
+    let c = carteira(&db);
+    assert!(c.editado);
+    assert_eq!(c.texto, "Minha carteira.");
+}
+
+#[test]
+fn config_com_erro_nao_restaura_edicoes() {
+    let (_d, db) = banco();
+    db.salvar_config_ia("claude-opus-5-5", "", false, true, true)
+        .unwrap();
+    db.salvar_parte_contexto("carteira", true, Some("R$ 1,00"))
+        .unwrap();
+    let r = db.salvar_config_ia("gpt-9", "", true, true, true).unwrap();
+    assert!(!r.erros.is_empty() && !r.edicoes_restauradas);
+    assert!(carteira(&db).editado);
 }

@@ -158,3 +158,57 @@ test("redesenhar não perde instruções digitadas e ainda não salvas", () =>
     await expect(page.getByRole("switch", { name: "Nome das instituições" })).toBeChecked();
     await expect(page.getByLabel("Instruções para a sua IA")).toHaveValue("Rascunho sem salvar.");
   }));
+
+test("ligar Apenas percentuais volta a carteira editada ao automático e avisa; afrouxar não", () =>
+  comApp(async (page) => {
+    const percentuais = page.getByRole("switch", { name: "Apenas percentuais" });
+    const aviso = page.getByTestId("aviso-privacidade");
+    const bloco = page.getByTestId("parte-carteira");
+    const editarCarteira = async (texto) => {
+      await bloco.getByRole("button", { name: "editar" }).click();
+      await bloco.getByRole("textbox").fill(texto);
+      await bloco.getByRole("button", { name: "Salvar", exact: true }).click();
+      await expect(bloco).toContainText("editado por você");
+    };
+    await percentuais.uncheck();
+    await expect(page.getByRole("switch", { name: "Apenas percentuais" })).not.toBeChecked();
+    await editarCarteira("Tenho R$ 10.000,00 no CDB.");
+    await expect(aviso).toHaveCount(0);
+
+    await page.getByRole("switch", { name: "Apenas percentuais" }).check();
+    await expect(aviso).toHaveText("Suas edições da carteira e das metas voltaram ao automático para respeitar a privacidade.");
+    await expect(aviso).toHaveAttribute("role", "status");
+    await expect(bloco).not.toContainText("editado por você");
+    await expect(bloco).not.toContainText("R$");
+
+    // Ligar "Nome das instituições" afrouxa a privacidade: a edição fica e não há aviso.
+    await editarCarteira("Minha carteira, do meu jeito.");
+    await page.getByRole("switch", { name: "Nome das instituições" }).check();
+    await expect(page.getByRole("switch", { name: "Nome das instituições" })).toBeChecked();
+    await expect(aviso).toHaveCount(0);
+    await expect(bloco).toContainText("editado por você");
+    await expect(bloco).toContainText("Minha carteira, do meu jeito.");
+  }));
+
+test("erro IA_ ao salvar a chave mostra a mensagem do núcleo; outro erro, a genérica", () =>
+  comApp(async (page) => {
+    const falharCom = (code, message) =>
+      page.evaluate(
+        ([c, m]) =>
+          import("./js/api.js").then(({ api }) => {
+            api.ia.salvarChave = () => Promise.reject(Object.assign(new Error(m), { code: c }));
+          }),
+        [code, message],
+      );
+    const salvar = async () => {
+      await page.getByLabel("Chave da API da Anthropic").fill("sk-ant-teste-boa-12345678-4f2a");
+      await main(page).getByRole("button", { name: "Salvar chave" }).click();
+    };
+    await falharCom("IA_COFRE_INDISPONIVEL", "Não foi possível usar o cofre de senhas do sistema.");
+    await salvar();
+    await expect(main(page)).toContainText("Não foi possível usar o cofre de senhas do sistema.");
+    await falharCom("SQLITE", "Erro no banco de dados: disk I/O error");
+    await salvar();
+    await expect(main(page)).toContainText("Não foi possível salvar. Tente de novo.");
+    await expect(main(page)).not.toContainText("disk I/O error");
+  }));

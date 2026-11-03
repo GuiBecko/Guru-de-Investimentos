@@ -53,6 +53,10 @@ function mostrarErro(erro, input, mensagem) {
 
 const juntar = (erros) => erros.map((e) => e.mensagem).join(" ");
 
+const AVISO_PRIVACIDADE = "Suas edições da carteira e das metas voltaram ao automático para respeitar a privacidade.";
+// Partes cujo texto automático depende das chaves de privacidade (o núcleo as volta ao automático).
+const PARTES_PRIVACIDADE = ["carteira", "metas"];
+
 export async function render(raiz, _parametros, vigente) {
   // Texto digitado e ainda não salvo, que um redesenho não pode perder.
   const editando = new Map();
@@ -60,6 +64,8 @@ export async function render(raiz, _parametros, vigente) {
   // Valores atuais da configuração: cada controle muda aqui na hora e toda gravação envia estes valores.
   let estado = null;
   let fila = Promise.resolve();
+  // Mostra o aviso de que edições voltaram ao automático; vale até a próxima gravação da configuração.
+  let edicoesRestauradas = false;
   const doConfig = (c) => ({ modelo: c.modelo, instrucoes: c.instrucoes, apenasPercentuais: c.apenasPercentuais, nomesInstituicoes: c.nomesInstituicoes, buscaWeb: c.buscaWeb });
 
   // Grava a configuração em fila, sempre com o `estado` do momento do envio.
@@ -68,12 +74,15 @@ export async function render(raiz, _parametros, vigente) {
     Object.assign(estado, mudancas);
     const tarefa = fila.then(async () => {
       try {
-        const erros = await api.ia.salvarConfig({ ...estado });
+        const { erros, edicoesRestauradas: restauradas } = await api.ia.salvarConfig({ ...estado });
         if (!vigente()) return;
         if (erros?.length) {
           Object.assign(estado, anterior);
           return aoErro(juntar(erros));
         }
+        edicoesRestauradas = restauradas;
+        // Um rascunho aberto ainda traz o texto antigo, que a privacidade não deixa mais ir.
+        if (restauradas) for (const parte of PARTES_PRIVACIDADE) editando.delete(parte);
         aoOk?.();
         await atualizar();
       } catch (e) {
@@ -119,7 +128,8 @@ export async function render(raiz, _parametros, vigente) {
     } catch (e) {
       console.error("Falha ao salvar a configuração da IA:", e);
       if (!vigente()) return;
-      aoErro("Não foi possível salvar. Tente de novo.");
+      // Os erros do núcleo da IA (IA_*) já vêm em português para o usuário.
+      aoErro(typeof e?.code === "string" && e.code.startsWith("IA_") ? e.message : "Não foi possível salvar. Tente de novo.");
     }
   }
 
@@ -343,7 +353,14 @@ export async function render(raiz, _parametros, vigente) {
     const total = el("small", `≈ ${numero(c.tokens)} tokens`, "mono");
     total.dataset.testid = "ctx-tokens";
     topo.append(el("b", "Contexto enviado à IA"), total);
-    card.append(topo, ...c.partes.map(bloco));
+    card.append(topo);
+    if (edicoesRestauradas) {
+      const aviso = el("div", AVISO_PRIVACIDADE, "faixa");
+      aviso.setAttribute("role", "status");
+      aviso.dataset.testid = "aviso-privacidade";
+      card.append(aviso);
+    }
+    card.append(...c.partes.map(bloco));
     return card;
   }
 

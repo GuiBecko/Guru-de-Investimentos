@@ -52,6 +52,13 @@ pub struct ConfigIaEntradaJs {
     pub busca_web: bool,
 }
 
+#[napi(object)]
+pub struct ConfigSalvaJs {
+    pub erros: Vec<ErroCampoJs>,
+    /// Carteira e metas editadas voltaram ao automático porque a privacidade ficou mais restrita.
+    pub edicoes_restauradas: bool,
+}
+
 #[napi(object, use_nullable = true)]
 pub struct ParteJs {
     pub parte: String,
@@ -389,6 +396,51 @@ impl Task for SalvarChave {
             }
         }
     }
+}
+
+/// Apaga a chave do cofre do sistema (que pode demorar) na threadpool, com conexão própria.
+pub struct RemoverChave {
+    pub pasta_dados: PathBuf,
+    pub cofre: Arc<dyn Cofre>,
+}
+
+impl Task for RemoverChave {
+    type Output = Result<(), (String, String)>;
+    type JsValue = ();
+
+    fn compute(&mut self) -> napi::Result<Self::Output> {
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let db = Db::open(&self.pasta_dados)?;
+            guru_core::remover_chave(&db, self.cofre.as_ref())
+        }));
+        Ok(match r {
+            Ok(r) => r.map_err(|e: CoreError| (e.code().to_string(), e.to_string())),
+            Err(_) => Err((
+                "ERRO_INTERNO".to_string(),
+                "Ocorreu um erro interno ao remover a chave.".to_string(),
+            )),
+        })
+    }
+
+    // Mesma rejeição com `code` de `SalvarChave::resolve`.
+    fn resolve(&mut self, env: Env, saida: Self::Output) -> napi::Result<Self::JsValue> {
+        match saida {
+            Ok(()) => Ok(()),
+            Err((code, mensagem)) => {
+                let mut erro =
+                    env.create_error(napi::Error::new(napi::Status::GenericFailure, mensagem))?;
+                erro.set("code", code)?;
+                Err(napi::Error::from(erro.to_unknown()))
+            }
+        }
+    }
+}
+
+pub fn tarefa_remover_chave(pasta_dados: PathBuf, ia: &Ia) -> AsyncTask<RemoverChave> {
+    AsyncTask::new(RemoverChave {
+        pasta_dados,
+        cofre: ia.cofre.clone(),
+    })
 }
 
 pub fn tarefa_chave(pasta_dados: PathBuf, ia: &Ia, chave: String) -> AsyncTask<SalvarChave> {

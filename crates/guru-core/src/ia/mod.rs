@@ -10,7 +10,7 @@ mod sse;
 
 pub use cliente::{ClienteFixture, ClienteHttp, ClienteIa, ErroIa, corpo_pedido};
 pub use cofre::{Cofre, CofreMemoria, CofreSistema, validar_formato_chave};
-pub use config::{ConfigIa, MODELOS};
+pub use config::{ConfigIa, ConfigSalva, MODELOS};
 pub use contexto::{ContextoMontado, FonteInterna, ParteContexto, estimar_tokens};
 pub use conversa::{
     Conversa, ConversaResumo, MensagemGravada, UsoMes, perguntar, remover_chave, salvar_chave,

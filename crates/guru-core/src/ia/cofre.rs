@@ -70,12 +70,14 @@ impl Cofre for CofreMemoria {
     }
 }
 
-/// Começa com `sk-ant-`, de 20 a 300 caracteres, sem espaço. A mensagem nunca repete a chave.
+/// Sem os espaços das pontas: começa com `sk-ant-`, de 20 a 300 caracteres, só ASCII visível
+/// (sem espaço, acento nem caractere de controle, que o cabeçalho HTTP recusaria).
+/// A mensagem nunca repete a chave.
 pub fn validar_formato_chave(chave: &str) -> Option<ErroCampo> {
-    let tamanho = chave.chars().count();
+    let chave = chave.trim();
     let valida = chave.starts_with("sk-ant-")
-        && (20..=300).contains(&tamanho)
-        && !chave.chars().any(char::is_whitespace);
+        && (20..=300).contains(&chave.len())
+        && chave.bytes().all(|b| (0x21..=0x7E).contains(&b));
     (!valida).then(|| ErroCampo {
         campo: "chave".into(),
         mensagem: "Isso não parece uma chave da Anthropic (começa com sk-ant-).".into(),

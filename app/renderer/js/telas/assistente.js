@@ -218,6 +218,8 @@ export async function render(raiz, _parametros, vigente = () => true) {
         p = await api.ia.progresso(pedido);
       } catch (e) {
         console.error("Falha ao acompanhar a resposta da IA:", e);
+        // Sem acompanhar, o pedido não pode seguir sozinho: pede para parar, como o Parar.
+        api.ia.cancelar(pedido).catch(() => {});
         if (!vigente()) return;
         return falhar("Não foi possível acompanhar a resposta. Tente de novo.");
       }

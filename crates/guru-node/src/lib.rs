@@ -15,8 +15,8 @@ mod painel;
 mod perfil;
 use aporte::ResultadoAporteJs;
 use ia::{
-    ConfigIaEntradaJs, ConfigIaJs, ContextoIaJs, ConversaJs, ConversaResumoJs, Ia, ModeloJs,
-    PedidoJs, ProgressoIaJs, SalvarChave, UsoIaJs,
+    ConfigIaEntradaJs, ConfigIaJs, ConfigSalvaJs, ContextoIaJs, ConversaJs, ConversaResumoJs, Ia,
+    ModeloJs, PedidoJs, ProgressoIaJs, RemoverChave, SalvarChave, UsoIaJs,
 };
 use importacao::{ComparacaoGuardada, ComparacaoJs, DecisaoJs, ResultadoImportacaoJs};
 use investimentos::{
@@ -417,8 +417,8 @@ impl Core {
     pub fn salvar_config_ia(
         &self,
         dados: ConfigIaEntradaJs,
-    ) -> napi::Result<Vec<ErroCampoJs>, String> {
-        let e = self
+    ) -> napi::Result<ConfigSalvaJs, String> {
+        let r = self
             .db()?
             .salvar_config_ia(
                 &dados.modelo,
@@ -428,7 +428,10 @@ impl Core {
                 dados.busca_web,
             )
             .map_err(to_js)?;
-        Ok(erros(e))
+        Ok(ConfigSalvaJs {
+            erros: erros(r.erros),
+            edicoes_restauradas: r.edicoes_restauradas,
+        })
     }
 
     /// Assíncrono: valida a chave na Anthropic (rede), com conexão própria.
@@ -437,9 +440,10 @@ impl Core {
         ia::tarefa_chave(self.pasta_dados.clone(), &self.ia, chave)
     }
 
+    /// Assíncrono: o cofre do sistema pode demorar, e a thread principal não espera por ele.
     #[napi]
-    pub fn remover_chave_ia(&self) -> napi::Result<(), String> {
-        guru_core::remover_chave(&*self.db()?, self.ia.cofre.as_ref()).map_err(to_js)
+    pub fn remover_chave_ia(&self) -> AsyncTask<RemoverChave> {
+        ia::tarefa_remover_chave(self.pasta_dados.clone(), &self.ia)
     }
 
     #[napi]

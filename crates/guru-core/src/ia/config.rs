@@ -26,6 +26,14 @@ pub struct ConfigIa {
     pub chave_final: Option<String>,
 }
 
+/// O resultado de `salvar_config_ia`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ConfigSalva {
+    pub erros: Vec<ErroCampo>,
+    /// Alguma parte editada voltou ao automático porque a privacidade ficou mais restrita.
+    pub edicoes_restauradas: bool,
+}
+
 impl Db {
     pub fn config_ia(&self) -> Result<ConfigIa, CoreError> {
         self.conn
@@ -47,7 +55,9 @@ impl Db {
             .map_err(classifica)
     }
 
-    /// Nada é gravado se houver erro.
+    /// Nada é gravado se houver erro. Se a privacidade ficar mais restrita (ligar "Apenas
+    /// percentuais" ou desligar "Nome das instituições"), o texto editado das partes que mostram
+    /// valores ou instituições é apagado na mesma transação, para a edição não furar a chave.
     pub fn salvar_config_ia(
         &self,
         modelo: &str,
@@ -55,7 +65,7 @@ impl Db {
         apenas_percentuais: bool,
         nomes_instituicoes: bool,
         busca_web: bool,
-    ) -> Result<Vec<ErroCampo>, CoreError> {
+    ) -> Result<ConfigSalva, CoreError> {
         let mut erros = Vec::new();
         if !MODELOS.iter().any(|(codigo, _)| *codigo == modelo) {
             erros.push(ErroCampo {
@@ -70,22 +80,54 @@ impl Db {
             });
         }
         if !erros.is_empty() {
-            return Ok(erros);
+            return Ok(ConfigSalva {
+                erros,
+                edicoes_restauradas: false,
+            });
         }
-        self.conn
-            .execute(
-                "UPDATE ia_config SET modelo = ?1, instrucoes = ?2, apenas_percentuais = ?3, \
-                 nomes_instituicoes = ?4, busca_web = ?5 WHERE id = 1",
-                params![
-                    modelo,
-                    instrucoes,
-                    apenas_percentuais,
-                    nomes_instituicoes,
-                    busca_web
-                ],
+        let tx = self.conn.unchecked_transaction().map_err(classifica)?;
+        let (antes_percentuais, antes_nomes): (bool, bool) = tx
+            .query_row(
+                "SELECT apenas_percentuais, nomes_instituicoes FROM ia_config WHERE id = 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .map_err(classifica)?;
-        Ok(Vec::new())
+        tx.execute(
+            "UPDATE ia_config SET modelo = ?1, instrucoes = ?2, apenas_percentuais = ?3, \
+                 nomes_instituicoes = ?4, busca_web = ?5 WHERE id = 1",
+            params![
+                modelo,
+                instrucoes,
+                apenas_percentuais,
+                nomes_instituicoes,
+                busca_web
+            ],
+        )
+        .map_err(classifica)?;
+        // Valores em R$ aparecem na carteira e nas metas; instituições, só na carteira.
+        let mut partes: Vec<&str> = Vec::new();
+        if apenas_percentuais && !antes_percentuais {
+            partes.extend(["carteira", "metas"]);
+        }
+        if !nomes_instituicoes && antes_nomes && !partes.contains(&"carteira") {
+            partes.push("carteira");
+        }
+        let mut restauradas = 0;
+        for parte in partes {
+            restauradas += tx
+                .execute(
+                    "UPDATE ia_contexto_parte SET texto_editado = NULL \
+                     WHERE parte = ?1 AND texto_editado IS NOT NULL",
+                    [parte],
+                )
+                .map_err(classifica)?;
+        }
+        tx.commit().map_err(classifica)?;
+        Ok(ConfigSalva {
+            erros: Vec::new(),
+            edicoes_restauradas: restauradas > 0,
+        })
     }
 
     /// Guarda só os 4 últimos caracteres, mesmo que quem chama passe mais.

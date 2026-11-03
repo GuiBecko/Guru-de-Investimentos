@@ -54,13 +54,13 @@ test("chave recusada e mal formada voltam como erro de campo", async () => {
   const [e2] = await core.salvarChaveIa("abc");
   assert.equal(e2.campo, "chave");
   assert.equal(core.configIa().chave, null);
-  core.removerChaveIa();
+  await core.removerChaveIa();
 });
 
 test("remover a chave limpa a máscara", async () => {
   const core = abrir();
   await core.salvarChaveIa(CHAVE);
-  core.removerChaveIa();
+  await core.removerChaveIa();
   assert.equal(core.configIa().chave, null);
 });
 
@@ -119,13 +119,34 @@ test("config e contexto: salvar, validar e editar partes", () => {
   const core = abrir();
   const c = core.configIa();
   const dados = { modelo: c.modelo, instrucoes: "Seja breve.", apenasPercentuais: true, nomesInstituicoes: true, buscaWeb: false };
-  assert.deepEqual(core.salvarConfigIa(dados), []);
+  assert.deepEqual(core.salvarConfigIa(dados), { erros: [], edicoesRestauradas: false });
   assert.equal(core.configIa().instrucoes, "Seja breve.");
-  assert.equal(core.salvarConfigIa({ ...dados, modelo: "xxx" })[0].campo, "modelo");
+  assert.equal(core.salvarConfigIa({ ...dados, modelo: "xxx" }).erros[0].campo, "modelo");
   const ctx = core.contextoIa();
   assert.ok(ctx.partes.length > 0 && ctx.tokens > 0);
   const parte = ctx.partes[0].parte;
   assert.deepEqual(core.salvarParteContexto(parte, false, null), []);
   assert.equal(core.contextoIa().partes[0].ligada, false);
   assert.equal(codigo(() => core.conversa(12345)), "NAO_ENCONTRADO");
+});
+
+test("privacidade mais restrita volta a carteira editada ao automático e avisa", () => {
+  const core = abrir();
+  const c = core.configIa();
+  const dados = { modelo: c.modelo, instrucoes: "", apenasPercentuais: false, nomesInstituicoes: true, buscaWeb: true };
+  assert.equal(core.salvarConfigIa(dados).edicoesRestauradas, false);
+  core.salvarParteContexto("carteira", true, "Tenho R$ 10,00.");
+  assert.equal(core.salvarConfigIa({ ...dados, apenasPercentuais: true }).edicoesRestauradas, true);
+  const carteira = core.contextoIa().partes.find((p) => p.parte === "carteira");
+  assert.equal(carteira.editado, false);
+  assert.ok(!carteira.texto.includes("R$"));
+});
+
+test("remover a chave é uma Promise", async () => {
+  const core = abrir();
+  await core.salvarChaveIa(CHAVE);
+  const r = core.removerChaveIa();
+  assert.ok(r instanceof Promise);
+  assert.equal(await r, undefined);
+  assert.equal(core.configIa().chave, null);
 });

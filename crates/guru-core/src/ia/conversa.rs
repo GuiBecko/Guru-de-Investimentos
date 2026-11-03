@@ -475,6 +475,7 @@ pub fn perguntar(
 }
 
 /// Confere o formato e a chave na Anthropic; só então grava no cofre e os 4 últimos caracteres.
+/// Se o banco falhar, o cofre volta ao que tinha antes: nunca fica uma chave que a tela não mostra.
 pub fn salvar_chave(
     db: &Db,
     cofre: &dyn Cofre,
@@ -484,6 +485,7 @@ pub fn salvar_chave(
     if let Some(erro) = validar_formato_chave(chave) {
         return Ok(vec![erro]);
     }
+    let chave = chave.trim();
     let erro_campo = |mensagem: &str| {
         Ok(vec![ErroCampo {
             campo: "chave".into(),
@@ -498,8 +500,16 @@ pub fn salvar_chave(
         }
         Err(outro) => return Err(outro.into()),
     }
+    let anterior = cofre.ler()?;
     cofre.gravar(chave)?;
-    db.gravar_chave_final(Some(chave))?;
+    if let Err(e) = db.gravar_chave_final(Some(chave)) {
+        // Melhor esforço: o erro que importa é o do banco.
+        let _ = match anterior.as_deref() {
+            Some(c) => cofre.gravar(c),
+            None => cofre.apagar(),
+        };
+        return Err(e);
+    }
     Ok(Vec::new())
 }
 
@@ -512,6 +522,54 @@ pub fn remover_chave(db: &Db, cofre: &dyn Cofre) -> Result<(), CoreError> {
 #[cfg(test)]
 mod testes {
     use super::*;
+
+    struct AceitaTudo;
+
+    impl ClienteIa for AceitaTudo {
+        fn validar_chave(&self, _: &str) -> Result<(), ErroIa> {
+            Ok(())
+        }
+        fn enviar(
+            &self,
+            _: &str,
+            _: &Value,
+            _: &AtomicBool,
+            _: &mut dyn FnMut(&Value),
+        ) -> Result<(), ErroIa> {
+            Err(ErroIa::SemConexao)
+        }
+    }
+
+    #[test]
+    fn banco_falhando_nao_deixa_chave_nova_no_cofre() {
+        use crate::ia::cofre::CofreMemoria;
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path()).unwrap();
+        let cofre = CofreMemoria::default();
+        // Sem nada antes: o cofre volta a ficar vazio.
+        db.conn
+            .execute_batch(
+                "CREATE TRIGGER falha BEFORE UPDATE ON ia_config \
+                 BEGIN SELECT RAISE(ABORT, 'falha'); END;",
+            )
+            .unwrap();
+        let nova = "sk-ant-api03-chave-nova-0000";
+        assert!(salvar_chave(&db, &cofre, &AceitaTudo, nova).is_err());
+        assert_eq!(cofre.ler().unwrap(), None);
+        // Com uma chave antes: ela volta.
+        cofre.gravar("sk-ant-api03-chave-antiga-1111").unwrap();
+        assert!(salvar_chave(&db, &cofre, &AceitaTudo, nova).is_err());
+        assert_eq!(
+            cofre.ler().unwrap().as_deref(),
+            Some("sk-ant-api03-chave-antiga-1111")
+        );
+        // Sem a falha, grava a chave sem os espaços das pontas.
+        db.conn.execute_batch("DROP TRIGGER falha;").unwrap();
+        let r = salvar_chave(&db, &cofre, &AceitaTudo, &format!(" {nova}\n")).unwrap();
+        assert!(r.is_empty());
+        assert_eq!(cofre.ler().unwrap().as_deref(), Some(nova));
+        assert_eq!(db.config_ia().unwrap().chave_final.as_deref(), Some("0000"));
+    }
 
     #[test]
     fn titulo_numa_linha_com_60_caracteres() {

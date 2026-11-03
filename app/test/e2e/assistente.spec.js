@@ -162,6 +162,35 @@ test("Parar no meio da resposta mostra Resposta interrompida e não grava nada",
     await expect(main(page).getByRole("alert")).toHaveCount(0);
   }));
 
+test("se acompanhar a resposta falha, o pedido é cancelado e nada é gravado", async () => {
+  const app = await lancar();
+  try {
+    const page = await app.firstWindow();
+    await salvarChave(page);
+    await abrirAssistente(page);
+    await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) => {
+        const cancelar = api.ia.cancelar;
+        window.cancelados = [];
+        api.ia.progresso = () => Promise.reject(Object.assign(new Error("falhou"), { code: "ERRO_INTERNO" }));
+        api.ia.cancelar = (pedido) => {
+          window.cancelados.push(pedido);
+          return cancelar(pedido);
+        };
+      }),
+    );
+    await perguntar(page, "Pergunta sem acompanhamento");
+    await expect(main(page).getByRole("alert")).toHaveText("Não foi possível acompanhar a resposta. Tente de novo.");
+    await expect(campo(page)).toHaveValue("Pergunta sem acompanhamento");
+    expect(await page.evaluate(() => window.cancelados.length)).toBe(1);
+    // Espera mais que a fixture inteira (22 eventos a 20 ms): cancelado, nada foi gravado.
+    await page.waitForTimeout(1000);
+    expect(await chamar(page, "(api) => api.ia.conversas()")).toEqual([]);
+  } finally {
+    await app.close();
+  }
+});
+
 test("apagar a conversa a tira da lista", () =>
   comChave(async (page) => {
     await perguntar(page, "Uma conversa para apagar");
