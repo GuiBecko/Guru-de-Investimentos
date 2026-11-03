@@ -96,7 +96,14 @@ jobs:
       # dist leva --publish never: nada é enviado daqui.
       - name: Gerar os instaladores
         working-directory: app
-        run: npm run dist -- --${{ matrix.arch }}
+        shell: bash
+        # Variável vazia não é "sem certificado" para o electron-builder: ele tenta ler o caminho
+        # vazio como arquivo. Sem o segredo cadastrado, a variável nem chega ao build.
+        run: |
+          for v in CSC_LINK CSC_KEY_PASSWORD WIN_CSC_LINK WIN_CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!v}" ]; then unset "$v"; fi
+          done
+          npm run dist -- --${{ matrix.arch }}
         env:
           # CSC_LINK é o certificado da Apple: só no macOS, senão o Windows tentaria assinar com ele.
           CSC_LINK: ${{ runner.os == 'macOS' && secrets.CSC_LINK || '' }}
