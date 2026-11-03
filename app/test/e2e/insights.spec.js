@@ -106,8 +106,17 @@ test("com chave, insights e notícias só com clique, guardados e com link", asy
     await expect(coluna(page)).toContainText("Gerado por IA com os seus dados. Não é recomendação individual de investimento.");
     expect(await tokens(page)).toBe(0);
 
-    await coluna(page).getByRole("button", { name: "Gerar insights" }).click();
+    // O começo e o fim da geração saem numa região viva (role="status") do bloco.
+    const statusInsights = coluna(page).getByRole("region", { name: "Insights" }).getByRole("status");
+    await expect(statusInsights).toHaveText("");
+    const começo = await page.evaluate(() => {
+      const bloco = document.querySelector("[data-testid=coluna-ia] .ia-insights");
+      [...bloco.querySelectorAll("button")].find((b) => b.textContent === "Gerar insights").click();
+      return document.querySelector("[data-testid=coluna-ia] .ia-insights [role=status]").textContent;
+    });
+    expect(começo).toBe("Gerando insights…");
     await expect(cartoes(page)).toHaveCount(5);
+    await expect(statusInsights).toHaveText("Insights gerados.");
     await expect(cartoes(page).locator(".pill")).toHaveText(ETIQUETAS);
     await expect(cartoes(page).first().locator(".pill")).toHaveClass(/\bwa\b/);
     await expect(cartoes(page).nth(1).locator(".pill")).not.toHaveClass(/\bwa\b/);
@@ -154,9 +163,18 @@ test("com chave, insights e notícias só com clique, guardados e com link", asy
     await abrirCarteira(page);
     const secao = coluna(page).getByTestId("noticias");
     await expect(secao).toContainText("Notícias da sua carteira");
-    await secao.getByRole("button", { name: "Buscar notícias" }).click();
+    const statusNoticias = secao.getByRole("status");
+    await expect(statusNoticias).toHaveText("");
+    const começoNoticias = await page.evaluate(() => {
+      const bloco = document.querySelector("[data-testid=noticias]");
+      [...bloco.querySelectorAll("button")].find((b) => b.textContent === "Buscar notícias").click();
+      // O clique redesenha a coluna: a seção é lida de novo.
+      return document.querySelector("[data-testid=noticias] [role=status]").textContent;
+    });
+    expect(começoNoticias).toBe("Buscando notícias na web…");
     const links = secao.getByTestId("noticia");
     await expect(links).toHaveCount(5);
+    await expect(statusNoticias).toHaveText("Notícias atualizadas.");
     for (const href of await links.evaluateAll((as) => as.map((a) => a.getAttribute("href")))) expect(href).toMatch(/^https:\/\//);
     await expect(secao.locator('a[href^="http:"]')).toHaveCount(0);
     await expect(links.first()).toContainText("Itaú Unibanco tem lucro recorde no terceiro trimestre");

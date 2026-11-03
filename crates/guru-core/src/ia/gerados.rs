@@ -260,8 +260,23 @@ impl Db {
         self.gerado("noticias")
     }
 
-    /// Substitui a geração do tipo e soma o uso, numa transação só.
+    /// Substitui a geração do tipo e soma o uso, numa transação só. Se ela falhar, o uso
+    /// (já pago) é somado fora dela, em melhor esforço, e o erro da gravação volta.
     fn gravar_gerado<T: Serialize>(
+        &self,
+        tipo: &str,
+        hoje: NaiveDate,
+        modelo: &str,
+        itens: &[T],
+        acumulador: &Acumulador,
+    ) -> Result<(), CoreError> {
+        self.gravar_gerado_tx(tipo, hoje, modelo, itens, acumulador)
+            .inspect_err(|_| {
+                let _ = somar_uso(&self.conn, &mes(hoje), modelo, acumulador.uso());
+            })
+    }
+
+    fn gravar_gerado_tx<T: Serialize>(
         &self,
         tipo: &str,
         hoje: NaiveDate,
@@ -403,6 +418,41 @@ pub fn buscar_noticias(
 #[cfg(test)]
 mod testes {
     use super::*;
+
+    #[test]
+    fn gravacao_falhando_ainda_soma_o_uso_uma_vez() {
+        use crate::ia::cliente::ClienteFixture;
+        use crate::ia::cofre::CofreMemoria;
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path()).unwrap();
+        let cofre = CofreMemoria::default();
+        cofre.gravar("sk-ant-api03-chave-de-teste-0000").unwrap();
+        let cliente = ClienteFixture {
+            pasta: std::path::PathBuf::from(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/fixtures/ia"
+            )),
+        };
+        let hoje = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
+        let cancelar = AtomicBool::new(false);
+        db.conn
+            .execute_batch(
+                "CREATE TRIGGER falha BEFORE INSERT ON ia_gerado \
+                 BEGIN SELECT RAISE(ABORT, 'falha'); END;",
+            )
+            .unwrap();
+        assert!(gerar_insights(&db, &cofre, &cliente, hoje, &cancelar, &mut |_| {}).is_err());
+        assert!(buscar_noticias(&db, &cofre, &cliente, hoje, &cancelar, &mut |_| {}).is_err());
+        let p = db.painel_ia().unwrap();
+        assert!(p.insights.is_none() && p.noticias.is_none());
+        let falhas = db.uso_do_mes(hoje).unwrap().tokens;
+        assert!(falhas > 0);
+        // As mesmas respostas gravadas somam o mesmo tanto: nada contou em dobro.
+        db.conn.execute_batch("DROP TRIGGER falha;").unwrap();
+        gerar_insights(&db, &cofre, &cliente, hoje, &cancelar, &mut |_| {}).unwrap();
+        buscar_noticias(&db, &cofre, &cliente, hoje, &cancelar, &mut |_| {}).unwrap();
+        assert_eq!(db.uso_do_mes(hoje).unwrap().tokens, 2 * falhas);
+    }
 
     #[test]
     fn marcadores_saem_do_titulo() {

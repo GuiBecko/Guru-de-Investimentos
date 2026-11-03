@@ -581,6 +581,7 @@ pub(crate) fn perguntar_com(
     }
     let resposta = json!({"role": "assistant", "content": acumulador.blocos()});
     let aviso = (acumulador.stop_reason() == Some("refusal")).then_some(AVISO_RECUSA);
+    let uso = acumulador.uso();
     db.gravar_troca(&Troca {
         nova,
         conversa_id,
@@ -591,8 +592,13 @@ pub(crate) fn perguntar_com(
         resposta_texto: &fim.texto,
         fontes: &fim.fontes,
         aviso,
-        uso: acumulador.uso(),
+        uso,
         mes: mes(hoje),
+    })
+    .inspect_err(|_| {
+        // A transação voltou atrás com o uso dentro: soma fora dela, em melhor esforço (o erro
+        // que importa é o da gravação).
+        let _ = somar_uso(&db.conn, &mes(hoje), &dados.modelo, uso);
     })
 }
 
@@ -691,6 +697,50 @@ mod testes {
         assert!(r.is_empty());
         assert_eq!(cofre.ler().unwrap().as_deref(), Some(nova));
         assert_eq!(db.config_ia().unwrap().chave_final.as_deref(), Some("0000"));
+    }
+
+    #[test]
+    fn gravacao_falhando_ainda_soma_o_uso_uma_vez() {
+        use crate::ia::cliente::ClienteFixture;
+        use crate::ia::cofre::CofreMemoria;
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path()).unwrap();
+        let cofre = CofreMemoria::default();
+        cofre.gravar("sk-ant-api03-chave-de-teste-0000").unwrap();
+        let cliente = ClienteFixture {
+            pasta: std::path::PathBuf::from(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/fixtures/ia"
+            )),
+        };
+        let hoje = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
+        let pergunta = |db: &Db| {
+            perguntar(
+                db,
+                &cofre,
+                &cliente,
+                hoje,
+                None,
+                "Oi?",
+                &AtomicBool::new(false),
+                &mut |_| {},
+            )
+        };
+        db.conn
+            .execute_batch(
+                "CREATE TRIGGER falha BEFORE INSERT ON mensagem \
+                 BEGIN SELECT RAISE(ABORT, 'falha'); END;",
+            )
+            .unwrap();
+        assert!(pergunta(&db).is_err());
+        // Nada da troca ficou, mas a resposta foi paga.
+        assert!(db.listar_conversas().unwrap().is_empty());
+        let uma = db.uso_do_mes(hoje).unwrap().tokens;
+        assert!(uma > 0);
+        // A mesma resposta gravada soma o mesmo tanto: a falha não contou em dobro.
+        db.conn.execute_batch("DROP TRIGGER falha;").unwrap();
+        pergunta(&db).unwrap();
+        assert_eq!(db.uso_do_mes(hoje).unwrap().tokens, 2 * uma);
     }
 
     #[test]

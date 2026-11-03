@@ -249,7 +249,9 @@ impl Db {
         })
     }
 
-    fn parte_mercado(&self, hoje: NaiveDate) -> Result<Gerada, CoreError> {
+    /// Com a parte "Carteira" desligada (`carteira_ligada` falso), as notícias com um ticker
+    /// na etiqueta ficam de fora; as de uma classe ou de "Mercado" continuam.
+    fn parte_mercado(&self, hoje: NaiveDate, carteira_ligada: bool) -> Result<Gerada, CoreError> {
         let datas = datas_painel(hoje, 12)?;
         let mut acumulados = Vec::new();
         for r in [Referencia::Cdi, Referencia::Selic, Referencia::Ipca] {
@@ -293,15 +295,24 @@ impl Db {
             recentes.join("; ")
         ));
         let mut resumo = "automático".to_string();
-        if let Some(g) = self.noticias_guardadas()?
-            && !g.itens.is_empty()
+        let sem_ticker = |etiqueta: &str| {
+            etiqueta == "Mercado" || Classe::TODOS.iter().any(|c| c.rotulo() == etiqueta)
+        };
+        let noticias = self.noticias_guardadas()?;
+        let primeiras: Vec<_> = noticias
+            .iter()
+            .flat_map(|g| g.itens.iter())
+            .filter(|n| carteira_ligada || sem_ticker(&n.etiqueta))
+            .take(NOTICIAS_NO_MERCADO)
+            .collect();
+        if let Some(g) = &noticias
+            && !primeiras.is_empty()
         {
-            let primeiras = &g.itens[..g.itens.len().min(NOTICIAS_NO_MERCADO)];
             linhas.push(format!(
                 "Notícias da carteira (buscadas em {}):",
                 data_br(g.gerado_em)
             ));
-            for n in primeiras {
+            for n in &primeiras {
                 let onde = match &n.data {
                     Some(d) => format!("{}, {d}", n.dominio),
                     None => n.dominio.clone(),
@@ -336,7 +347,9 @@ impl Db {
         })
     }
 
-    fn edicoes_de_partes(&self) -> Result<HashMap<String, (bool, Option<String>)>, CoreError> {
+    pub(crate) fn edicoes_de_partes(
+        &self,
+    ) -> Result<HashMap<String, (bool, Option<String>)>, CoreError> {
         let mut stmt = self
             .conn
             .prepare("SELECT parte, ligada, texto_editado FROM ia_contexto_parte")
@@ -353,6 +366,7 @@ impl Db {
     pub fn partes_contexto(&self, hoje: NaiveDate) -> Result<Vec<ParteContexto>, CoreError> {
         let cfg = self.config_ia()?;
         let edicoes = self.edicoes_de_partes()?;
+        let carteira_ligada = edicoes.get("carteira").is_none_or(|(l, _)| *l);
         let mut out = Vec::new();
         for (codigo, rotulo) in PARTES {
             let gerada = match codigo {
@@ -363,7 +377,7 @@ impl Db {
                 },
                 "perfil" => self.parte_perfil(hoje)?,
                 "carteira" => self.parte_carteira(hoje, &cfg)?,
-                "mercado" => self.parte_mercado(hoje)?,
+                "mercado" => self.parte_mercado(hoje, carteira_ligada)?,
                 _ => self.parte_metas(hoje, &cfg)?,
             };
             let (ligada, editado) = edicoes

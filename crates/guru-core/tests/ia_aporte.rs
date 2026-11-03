@@ -213,6 +213,42 @@ fn direcao_vazia_e_sem_meta() {
 }
 
 #[test]
+fn carteira_desligada_tira_a_situacao_de_hoje() {
+    let (_d, db) = banco();
+    carteira_exemplo(&db);
+    let f = foco("acoes", &["acoes"], "", None);
+    let linhas = |db: &Db| {
+        let c = db.contexto_aporte(hoje(), &f).unwrap();
+        bloco(&c.texto)
+            .lines()
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+    };
+    let ligada = linhas(&db);
+    assert_eq!(
+        ligada[2],
+        "Classe em foco: Ações, com R$ 1.100,00 deste aporte pela divisão de rebalanceamento (alvo 30%, hoje 8,0 p.p. abaixo do alvo)."
+    );
+
+    db.salvar_parte_contexto("carteira", false, None).unwrap();
+    let desligada = linhas(&db);
+    assert_eq!(desligada[1], "Valor deste aporte: R$ 2.000,00.");
+    assert_eq!(
+        desligada[2],
+        "Classe em foco: Ações, com R$ 1.100,00 deste aporte pela divisão de rebalanceamento (alvo 30%)."
+    );
+    assert_eq!(
+        desligada[3],
+        "Divisão do aporte: Renda fixa 0,0%; Ações 55,0%; FIIs 15,0%; Exterior 30,0%."
+    );
+    let texto = desligada.join("\n");
+    assert!(!texto.contains("p.p."), "{texto}");
+    assert!(!texto.contains("hoje "), "{texto}");
+    // O resto do bloco não muda.
+    assert_eq!(ligada[3..], desligada[3..]);
+}
+
+#[test]
 fn aporte_nao_leva_valores_da_carteira() {
     let (_d, db) = banco();
     salvar_alvo(&db);

@@ -744,6 +744,57 @@ fn mercado_leva_as_3_noticias_mais_recentes() {
     );
 }
 
+#[test]
+fn carteira_desligada_tira_as_noticias_de_ticker_do_mercado() {
+    let (_d, db) = banco();
+    carteira(&db);
+    noticias(&db, &cofre_com_chave(), &ClienteFixture { pasta: pasta() }).unwrap();
+    let mercado = |db: &Db| {
+        db.partes_contexto(hoje())
+            .unwrap()
+            .into_iter()
+            .find(|p| p.parte == "mercado")
+            .unwrap()
+    };
+    // Carteira ligada: as 3 primeiras, com ticker ou não.
+    let m = mercado(&db);
+    assert!(m.texto.contains("- ITUB4: Itaú Unibanco"), "{}", m.texto);
+    assert!(
+        m.texto.contains("- Renda fixa: Tesouro Direto"),
+        "{}",
+        m.texto
+    );
+
+    // Carteira desligada: as de ticker saem, as de classe ou "Mercado" ficam.
+    db.salvar_parte_contexto("carteira", false, None).unwrap();
+    let m = mercado(&db);
+    for ticker in ["ITUB4", "WEGE3", "HGLG11"] {
+        assert!(!m.texto.contains(ticker), "vazou {ticker}: {}", m.texto);
+    }
+    let fim = "\nNotícias da carteira (buscadas em 30/10/2026):\n\
+        - Renda fixa: Tesouro Direto bate recorde de investidores em outubro (valor.globo.com, October 28, 2026)\n\
+        - Mercado: XPTO conclui oferta de ações";
+    assert!(m.texto.contains(fim), "{}", m.texto);
+    assert!(m.texto.contains("\n- Ações: "), "{}", m.texto);
+    assert_eq!(m.resumo, "automático · 3 notícias");
+    let enviado = db.contexto_montado(hoje()).unwrap().texto;
+    assert!(!enviado.contains("ITUB4"), "{enviado}");
+    assert!(
+        enviado.contains("- Renda fixa: Tesouro Direto"),
+        "{enviado}"
+    );
+
+    // Religada, tudo volta.
+    db.salvar_parte_contexto("carteira", true, None).unwrap();
+    let m = mercado(&db);
+    assert!(m.texto.contains("- ITUB4: Itaú Unibanco"), "{}", m.texto);
+    assert!(
+        m.texto.contains("- Renda fixa: Tesouro Direto"),
+        "{}",
+        m.texto
+    );
+}
+
 /// Uma busca que não terminou bem (`refusal`, `max_tokens` ou `pause_turn` depois das 3
 /// continuações) não troca as notícias guardadas, mas os tokens dela contam.
 fn interrompida_mantem_as_anteriores(marca: &str, codigo: &str, chamadas: usize, saida: i64) {

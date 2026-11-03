@@ -33,10 +33,11 @@ function bolhaIa(texto, fontes, aoFonte) {
   return b;
 }
 
-// `foco` (o do Próximo aporte) vai só na primeira pergunta, quando a conversa nasce.
-// `aoMudar({ conversa, emAndamento })` roda depois de cada redesenho.
-export function criarChat({ vigente, sugestoes: textosSugestoes, placeholder, foco = null, aoMudar = () => {} }) {
+// `foco` (o do Próximo aporte) vai só na primeira pergunta, quando a conversa nasce; até lá,
+// `trocarFoco` o substitui. `aoMudar({ conversa, emAndamento })` roda depois de cada redesenho.
+export function criarChat({ vigente, sugestoes: textosSugestoes, placeholder, foco: focoInicial = null, aoMudar = () => {} }) {
   const n = ++ultimoId;
+  let foco = focoInicial;
   let atual = null; // ConversaJs aberta, ou null numa conversa nova
   let emFoco = null; // id da resposta cujas fontes o painel mostra (null: a última)
   let andamento = null; // { pergunta, pedido, parar, texto, fontes, buscando }
@@ -249,6 +250,13 @@ export function criarChat({ vigente, sugestoes: textosSugestoes, placeholder, fo
     },
     conversa: () => atual,
     emAndamento: () => !!andamento,
+    // Troca o foco da primeira pergunta. Só vale sem conversa e sem resposta em andamento;
+    // devolve se trocou.
+    trocarFoco(novo) {
+      if (atual || andamento) return false;
+      foco = novo;
+      return true;
+    },
     preencher(texto) {
       area.value = texto;
       area.focus();

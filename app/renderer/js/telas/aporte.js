@@ -220,14 +220,17 @@ export async function render(raiz, _parametros, vigente = () => true) {
     fecharGaveta();
     const meu = tokenGaveta;
     const foco = focoAtual(p);
+    const metaNome = (f) => metas.find((m) => m.id === f.metaId)?.nome ?? null;
     const g = gaveta({
       vigente: () => vigente() && meu === tokenGaveta,
       parte: p,
       foco,
-      metaNome: metas.find((m) => m.id === foco.metaId)?.nome ?? null,
+      metaNome: metaNome(foco),
       aoFechar: fecharGaveta,
       aoMudar: ({ emAndamento }) => travar(emAndamento),
       aoNova: () => abrirGaveta(p),
+      obterFoco: () => focoAtual(p),
+      obterMetaNome: metaNome,
     });
     aberta = g;
     direita.replaceChildren(g);

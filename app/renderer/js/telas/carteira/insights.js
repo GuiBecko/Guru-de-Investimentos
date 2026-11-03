@@ -14,13 +14,14 @@ const SEM_NOTICIAS = "Nenhuma notícia recente encontrada sobre os seus ativos."
 const BUSCA_DESLIGADA = "Ligue “Buscar na web” em Configurar IA para buscar notícias.";
 const FALHA_ACOMPANHAR = "Não foi possível acompanhar a geração. Tente de novo.";
 const FALHA_MOSTRAR = "O resultado foi gravado, mas não foi possível mostrá-lo. Abra a Carteira de novo.";
+const PARADA = "Geração parada.";
 const VISIVEIS = 5;
 const INTERVALO = 150;
 const CLASSES = new Set(["rf", "acoes", "fii", "ext", "outros"]);
 
 const TEXTOS = {
-  insights: { gerar: "Gerar insights", deNovo: "Gerar de novo", andando: "Gerando insights…" },
-  noticias: { gerar: "Buscar notícias", deNovo: "Buscar de novo", andando: "Buscando notícias na web…" },
+  insights: { gerar: "Gerar insights", deNovo: "Gerar de novo", andando: "Gerando insights…", pronto: "Insights gerados." },
+  noticias: { gerar: "Buscar notícias", deNovo: "Buscar de novo", andando: "Buscando notícias na web…", pronto: "Notícias atualizadas." },
 };
 
 // Pedidos em andamento por tipo: { pedido, parar, fim }. Ficam no módulo porque sair da Carteira
@@ -146,6 +147,17 @@ export function colunaIa(vigente) {
   let painel = null;
   let todas = false;
   const erros = { insights: null, noticias: null };
+  // Uma região viva por tipo, criada uma vez e levada a cada redesenho, para o leitor de tela
+  // anunciar o começo e o fim da geração (um erro já sai no alerta).
+  const anuncio = { insights: el("p", undefined, "so-leitor"), noticias: el("p", undefined, "so-leitor") };
+  const ultimoAnuncio = { insights: "", noticias: "" };
+  for (const p of Object.values(anuncio)) p.setAttribute("role", "status");
+
+  function anunciar(tipo) {
+    const texto = andamento[tipo] ? TEXTOS[tipo].andando : ultimoAnuncio[tipo];
+    if (anuncio[tipo].textContent !== texto) anuncio[tipo].textContent = texto;
+    return anuncio[tipo];
+  }
 
   function acoes(tipo, gerado) {
     const t = TEXTOS[tipo];
@@ -163,6 +175,7 @@ export function colunaIa(vigente) {
       gerar.addEventListener("click", () => iniciar(tipo));
       linha.append(gerar);
     }
+    linha.append(anunciar(tipo));
     return linha;
   }
 
@@ -234,6 +247,7 @@ export function colunaIa(vigente) {
 
   async function aoFim(tipo, a) {
     const cancelada = a.parar && a.fim.erro?.code === "IA_CANCELADA";
+    ultimoAnuncio[tipo] = cancelada ? PARADA : a.fim.erro ? "" : TEXTOS[tipo].pronto;
     if (a.fim.erro && !cancelada) {
       erros[tipo] = a.fim.erro.message || FALHA_ACOMPANHAR;
       desenhar();

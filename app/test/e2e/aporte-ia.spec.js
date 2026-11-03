@@ -1,4 +1,8 @@
 const { test, expect } = require("@playwright/test");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { DatabaseSync } = require("node:sqlite");
 const { lancar } = require("./_app");
 
 const main = (page) => page.locator("main");
@@ -174,7 +178,7 @@ test("com chave, a gaveta de uma classe conversa com o foco do aporte", async ()
     await expect(main(page).getByTestId("conversa").first()).toContainText("Próximo aporte · Ações");
     await expect(main(page).getByTestId("conversa").first()).toHaveClass(/\bon\b/);
 
-    // De volta ao aporte: mudar a direção com a gaveta aberta oferece "Nova conversa".
+    // De volta ao aporte: antes da primeira pergunta, mudar a direção só troca o contexto.
     await ir(page, "#/aporte");
     await dividir(page, "2.000,00");
     await main(page).getByRole("button", { name: "Conversar com a IA sobre FIIs" }).click();
@@ -182,7 +186,6 @@ test("com chave, a gaveta de uma classe conversa com o foco do aporte", async ()
     await expect(gaveta(page)).toContainText("direção: livre · meta: nenhuma");
     await expect(gaveta(page).getByRole("button", { name: "Nova conversa" })).toHaveCount(0);
     await main(page).getByRole("group", { name: "Para onde quer levar esse dinheiro?" }).getByLabel("FIIs", { exact: true }).check();
-    await gaveta(page).getByRole("button", { name: "Nova conversa" }).click();
     await expect(gaveta(page)).toContainText("direção: FIIs · meta: nenhuma");
     await expect(gaveta(page).getByRole("button", { name: "Nova conversa" })).toHaveCount(0);
 
@@ -197,6 +200,63 @@ test("com chave, a gaveta de uma classe conversa com o foco do aporte", async ()
     await main(page).getByRole("button", { name: "Conversar com a IA sobre Ações" }).click();
     await gaveta(page).getByRole("button", { name: "Fechar" }).click();
     await expect(gaveta(page)).toHaveCount(0);
+    expect(erros).toEqual([]);
+  } finally {
+    await app.close();
+  }
+});
+
+test("antes da primeira pergunta, o foco da gaveta acompanha a tela; depois, Nova conversa", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "guru-e2e-"));
+  const app = await lancar(dir);
+  // O contexto congelado da conversa, direto do banco (a api não o devolve).
+  const contextoGravado = (id) => {
+    const db = new DatabaseSync(path.join(dir, "guru.db"), { readOnly: true });
+    try {
+      return db.prepare("SELECT contexto FROM conversa WHERE id = ?").get(id).contexto;
+    } finally {
+      db.close();
+    }
+  };
+  try {
+    const page = await app.firstWindow();
+    const erros = vigiarErros(page);
+    await salvarChave(page);
+    await preparar(page);
+    await dividir(page, "2.000,00");
+    await main(page).getByRole("button", { name: "Conversar com a IA sobre Ações" }).click();
+    const g = gaveta(page);
+    const resumo = g.locator(".resumo-contexto");
+    await expect(resumo).toContainText("direção: livre · meta: nenhuma");
+
+    // Uma primeira pergunta que falha não cria conversa: o foco ainda acompanha a tela.
+    await g.getByLabel("Sua pergunta").fill("Pergunta que falha #erro401");
+    await g.getByLabel("Sua pergunta").press("Enter");
+    await expect(g.getByRole("alert")).toHaveText("A Anthropic recusou a sua chave. Confira em Configurar IA.");
+    await g.getByLabel("Sua pergunta").fill("");
+
+    const grupo = main(page).getByRole("group", { name: "Para onde quer levar esse dinheiro?" });
+    await grupo.getByLabel("Mais segurança", { exact: true }).check();
+    await main(page).getByLabel("Para qual meta?").selectOption({ label: "Entrada do apartamento" });
+    await expect(resumo).toHaveText(
+      "Contexto: aporte de R$ 2.000,00 · direção: Mais segurança · meta: Entrada do apartamento · mais as partes ligadas em Configurar IA",
+    );
+    await expect(g.getByRole("button", { name: "Nova conversa" })).toHaveCount(0);
+
+    // Enviar: a conversa nasce com o foco novo.
+    await g.getByRole("button", { name: SUGESTOES[0], exact: true }).click();
+    await expect(respostas(g)).toHaveCount(1);
+    const href = await g.getByRole("link", { name: "Ver no Assistente" }).getAttribute("href");
+    const contexto = contextoGravado(Number(href.split("/").pop()));
+    expect(contexto).toContain("Direção que o usuário quer dar a este dinheiro: Mais segurança.");
+    expect(contexto).toContain("Meta ligada a este aporte: Entrada do apartamento");
+
+    // Com a conversa criada, mudar a direção oferece "Nova conversa" e o contexto fica.
+    await grupo.getByLabel("FIIs", { exact: true }).check();
+    await expect(resumo).toContainText("direção: Mais segurança · meta: Entrada do apartamento");
+    await g.getByRole("button", { name: "Nova conversa" }).click();
+    await expect(gaveta(page).locator(".resumo-contexto")).toContainText("direção: FIIs, Mais segurança · meta: Entrada do apartamento");
+    await expect(gaveta(page).getByRole("button", { name: "Nova conversa" })).toHaveCount(0);
     expect(erros).toEqual([]);
   } finally {
     await app.close();

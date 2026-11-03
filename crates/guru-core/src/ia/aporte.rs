@@ -100,11 +100,17 @@ impl Db {
 
         let rotulo = parte.classe.rotulo();
         let desvio = parte.percentual_atual_decimos - 10 * i64::from(parte.alvo_percentual);
+        // Com a parte "Carteira" desligada, a situação de hoje (p.p. contra o alvo) fica de fora.
+        let carteira_ligada = self
+            .edicoes_de_partes()?
+            .get("carteira")
+            .is_none_or(|(l, _)| *l);
         let situacao = match parte.situacao {
-            Situacao::Abaixo => format!("hoje {} p.p. abaixo do alvo", pontos(desvio)),
-            Situacao::Perto => "hoje perto do alvo".to_string(),
-            Situacao::Acima => format!("hoje {} p.p. acima do alvo", pontos(desvio)),
-            Situacao::ForaDoAlvo => "fora da alocação-alvo".to_string(),
+            _ if !carteira_ligada => String::new(),
+            Situacao::Abaixo => format!(", hoje {} p.p. abaixo do alvo", pontos(desvio)),
+            Situacao::Perto => ", hoje perto do alvo".to_string(),
+            Situacao::Acima => format!(", hoje {} p.p. acima do alvo", pontos(desvio)),
+            Situacao::ForaDoAlvo => ", fora da alocação-alvo".to_string(),
         };
         // A divisão completa, em percentual do aporte, na ordem das classes.
         let divisao: Vec<String> = Classe::TODOS
@@ -144,7 +150,7 @@ impl Db {
             ),
             format!(
                 "Classe em foco: {rotulo}, com {} deste aporte pela divisão de rebalanceamento \
-                 (alvo {}%, {situacao}).",
+                 (alvo {}%{situacao}).",
                 formatar_reais(parte.sugerido_centavos),
                 parte.alvo_percentual
             ),

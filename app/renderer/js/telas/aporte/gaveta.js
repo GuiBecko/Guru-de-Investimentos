@@ -39,9 +39,21 @@ const sugestoes = (rotulo) => [
 ];
 
 // `parte`: o cartão da divisão; `foco`: o que vai para `api.ia.perguntar`.
-// Opcionais: `aoMudar({ conversa, emAndamento })` depois de cada redesenho e `aoNova()` para
-// recomeçar com o foco atual. O evento "guru:foco-mudou" na gaveta mostra o botão "Nova conversa".
-export function gaveta({ vigente, parte, foco, metaNome, aoFechar, aoMudar = () => {}, aoNova = () => {} }) {
+// Opcionais: `aoMudar({ conversa, emAndamento })` depois de cada redesenho, `aoNova()` para
+// recomeçar com o foco atual e `obterFoco()`/`obterMetaNome(foco)` para ler o foco da tela.
+// O evento "guru:foco-mudou" na gaveta: antes da primeira pergunta (sem conversa e sem resposta
+// em andamento), troca o foco e a linha do contexto; depois, mostra o botão "Nova conversa".
+export function gaveta({
+  vigente,
+  parte,
+  foco,
+  metaNome,
+  aoFechar,
+  aoMudar = () => {},
+  aoNova = () => {},
+  obterFoco = () => foco,
+  obterMetaNome = () => metaNome,
+}) {
   const caixa = el("section", undefined, "gaveta");
   caixa.dataset.testid = "gaveta";
   const titulo = el("h2", `${parte.rotulo} · ${formatarReais(parte.sugeridoCentavos)}`);
@@ -88,12 +100,19 @@ export function gaveta({ vigente, parte, foco, metaNome, aoFechar, aoMudar = () 
     },
   });
 
+  const resumo = el("small", resumoContexto({ ...foco, metaNome }), "resumo-contexto");
+
   caixa.addEventListener("guru:foco-mudou", () => {
+    const novo = obterFoco();
+    if (chat.trocarFoco(novo)) {
+      resumo.textContent = resumoContexto({ ...novo, metaNome: obterMetaNome(novo) });
+      return;
+    }
     mudou = true;
     nova.hidden = false;
   });
 
-  caixa.append(topo, el("small", resumoContexto({ ...foco, metaNome }), "resumo-contexto"), chat.elemento, links, colPainel);
+  caixa.append(topo, resumo, chat.elemento, links, colPainel);
   chat.mostrar(null);
   return caixa;
 }
