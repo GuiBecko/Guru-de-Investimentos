@@ -27,6 +27,8 @@ pub enum CoreError {
     #[error("Esta conversa não existe mais. Atualize a lista.")]
     ConversaNaoEncontrada(i64),
     #[error("{0}")]
+    FocoInvalido(String),
+    #[error("{0}")]
     Ia(#[from] crate::ia::ErroIa),
 }
 
@@ -44,6 +46,7 @@ impl CoreError {
             CoreError::ArquivoInvalido(_) => "ARQUIVO_INVALIDO",
             CoreError::DecisaoInvalida(_) => "DECISAO_INVALIDA",
             CoreError::CofreIndisponivel => "IA_COFRE_INDISPONIVEL",
+            CoreError::FocoInvalido(_) => "IA_FOCO_INVALIDO",
             CoreError::Ia(e) => e.code(),
         }
     }

@@ -7,6 +7,7 @@ fn abre_e_cria_o_banco_na_pasta() {
     assert_eq!(db.path(), dir.path().join("guru.db"));
     assert!(db.path().exists());
     assert_eq!(db.schema_version().unwrap(), SCHEMA_VERSION);
+    assert_eq!(SCHEMA_VERSION, 7);
 }
 
 #[test]

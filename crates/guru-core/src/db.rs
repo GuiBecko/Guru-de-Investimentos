@@ -12,6 +12,7 @@ const MIGRATIONS_SQL: &[&str] = &[
     include_str!("migrations/0004_mercado.sql"),
     include_str!("migrations/0005_importacao.sql"),
     include_str!("migrations/0006_ia.sql"),
+    include_str!("migrations/0007_ia_app.sql"),
 ];
 
 /// Versão do esquema: número de migrações conhecidas por este app.

@@ -9,7 +9,7 @@ use rusqlite::params;
 use crate::db::{Db, classifica};
 use crate::error::CoreError;
 use crate::investimento::{ErroCampo, Investimento};
-use crate::metas::formatar_reais;
+use crate::metas::{Meta, formatar_reais};
 use crate::painel::{Referencia, acumulado_benchmark, datas_painel};
 
 use super::config::ConfigIa;
@@ -73,7 +73,7 @@ fn data_iso_br(s: &str) -> String {
 }
 
 /// Décimos de ponto percentual: `365` vira `36,5%`.
-fn pct_decimos(d: i64) -> String {
+pub(crate) fn pct_decimos(d: i64) -> String {
     let sinal = if d < 0 { "-" } else { "" };
     let a = d.unsigned_abs();
     format!("{sinal}{},{}%", a / 10, a % 10)
@@ -102,6 +102,29 @@ struct Gerada {
 
 fn plural(n: usize, singular: &str, plural: &str) -> String {
     format!("{n} {}", if n == 1 { singular } else { plural })
+}
+
+/// Uma meta numa linha, sem o marcador: "Nome · prazo 12/2030 · 27,5% atingido", com os valores
+/// em reais só se "Apenas percentuais" estiver desligada.
+pub(crate) fn linha_meta(m: &Meta, cfg: &ConfigIa) -> String {
+    let mut p = vec![m.nome.clone()];
+    let prazo = m
+        .prazo
+        .split_once('-')
+        .map_or_else(|| m.prazo.clone(), |(a, mes)| format!("{mes}/{a}"));
+    p.push(format!("prazo {prazo}"));
+    p.push(format!("{} atingido", pct_decimos(m.percentual_decimos)));
+    if !cfg.apenas_percentuais {
+        p.push(format!("alvo {}", formatar_reais(m.valor_alvo_centavos)));
+        p.push(format!(
+            "acumulado {}",
+            formatar_reais(m.acumulado_centavos)
+        ));
+        if let Some(a) = m.aporte_necessario_centavos {
+            p.push(format!("aporte mensal necessário {}", formatar_reais(a)));
+        }
+    }
+    p.join(" · ")
 }
 
 impl Db {
@@ -281,24 +304,7 @@ impl Db {
             linhas.push("Nenhuma meta cadastrada.".to_string());
         }
         for m in &metas {
-            let mut p = vec![m.nome.clone()];
-            let prazo = m
-                .prazo
-                .split_once('-')
-                .map_or_else(|| m.prazo.clone(), |(a, mes)| format!("{mes}/{a}"));
-            p.push(format!("prazo {prazo}"));
-            p.push(format!("{} atingido", pct_decimos(m.percentual_decimos)));
-            if !cfg.apenas_percentuais {
-                p.push(format!("alvo {}", formatar_reais(m.valor_alvo_centavos)));
-                p.push(format!(
-                    "acumulado {}",
-                    formatar_reais(m.acumulado_centavos)
-                ));
-                if let Some(a) = m.aporte_necessario_centavos {
-                    p.push(format!("aporte mensal necessário {}", formatar_reais(a)));
-                }
-            }
-            linhas.push(format!("- {}", p.join(" · ")));
+            linhas.push(format!("- {}", linha_meta(m, cfg)));
         }
         Ok(Gerada {
             texto: linhas.join("\n"),
@@ -394,6 +400,15 @@ impl Db {
 
     /// Só as partes ligadas (e com texto), cada uma sob `## <rótulo>`, e a data de hoje no fim.
     pub fn contexto_montado(&self, hoje: NaiveDate) -> Result<ContextoMontado, CoreError> {
+        self.contexto_com(hoje, None)
+    }
+
+    /// O `contexto_montado` com um bloco a mais antes de "Hoje é" e a fonte dele no fim.
+    pub(crate) fn contexto_com(
+        &self,
+        hoje: NaiveDate,
+        extra: Option<(String, FonteInterna)>,
+    ) -> Result<ContextoMontado, CoreError> {
         let mut blocos = Vec::new();
         let mut fontes = Vec::new();
         for p in self.partes_contexto(hoje)? {
@@ -409,6 +424,10 @@ impl Db {
                     && p.data_dados
                         .is_some_and(|d| (hoje - d).num_days() > DIAS_PARA_ANTIGO),
             });
+        }
+        if let Some((bloco, fonte)) = extra {
+            blocos.push(bloco);
+            fontes.push(fonte);
         }
         blocos.push(format!("Hoje é {}.", data_br(hoje)));
         let texto = blocos.join("\n\n");
