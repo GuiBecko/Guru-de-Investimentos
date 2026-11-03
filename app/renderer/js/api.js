@@ -10,7 +10,10 @@ export async function desembrulhar(promessa) {
 }
 
 export const api = {
-  app: { info: () => desembrulhar(window.guru.app.info()) },
+  app: {
+    info: () => desembrulhar(window.guru.app.info()),
+    avisosTerceiros: () => desembrulhar(window.guru.app.avisosTerceiros()),
+  },
   investimentos: {
     catalogo: () => desembrulhar(window.guru.investimentos.catalogo()),
     listar: () => desembrulhar(window.guru.investimentos.listar()),

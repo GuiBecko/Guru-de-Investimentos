@@ -399,3 +399,10 @@ button.link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 .newsfeed .t { font-weight: 500; line-height: 1.35; }
 .newsfeed .m { font: 10.5px var(--f-mono); color: var(--muted); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .ia-noticias button.link { justify-self: start; }
+
+/* Sobre e avisos: cartões dos textos legais e os avisos de terceiros num <pre> com rolagem. */
+.sobre, .sobre-avisos { display: grid; gap: 12px; }
+.sobre-avisos .card p { line-height: 1.5; }
+.sobre .card > a { justify-self: start; }
+pre.terceiros { margin: 0; max-height: 360px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 400 11px/1.5 var(--f-mono); color: var(--ink); border: 1px solid var(--line); padding: 8px 10px; }
+pre.terceiros:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

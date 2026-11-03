@@ -2,13 +2,13 @@
 // sozinho: cada geração sai de um botão, porque gasta a chave do usuário. O resultado fica no
 // núcleo com a data e aparece até a próxima geração.
 import { api } from "../../api.js";
+import { AVISOS } from "../../avisos.js";
 import { formatarData } from "../../formato.js";
 import { el } from "../_tabela.js";
 import { dataDaFonte } from "../assistente/painel.js";
 
 const CONVITE = "Para ver insights e notícias da sua carteira, configure a sua chave.";
 const NOTA_CUSTO = "Cada geração usa a sua chave da Anthropic.";
-const AVISO = "Gerado por IA com os seus dados. Não é recomendação individual de investimento.";
 const SEM_INSIGHTS = "Nenhum insight gerado ainda.";
 const SEM_NOTICIAS = "Nenhuma notícia recente encontrada sobre os seus ativos.";
 const BUSCA_DESLIGADA = "Ligue “Buscar na web” em Configurar IA para buscar notícias.";
@@ -241,7 +241,7 @@ export function colunaIa(vigente) {
       raiz.replaceChildren(el("p", CONVITE), link);
       return;
     }
-    raiz.replaceChildren(blocoInsights(), blocoNoticias(), el("p", AVISO, "legal"));
+    raiz.replaceChildren(blocoInsights(), blocoNoticias(), el("p", AVISOS.RODAPE_INSIGHTS, "legal"));
     if (foco) raiz.querySelector(`[data-foco="${foco}"]:not(:disabled)`)?.focus();
   }
 

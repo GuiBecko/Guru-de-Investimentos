@@ -83,7 +83,7 @@ test("a ponte expõe só os canais do app e nada do Electron ou do Node", async 
       "importacao",
       "ia",
     ]);
-    expect(await page.evaluate(() => Object.keys(window.guru.app))).toEqual(["info"]);
+    expect(await page.evaluate(() => Object.keys(window.guru.app))).toEqual(["info", "avisosTerceiros"]);
     expect(await page.evaluate(() => Object.keys(window.guru.investimentos))).toEqual([
       "catalogo",
       "listar",

@@ -4,6 +4,7 @@ import * as assistente from "./telas/assistente.js";
 import * as investimentos from "./telas/investimentos.js";
 import * as perfil from "./telas/perfil.js";
 import * as ia from "./telas/ia.js";
+import * as sobre from "./telas/sobre.js";
 
 export const TELAS = [
   { id: "carteira", titulo: "Carteira" },
@@ -12,9 +13,10 @@ export const TELAS = [
   { id: "investimentos", titulo: "Investimentos" },
   { id: "perfil", titulo: "Perfil e objetivo" },
   { id: "ia", titulo: "Configurar IA" },
+  { id: "sobre", titulo: "Sobre e avisos" },
 ];
 
-const MODULOS = { carteira, aporte, assistente, investimentos, perfil, ia };
+const MODULOS = { carteira, aporte, assistente, investimentos, perfil, ia, sobre };
 
 export function resolver(hash) {
   const [id, ...parametros] = String(hash).replace(/^#\/?/, "").split("/").filter(Boolean);

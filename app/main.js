@@ -101,6 +101,22 @@ ipcMain.handle(
   }),
 );
 
+// Texto gerado por scripts/avisos-terceiros.mjs e empacotado junto do app. Só é lido no clique.
+ipcMain.handle(
+  "app:avisosTerceiros",
+  tratar(async () => {
+    try {
+      return await fs.promises.readFile(path.join(__dirname, "avisos-terceiros.txt"), "utf8");
+    } catch (e) {
+      // O code do fs (ENOENT…) passaria pela ponte com o caminho na mensagem.
+      console.error("Falha ao ler os avisos de terceiros:", e);
+      const erro = new Error("Não foi possível ler os avisos de terceiros.");
+      erro.code = "PACOTE_INCOMPLETO";
+      throw erro;
+    }
+  }),
+);
+
 function nucleo() {
   if (!core) {
     const erro = new Error("O núcleo não está disponível.");

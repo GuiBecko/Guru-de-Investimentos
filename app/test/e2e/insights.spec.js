@@ -103,7 +103,7 @@ test("com chave, insights e notícias só com clique, guardados e com link", asy
     // Abrir a Carteira não chama a IA.
     await expect(coluna(page)).toContainText("Nenhum insight gerado ainda.");
     await expect(coluna(page)).toContainText("Cada geração usa a sua chave da Anthropic.");
-    await expect(coluna(page)).toContainText("Gerado por IA com os seus dados. Não é recomendação individual de investimento.");
+    await expect(coluna(page)).toContainText("Gerado por IA com os seus dados. Pode conter erros. Não é recomendação individual de investimento.");
     expect(await tokens(page)).toBe(0);
 
     // O começo e o fim da geração saem numa região viva (role="status") do bloco.

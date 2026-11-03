@@ -39,7 +39,7 @@ test("api.investimentos e api.carteira repassam à ponte e desembrulham", async 
   };
   globalThis.window = {
     guru: {
-      app: { info: canal("info") },
+      app: { info: canal("info"), avisosTerceiros: canal("avisosTerceiros") },
       investimentos: Object.fromEntries(
         ["catalogo", "listar", "ler", "criar", "atualizar", "apagar"].map((n) => [n, canal(n)]),
       ),
@@ -58,6 +58,9 @@ test("api.investimentos e api.carteira repassam à ponte e desembrulham", async 
   };
   try {
     const { api } = await import("../../renderer/js/api.js");
+    assert.equal(await api.app.info(), "info");
+    assert.equal(await api.app.avisosTerceiros(), "avisosTerceiros");
+    chamadas.length = 0;
     assert.equal(await api.investimentos.criar({ a: 1 }), "criar");
     assert.equal(await api.investimentos.atualizar(2, { b: 2 }), "atualizar");
     assert.equal(await api.investimentos.apagar(3), "apagar");

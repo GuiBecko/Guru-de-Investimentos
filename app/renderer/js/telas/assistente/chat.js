@@ -2,11 +2,10 @@
 // Serve à tela Assistente e à gaveta do Próximo aporte. A resposta é acompanhada a cada 150 ms
 // e, se a tela sai de cena no meio dela, o pedido é parado e lido até o fim (abandono).
 import { api } from "../../api.js";
+import { AVISOS } from "../../avisos.js";
 import { analisarMarkdown, renderizarMarkdown } from "../../markdown.js";
 import { el } from "../_tabela.js";
 
-const AVISO =
-  "Conteúdo educativo gerado por IA com os seus dados e fontes da web. Não é recomendação individual de investimento. Confira as fontes.";
 const INTERVALO = 150;
 
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -63,7 +62,7 @@ export function criarChat({ vigente, sugestoes: textosSugestoes, placeholder, fo
   campo.append(rotulo, area, botao);
   const chat = el("section", undefined, "chat");
   chat.setAttribute("aria-label", "Conversa");
-  chat.append(mensagens, sugestoes, buscando, campo, erro, el("p", AVISO, "legal"));
+  chat.append(mensagens, sugestoes, buscando, campo, erro, el("p", AVISOS.RODAPE_CHAT, "legal"));
 
   const avisar = () => aoMudar({ conversa: atual, emAndamento: !!andamento });
 

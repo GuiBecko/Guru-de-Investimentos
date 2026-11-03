@@ -5,6 +5,7 @@ import { TELAS, resolver } from "../../renderer/js/router.js";
 test("resolve cada tela pelo hash", () => {
   assert.equal(resolver("#/aporte").tela.id, "aporte");
   assert.equal(resolver("#/ia").tela.titulo, "Configurar IA");
+  assert.equal(resolver("#/sobre").tela.titulo, "Sobre e avisos");
   assert.deepEqual(resolver("#/aporte").parametros, []);
 });
 
@@ -36,6 +37,6 @@ test("hash vazio ou desconhecido cai na carteira sem parâmetros", () => {
 test("menu na ordem do protótipo", () => {
   assert.deepEqual(
     TELAS.map((t) => t.titulo),
-    ["Carteira", "Próximo aporte", "Assistente", "Investimentos", "Perfil e objetivo", "Configurar IA"],
+    ["Carteira", "Próximo aporte", "Assistente", "Investimentos", "Perfil e objetivo", "Configurar IA", "Sobre e avisos"],
   );
 });
