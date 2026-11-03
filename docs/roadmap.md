@@ -11,7 +11,8 @@ Ordem de construção do MVP descrito em [`mvp.md`](mvp.md). Cada fase termina c
 | 3b. Painel | Gráficos do painel: patrimônio × aportado ao longo do tempo, comparação com CDI, IPCA, BOVA11 e XFIX11, mês a mês, instituições, vencimentos, altas e quedas, e a saudação. | 5, 6 (gráficos) |
 | 4. Importação da B3 | Ler a planilha da Área do Investidor e comparar com o cadastrado, linha a linha. | 3 |
 | 5. Próximo aporte | Divisão do valor por classe por rebalanceamento, sem IA. | 7 (sem chat) |
-| 6. IA | Chave no cofre do sistema, instruções próprias, editor de contexto, assistente com fontes, chat por classe, insights e notícias. | 7, 8, 9 |
+| 6a. IA e Assistente | Chave no cofre do sistema, modelo, privacidade, instruções próprias, editor de contexto e o Assistente com fontes numeradas. | 8, 9 |
+| 6b. IA no resto do app | Chat por classe no Próximo aporte, insights e notícias no painel. | 5, 7 |
 | 7. Distribuição | Instaladores para Windows, macOS e Linux, atualização automática e revisão jurídica dos textos. | — |
 
 Os planos detalhados:
@@ -23,3 +24,4 @@ Os planos detalhados:
 - Fase 3b: [`superpowers/plans/2026-10-30-fase-3b-painel.md`](superpowers/plans/2026-10-30-fase-3b-painel.md)
 - Fase 4: [`superpowers/plans/2026-10-30-fase-4-importacao-b3.md`](superpowers/plans/2026-10-30-fase-4-importacao-b3.md)
 - Fase 5: [`superpowers/plans/2026-10-30-fase-5-proximo-aporte.md`](superpowers/plans/2026-10-30-fase-5-proximo-aporte.md)
+- Fase 6a: [`superpowers/plans/2026-10-30-fase-6a-ia-assistente.md`](superpowers/plans/2026-10-30-fase-6a-ia-assistente.md)

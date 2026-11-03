@@ -4,6 +4,7 @@ import { render as importacao, consumirAviso } from "./importacao.js";
 import { formatarData, formatarReais } from "../formato.js";
 import { dataDoMercado, textoNota } from "../mercado.js";
 import { caixaTabela, cabecalho, celulasValor, el } from "./_tabela.js";
+import { confirmar } from "./_confirmar.js";
 
 const COLUNAS = [
   ["Investimento"],
@@ -26,33 +27,6 @@ function botoesTopo() {
   const grupo = el("span", undefined, "acoes-topo");
   grupo.append(importar, novo);
   return grupo;
-}
-
-function confirmarApagar(inv) {
-  return new Promise((resolve) => {
-    const dialogo = el("dialog");
-    const titulo = el("h2", `Apagar ${inv.nome}?`);
-    const cancelar = el("button", "Cancelar", "btn ghost");
-    const apagar = el("button", "Apagar", "btn");
-    cancelar.type = apagar.type = "button";
-    const acoes = el("div", undefined, "acoes");
-    acoes.append(cancelar, apagar);
-    const caixa = el("div", undefined, "caixa");
-    caixa.append(titulo, acoes);
-    dialogo.append(caixa);
-    let resposta = false;
-    cancelar.addEventListener("click", () => dialogo.close());
-    apagar.addEventListener("click", () => {
-      resposta = true;
-      dialogo.close();
-    });
-    dialogo.addEventListener("close", () => {
-      dialogo.remove();
-      resolve(resposta);
-    });
-    document.body.append(dialogo);
-    dialogo.showModal();
-  });
 }
 
 function linha(inv, apagar) {
@@ -120,7 +94,7 @@ async function lista(el_, vigente) {
     if (!vigente()) return;
 
     async function apagar(inv) {
-      if (!(await confirmarApagar(inv)) || !vigente()) return;
+      if (!(await confirmar(`Apagar ${inv.nome}?`)) || !vigente()) return;
       try {
         await api.investimentos.apagar(inv.id);
         await desenhar();

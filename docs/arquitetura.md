@@ -12,7 +12,7 @@ Como o Guru de Investimentos é montado por dentro. O que o app faz está em [`m
 | Ponte entre os dois | Addon nativo Node com [napi-rs](https://napi.rs) |
 | Banco local | SQLite, via `rusqlite` com a biblioteca embutida (`bundled`) |
 | Chave da IA | Cofre do sistema operacional, via crate `keyring` |
-| HTTP | `reqwest` com `rustls` |
+| HTTP | `ureq` |
 
 ## Camadas
 
@@ -80,14 +80,30 @@ A migração `0005` acrescenta `investimentos.codigo_b3` (código do ativo na pl
 
 ## Rede
 
-Só o `guru-core` acessa a rede, e só estes destinos. Qualquer outra URL é recusada antes da requisição. Cada requisição tem timeout de 60 s e `User-Agent: GuruDeInvestimentos/<versão>`. Nenhuma requisição leva dado do usuário: só datas e códigos de série nas URLs.
+Só o `guru-core` acessa a rede, e só estes destinos. Qualquer outra URL é recusada antes da requisição. Cada requisição tem timeout de 60 s e `User-Agent: GuruDeInvestimentos/<versão>`.
+
+Só a Anthropic recebe dado do usuário, com a chave dele e só as partes do contexto que ele deixou ligadas. As fontes de mercado recebem só datas e códigos de série nas URLs.
 
 | Destino | Para quê | Fase |
 |---------|----------|------|
 | `api.bcb.gov.br` (SGS) | Selic e CDI; IPCA pela série 433 do SGS (dado do IBGE publicado pelo Banco Central) | 3 |
 | Tesouro Transparente | Taxas e preços do Tesouro Direto | 3 |
 | B3, série histórica (arquivo diário COTAHIST) | Preço de fechamento de ações, FIIs e ETFs | 3 |
-| `api.anthropic.com` | Claude, com a chave do usuário | 6 |
+| `https://api.anthropic.com/v1/messages` (POST) | Perguntas ao Claude, com a chave do usuário | 6a |
+| `https://api.anthropic.com/v1/models?limit=1` (GET) | Conferir a chave ao salvar, sem custo | 6a |
+
+Os dois pedidos à Anthropic levam os cabeçalhos `x-api-key`, `anthropic-version: 2026-10-21`, `content-type: application/json` e o mesmo `User-Agent`. Com Opus e Sonnet, a pergunta leva também `anthropic-beta: server-side-fallback-2026-07-01`. Prazos: 60 s para conectar e 10 min para a resposta inteira (30 s no total para conferir a chave). Uma resposta acima de 8 MB é cortada com erro. A resposta chega por streaming (SSE) e é lida numa thread do addon, com conexão própria ao banco; a tela acompanha o pedido a cada 150 ms e pode pará-lo.
+
+## Chave da IA
+
+- Fica no cofre do sistema (Keychain, Credential Manager, Secret Service), com serviço `guru-de-investimentos` e usuário `anthropic`.
+- O SQLite guarda só os 4 últimos caracteres (`chave_final`), para a tela mostrar `sk-ant-…4f2a`.
+- O main só repassa ao addon a chave digitada. O addon não a devolve em nenhuma resposta, e ela não entra em erro, log, conversa gravada nem contexto.
+- Ao salvar, o formato é conferido (`sk-ant-`, de 20 a 300 caracteres, sem espaço) e a chave é testada com `GET /v1/models?limit=1`. Só uma chave aceita pela Anthropic é gravada. "Remover chave" apaga do cofre e limpa `chave_final`.
+
+### Modo de teste da IA
+
+Os testes nunca chamam a API real. No núcleo, o `ClienteFixture` lê respostas gravadas (`.sse`). Nos e2e, `GURU_IA_FIXTURES=<pasta>` troca a rede por essa pasta e `GURU_IA_COFRE=memoria` troca o cofre do sistema por um em memória. Uma marca na pergunta escolhe o arquivo (`#busca`, `#erro401`, `#recusa`...). As duas variáveis valem só fora do app empacotado.
 
 ## Atualização de mercado
 
@@ -163,4 +179,3 @@ As duas valem só fora do app empacotado.
 
 ## Em aberto
 
-- **Modelo padrão do Claude.** Definido na fase 6, com o usuário podendo trocar.
