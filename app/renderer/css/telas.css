@@ -371,6 +371,11 @@ button.link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 
 /* Coluna da IA no painel da Carteira (tela 5 do protótipo): insights e notícias com link. */
 .painel-com-ia { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 14px; align-items: start; min-width: 0; }
+/* Em janela estreita (a mínima é 1100 px, e telas de 1024 px a deixam nesse tamanho) a coluna da IA desce
+   para baixo do painel, para os gráficos continuarem em duas colunas. */
+@media (max-width: 1200px) {
+  .painel-com-ia { grid-template-columns: minmax(0, 1fr); }
+}
 .coluna-ia { display: grid; gap: 12px; align-content: start; min-width: 0; }
 .coluna-ia > p { margin: 0; }
 .coluna-ia > .btn { justify-self: start; }
