@@ -24,8 +24,10 @@ function botoesTopo() {
   novo.href = "#/investimentos/novo";
   const importar = el("a", "Importar da B3", "btn ghost");
   importar.href = "#/investimentos/importar";
+  const importarBtg = el("a", "Importar da BTG", "btn ghost");
+  importarBtg.href = "#/investimentos/importar/btg";
   const grupo = el("span", undefined, "acoes-topo");
-  grupo.append(importar, novo);
+  grupo.append(importar, importarBtg, novo);
   return grupo;
 }
 

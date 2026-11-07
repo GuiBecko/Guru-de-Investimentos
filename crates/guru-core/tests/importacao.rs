@@ -1,7 +1,8 @@
 use chrono::NaiveDate;
 use guru_core::{
-    AbaRv, Acao, Comparacao, Db, Decisao, Estado, Gravacao, Item, LinhaB3, NovoInvestimento,
-    Posicao, SCHEMA_VERSION, aplicar_importacao, comparar, ler_posicao, ultima_importacao,
+    AbaRv, Acao, Comparacao, Db, Decisao, Estado, FonteImportacao, Gravacao, Item, LinhaB3,
+    NovoInvestimento, Posicao, SCHEMA_VERSION, aplicar_importacao, comparar, ler_posicao,
+    ultima_importacao,
 };
 
 const COMPLETA: &[u8] = include_bytes!("fixtures/b3/posicao-completa.xlsx");
@@ -30,7 +31,7 @@ fn criar(db: &Db, novo: NovoInvestimento) -> i64 {
 fn rv(tipo: &str, ticker: &str, qtd: i64) -> NovoInvestimento {
     NovoInvestimento {
         tipo: tipo.into(),
-        instituicao: "Rico".into(),
+        instituicao: "Corretora Fictícia".into(),
         ticker: s(ticker),
         data_aplicacao: s("2025-04-01"),
         quantidade: Some(qtd),
@@ -42,7 +43,7 @@ fn rv(tipo: &str, ticker: &str, qtd: i64) -> NovoInvestimento {
 fn cdb(emissor: &str, vencimento: &str) -> NovoInvestimento {
     NovoInvestimento {
         tipo: "rf-cdb".into(),
-        instituicao: "Banco Inter".into(),
+        instituicao: "Corretora Fictícia".into(),
         emissor: s(emissor),
         indexador: s("pos"),
         taxa: s("102"),
@@ -59,7 +60,7 @@ fn cdb(emissor: &str, vencimento: &str) -> NovoInvestimento {
 fn selic(aplicado: i64) -> NovoInvestimento {
     NovoInvestimento {
         tipo: "td-selic".into(),
-        instituicao: "Rico".into(),
+        instituicao: "Corretora Fictícia".into(),
         taxa: s("0.09"),
         data_aplicacao: s("2025-01-10"),
         vencimento: s("2029-03-01"),
@@ -111,7 +112,7 @@ fn carteira_vazia_tudo_novo() {
     assert_eq!(c.itens[0].chave.split(':').next(), Some("b3"));
 
     let itub = item(&c, "ITUB4");
-    assert_eq!(itub.na_b3.as_deref(), Some("150 ações"));
+    assert_eq!(itub.no_arquivo.as_deref(), Some("150 ações"));
     assert_eq!(itub.no_app, None);
     let sug = itub.sugestao.as_ref().unwrap();
     assert_eq!(sug.tipo, "rv-acao");
@@ -134,10 +135,10 @@ fn carteira_vazia_tudo_novo() {
     let sug = td.sugestao.as_ref().unwrap();
     assert_eq!(sug.tipo, "td-selic");
     assert_eq!(sug.valor_aplicado_centavos, Some(800_000));
-    assert_eq!(td.na_b3.as_deref(), Some("R$ 8.000,00"));
+    assert_eq!(td.no_arquivo.as_deref(), Some("R$ 8.000,00"));
 
-    assert_eq!(item(&c, "BOVA11").na_b3.as_deref(), Some("30 cotas"));
-    assert_eq!(item(&c, "AAPL34").na_b3.as_deref(), Some("10 BDRs"));
+    assert_eq!(item(&c, "BOVA11").no_arquivo.as_deref(), Some("30 cotas"));
+    assert_eq!(item(&c, "AAPL34").no_arquivo.as_deref(), Some("10 BDRs"));
 }
 
 #[test]
@@ -148,7 +149,7 @@ fn quantidade_diferente_e_divergente_e_importado_e_atualizar() {
     let i = item(&c, "ITUB4");
     assert_eq!(i.estado, Estado::Divergente);
     assert_eq!(i.no_app.as_deref(), Some("120 ações"));
-    assert_eq!(i.na_b3.as_deref(), Some("150 ações"));
+    assert_eq!(i.no_arquivo.as_deref(), Some("150 ações"));
     assert_eq!(i.investimentos, vec![id]);
     assert_eq!(i.acao_padrao, Acao::Manter);
     assert!(i.sugestao.is_none());
@@ -157,8 +158,8 @@ fn quantidade_diferente_e_divergente_e_importado_e_atualizar() {
     let c = comparar_completa(&db);
     let i = item(&c, "ITUB4");
     assert_eq!(i.estado, Estado::Atualizar);
-    assert_eq!(i.acao_padrao, Acao::UsarB3);
-    assert!(i.acoes.contains(&Acao::UsarB3) && i.acoes.contains(&Acao::Manter));
+    assert_eq!(i.acao_padrao, Acao::UsarArquivo);
+    assert!(i.acoes.contains(&Acao::UsarArquivo) && i.acoes.contains(&Acao::Manter));
 }
 
 #[test]
@@ -253,7 +254,7 @@ fn tesouro_igual_ou_divergente_pelo_valor_aplicado() {
     let i = item(&c, "Tesouro Selic 2029");
     assert_eq!(i.estado, Estado::Divergente);
     assert_eq!(i.no_app.as_deref(), Some("R$ 7.000,00"));
-    assert_eq!(i.na_b3.as_deref(), Some("R$ 8.000,00"));
+    assert_eq!(i.no_arquivo.as_deref(), Some("R$ 8.000,00"));
 
     marcar_importado(&d2, id, "BRSTNCLF1RC8");
     let c = comparar_completa(&db2);
@@ -261,37 +262,26 @@ fn tesouro_igual_ou_divergente_pelo_valor_aplicado() {
 }
 
 #[test]
-fn fundo_e_cripto_ficam_fora_da_b3() {
+fn investimento_que_nao_veio_na_planilha_nao_aparece() {
     let (_d, db) = abrir();
-    let fundo = NovoInvestimento {
-        tipo: "fundo".into(),
-        instituicao: "XP".into(),
-        emissor: s("Fundo X"),
-        data_aplicacao: s("2025-01-01"),
-        valor_aplicado_centavos: Some(100_000),
-        liquidez: s("d30"),
-        ..Default::default()
-    };
-    let cripto = NovoInvestimento {
-        tipo: "cripto".into(),
-        emissor: s("Bitcoin"),
-        liquidez: s("diaria"),
-        ..fundo.clone()
-    };
-    let f = criar(&db, fundo);
-    let k = criar(&db, cripto);
+    criar(&db, cdb("Banco Sem Planilha", "2031-01-10"));
     let c = comparar_completa(&db);
-    let fora: Vec<&Item> = c
-        .itens
-        .iter()
-        .filter(|i| i.estado == Estado::ForaDaB3)
-        .collect();
-    assert_eq!(fora.len(), 2);
-    assert!(fora.iter().all(|i| i.acao_padrao == Acao::Manter));
-    assert!(fora.iter().all(|i| i.acoes.contains(&Acao::Remover)));
-    assert!(fora.iter().any(|i| i.chave == format!("app:{f}")));
-    assert!(fora.iter().any(|i| i.chave == format!("app:{k}")));
-    assert_eq!(fora[0].no_app.as_deref(), Some("R$ 1.000,00"));
+    assert!(c.itens.iter().all(|i| i.ativo != "Banco Sem Planilha"));
+    assert!(c.itens.iter().all(|i| i.chave.starts_with("b3:")));
+    assert_eq!(c.fonte, FonteImportacao::B3);
+    assert_eq!(c.data_arquivo, None);
+}
+
+#[test]
+fn importacao_grava_a_fonte() {
+    let (d, db) = abrir();
+    let c = comparar_completa(&db);
+    aplicar(&db, &c, &[]);
+    let fonte: String = rusqlite::Connection::open(d.path().join("guru.db"))
+        .unwrap()
+        .query_row("SELECT fonte FROM importacao", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(fonte, "b3");
 }
 
 #[test]
@@ -307,14 +297,11 @@ fn ordem_dos_estados_e_codigos() {
         Estado::Novo => 0,
         Estado::Atualizar => 1,
         Estado::Divergente => 2,
-        Estado::ForaDaB3 => 3,
-        Estado::Igual => 4,
+        Estado::Igual => 3,
     };
     ordenados.sort_by_key(peso);
     assert_eq!(estados, ordenados);
-    assert_eq!(Estado::ForaDaB3.codigo(), "fora_da_b3");
-    assert_eq!(Estado::ForaDaB3.rotulo(), "fora da B3");
-    assert_eq!(Acao::UsarB3.codigo(), "usar_b3");
+    assert_eq!(Acao::UsarArquivo.codigo(), "usar_arquivo");
     assert_eq!(Acao::Vincular(3).codigo(), "vincular");
     assert_eq!(c.linhas_lidas, 9);
 }
@@ -331,6 +318,8 @@ fn migra_banco_da_versao_4() {
         conn.execute_batch(
             "DROP TABLE ia_gerado;
              ALTER TABLE investimentos DROP COLUMN codigo_b3;
+             ALTER TABLE investimentos DROP COLUMN saldo_centavos;
+             ALTER TABLE investimentos DROP COLUMN saldo_data;
              DROP TABLE importacao;
              DROP TABLE ia_uso;
              DROP TABLE mensagem;
@@ -342,8 +331,8 @@ fn migra_banco_da_versao_4() {
         .unwrap();
     }
     let db = Db::open(dir.path()).unwrap();
-    assert_eq!(db.schema_version().unwrap(), 7);
-    assert_eq!(SCHEMA_VERSION, 7);
+    assert_eq!(db.schema_version().unwrap(), 8);
+    assert_eq!(SCHEMA_VERSION, 8);
     let lista = db.listar_investimentos(hoje()).unwrap();
     assert_eq!(lista.len(), 1);
     assert_eq!(lista[0].codigo_b3, None);
@@ -368,7 +357,7 @@ fn cdb_b3(codigo: &str, prefixo: &str, vencimento: NaiveDate) -> LinhaB3 {
             "CDB" => Some("rf-cdb".to_string()),
             _ => None,
         },
-        instituicao: "Corretora".into(),
+        instituicao: "Corretora Fictícia".into(),
         emissor: "BANCO FICTICIO S/A".into(),
         codigo: codigo.into(),
         indexador: None,
@@ -389,30 +378,6 @@ fn posicao(linhas: Vec<LinhaB3>) -> Posicao {
 }
 
 #[test]
-fn mesmo_ticker_em_duas_corretoras_soma_e_vira_um_item() {
-    let (_d, db) = abrir();
-    criar(&db, rv("rv-acao", "ITUB4", 150));
-    let p = posicao(vec![rv_b3("ITUB4", "A", 100), rv_b3("itub4", "B", 50)]);
-    let c = comparar(&db, &p, hoje()).unwrap();
-    assert_eq!(c.itens.len(), 1);
-    assert_eq!(c.itens[0].estado, Estado::Igual);
-    assert_eq!(c.itens[0].instituicao, "A, B");
-    assert_eq!(c.itens[0].na_b3.as_deref(), Some("150 ações"));
-}
-
-#[test]
-fn mesmo_ticker_em_duas_corretoras_divergente_pela_soma() {
-    let (_d, db) = abrir();
-    criar(&db, rv("rv-acao", "ITUB4", 100));
-    let p = posicao(vec![rv_b3("ITUB4", "A", 100), rv_b3("ITUB4", "B", 50)]);
-    let c = comparar(&db, &p, hoje()).unwrap();
-    assert_eq!(c.itens.len(), 1);
-    assert_eq!(c.itens[0].estado, Estado::Divergente);
-    assert_eq!(c.itens[0].no_app.as_deref(), Some("100 ações"));
-    assert_eq!(c.itens[0].na_b3.as_deref(), Some("150 ações"));
-}
-
-#[test]
 fn investimento_casado_nao_serve_a_uma_segunda_linha() {
     let (_d, db) = abrir();
     let id = criar(&db, cdb("Banco Fictício SA", "2029-03-15"));
@@ -424,7 +389,6 @@ fn investimento_casado_nao_serve_a_uma_segunda_linha() {
     assert_eq!(primeiro.estado, Estado::Igual);
     assert_eq!(primeiro.investimentos, vec![id]);
     assert_eq!(segundo.estado, Estado::Novo);
-    assert!(c.itens.iter().all(|i| i.estado != Estado::ForaDaB3));
 }
 
 #[test]
@@ -445,7 +409,7 @@ fn tesouro_tolera_um_centavo() {
         produto: "Tesouro Selic 2029".into(),
         tipo: "td-selic".into(),
         isin: None,
-        instituicao: "Rico".into(),
+        instituicao: "Corretora Fictícia".into(),
         vencimento: NaiveDate::from_ymd_opt(2029, 3, 1).unwrap(),
         valor_aplicado: Some(rust_decimal::Decimal::new(centavos, 2)),
         valor_atualizado: None,
@@ -475,31 +439,228 @@ fn tesouro_b3(instituicao: &str, centavos: i64) -> LinhaB3 {
     }
 }
 
-#[test]
-fn tesouro_em_duas_corretoras_soma_e_vira_um_item() {
-    let (_d, db) = abrir();
-    criar(&db, selic(800_000));
-    let p = posicao(vec![tesouro_b3("A", 500_000), tesouro_b3("B", 300_000)]);
-    let c = comparar(&db, &p, hoje()).unwrap();
-    assert_eq!(c.itens.len(), 1);
-    assert_eq!(c.itens[0].estado, Estado::Igual);
-    assert_eq!(c.itens[0].instituicao, "A, B");
+fn rv_em(instituicao: &str, qtd: i64) -> NovoInvestimento {
+    NovoInvestimento {
+        instituicao: instituicao.into(),
+        ..rv("rv-acao", "PETR4", qtd)
+    }
+}
 
-    let (_d2, vazio) = abrir();
-    let c = comparar(&vazio, &p, hoje()).unwrap();
-    assert_eq!(c.itens.len(), 1);
-    let sug = c.itens[0].sugestao.as_ref().unwrap();
-    assert_eq!(sug.instituicao, "A");
-    assert_eq!(sug.valor_aplicado_centavos, Some(800_000));
+const XP_B3: &str = "XP INVESTIMENTOS CCTVM S/A";
+const BTG_B3: &str = "BTG PACTUAL CTVM S/A";
+
+#[test]
+fn mesmo_ticker_em_duas_corretoras_vira_dois_itens() {
+    let (_d, db) = abrir();
+    let p = posicao(vec![rv_b3("PETR4", XP_B3, 10), rv_b3("PETR4", BTG_B3, 1)]);
+    let c = comparar(&db, &p, hoje()).unwrap();
+    assert_eq!(c.itens.len(), 2);
+    assert!(c.itens.iter().all(|i| i.estado == Estado::Novo));
+    let xp = c.itens.iter().find(|i| i.instituicao == XP_B3).unwrap();
+    let btg = c.itens.iter().find(|i| i.instituicao == BTG_B3).unwrap();
+    let sug = xp.sugestao.as_ref().unwrap();
+    assert_eq!(
+        (sug.quantidade, sug.instituicao.as_str()),
+        (Some(10), XP_B3)
+    );
+    let sug = btg.sugestao.as_ref().unwrap();
+    assert_eq!(
+        (sug.quantidade, sug.instituicao.as_str()),
+        (Some(1), BTG_B3)
+    );
 }
 
 #[test]
-fn sugestao_de_renda_variavel_usa_so_a_primeira_corretora() {
+fn cada_corretora_casa_com_o_seu_investimento() {
     let (_d, db) = abrir();
-    let p = posicao(vec![rv_b3("ITUB4", "A", 100), rv_b3("ITUB4", "B", 50)]);
+    criar(&db, rv_em("XP Investimentos", 10));
+    criar(&db, rv_em("BTG Pactual", 1));
+    let p = posicao(vec![rv_b3("PETR4", XP_B3, 10), rv_b3("PETR4", BTG_B3, 1)]);
     let c = comparar(&db, &p, hoje()).unwrap();
-    assert_eq!(c.itens[0].instituicao, "A, B");
-    assert_eq!(c.itens[0].sugestao.as_ref().unwrap().instituicao, "A");
+    assert_eq!(c.itens.len(), 2);
+    assert!(c.itens.iter().all(|i| i.estado == Estado::Igual));
+    assert!(c.itens.iter().all(|i| i.investimentos.len() == 1));
+}
+
+#[test]
+fn soma_antiga_vira_atualizar_da_corretora() {
+    let (d, db) = abrir();
+    let id = criar(&db, rv_em("XP Investimentos", 11));
+    marcar_importado(&d, id, "PETR4");
+    let p = posicao(vec![rv_b3("PETR4", XP_B3, 10), rv_b3("PETR4", BTG_B3, 1)]);
+    let c = comparar(&db, &p, hoje()).unwrap();
+    let xp = c.itens.iter().find(|i| i.instituicao == XP_B3).unwrap();
+    let btg = c.itens.iter().find(|i| i.instituicao == BTG_B3).unwrap();
+    assert_eq!(xp.estado, Estado::Atualizar);
+    assert_eq!(xp.acao_padrao, Acao::UsarArquivo);
+    assert_eq!(btg.estado, Estado::Novo);
+    // Sem decisões, nada muda: a quantidade da XP continua 11.
+    let r = aplicar(&db, &c, &[]);
+    assert_eq!(r.aplicadas, 0);
+    let lista = db.listar_investimentos(hoje()).unwrap();
+    assert_eq!(lista.len(), 1);
+    assert_eq!(lista[0].quantidade, Some(11));
+}
+
+#[test]
+fn tesouro_separado_por_corretora() {
+    let (_d, db) = abrir();
+    let p = posicao(vec![
+        tesouro_b3(XP_B3, 500_000),
+        tesouro_b3(BTG_B3, 300_000),
+    ]);
+    let c = comparar(&db, &p, hoje()).unwrap();
+    assert_eq!(c.itens.len(), 2);
+    let xp = c.itens.iter().find(|i| i.instituicao == XP_B3).unwrap();
+    assert_eq!(
+        xp.sugestao.as_ref().unwrap().valor_aplicado_centavos,
+        Some(500_000)
+    );
+    let btg = c.itens.iter().find(|i| i.instituicao == BTG_B3).unwrap();
+    assert_eq!(
+        btg.sugestao.as_ref().unwrap().valor_aplicado_centavos,
+        Some(300_000)
+    );
+}
+
+#[test]
+fn ticker_em_outra_corretora_do_catalogo_vira_novo() {
+    let (_d, db) = abrir();
+    let id = criar(&db, rv_em("XP Investimentos", 10));
+    let p = posicao(vec![rv_b3("PETR4", BTG_B3, 10)]);
+    let c = comparar(&db, &p, hoje()).unwrap();
+    assert_eq!(c.itens.len(), 1);
+    let i = &c.itens[0];
+    assert_eq!(i.estado, Estado::Novo);
+    assert_eq!(i.acao_padrao, Acao::Adicionar);
+    assert!(!i.investimentos.contains(&id));
+}
+
+#[test]
+fn corretora_digitada_a_mao_oferece_vincular_em_vez_de_duplicar() {
+    let (_d, db) = abrir();
+    let id = criar(&db, rv_em("Genial", 10));
+    let p = posicao(vec![rv_b3("PETR4", "GENIAL INVESTIMENTOS CVM S.A.", 10)]);
+    let c = comparar(&db, &p, hoje()).unwrap();
+    assert_eq!(c.itens.len(), 1);
+    let i = &c.itens[0];
+    assert_eq!(i.estado, Estado::Divergente);
+    assert_eq!(i.acao_padrao, Acao::Ignorar);
+    assert_eq!(
+        i.acoes,
+        vec![Acao::Vincular(id), Acao::Adicionar, Acao::Ignorar]
+    );
+    assert!(i.sugestao.is_some());
+    assert_eq!(i.investimentos, vec![id]);
+    // Sem decisões, nada muda.
+    assert_eq!(aplicar(&db, &c, &[]).aplicadas, 0);
+    assert_eq!(total(&db), 1);
+}
+
+#[test]
+fn rf_com_codigo_em_outra_corretora_nao_vira_novo() {
+    // Corretora do catálogo com o mesmo código: candidato de outra corretora, o padrão é ignorar.
+    let (d, db) = abrir();
+    let id = criar(
+        &db,
+        NovoInvestimento {
+            instituicao: "XP Investimentos".into(),
+            ..cdb("Banco Fictício SA", "2029-03-15")
+        },
+    );
+    marcar_importado(&d, id, "X1");
+    let venc = NaiveDate::from_ymd_opt(2029, 3, 15).unwrap();
+    let c = comparar(&db, &posicao(vec![cdb_b3("X1", "CDB", venc)]), hoje()).unwrap();
+    let i = &c.itens[0];
+    assert_eq!(i.estado, Estado::Divergente);
+    assert_eq!(i.acao_padrao, Acao::Ignorar);
+    assert!(i.acoes.contains(&Acao::Vincular(id)));
+    assert_eq!(aplicar(&db, &c, &[]).aplicadas, 0);
+    assert_eq!(total(&db), 1);
+}
+
+#[test]
+fn corretora_digitada_a_mao_com_o_codigo_casa_como_da_mesma_corretora() {
+    // Depois de um `Vincular`, o investimento de corretora fora do catálogo tem o código da
+    // linha: a próxima comparação o trata como par, sem mudar a corretora dele.
+    let (d, db) = abrir();
+    let acao = criar(&db, rv_em("Genial", 10));
+    marcar_importado(&d, acao, "PETR4");
+    let rf = criar(
+        &db,
+        NovoInvestimento {
+            instituicao: "Outra Corretora".into(),
+            ..cdb("Banco Fictício SA", "2029-03-15")
+        },
+    );
+    marcar_importado(&d, rf, "X1");
+    let td = criar(
+        &db,
+        NovoInvestimento {
+            instituicao: "Genial".into(),
+            ..selic(800_000)
+        },
+    );
+    marcar_importado(&d, td, "td-selic:2029-03-01");
+    let venc = NaiveDate::from_ymd_opt(2029, 3, 15).unwrap();
+    let p = posicao(vec![
+        rv_b3("PETR4", BTG_B3, 10),
+        cdb_b3("X1", "CDB", venc),
+        tesouro_b3(XP_B3, 800_000),
+    ]);
+    let c = comparar(&db, &p, hoje()).unwrap();
+    for (chave, id) in [("b3:0", acao), ("b3:1", rf), ("b3:2", td)] {
+        let i = c.itens.iter().find(|i| i.chave == chave).unwrap();
+        assert_eq!(i.estado, Estado::Igual, "{chave}");
+        assert_eq!(i.investimentos, vec![id], "{chave}");
+    }
+    aplicar(&db, &c, &[]);
+    assert_eq!(db.investimento(acao, hoje()).unwrap().instituicao, "Genial");
+
+    // Quantidade diferente: atualizar, e usar o arquivo não muda a corretora.
+    let c = comparar(&db, &posicao(vec![rv_b3("PETR4", BTG_B3, 12)]), hoje()).unwrap();
+    let i = &c.itens[0];
+    assert_eq!(i.estado, Estado::Atualizar);
+    aplicar(&db, &c, &[decisao(&i.chave, Acao::UsarArquivo)]);
+    let a = db.investimento(acao, hoje()).unwrap();
+    assert_eq!(a.instituicao, "Genial");
+    assert_eq!(a.quantidade, Some(12));
+}
+
+#[test]
+fn tesouro_em_outra_corretora_oferece_vincular() {
+    let (_d, db) = abrir();
+    let id = criar(&db, selic(800_000));
+    let c = comparar(
+        &db,
+        &posicao(vec![tesouro_b3("Genial CVM", 800_000)]),
+        hoje(),
+    )
+    .unwrap();
+    let i = &c.itens[0];
+    assert_eq!(i.estado, Estado::Divergente);
+    assert_eq!(i.acao_padrao, Acao::Ignorar);
+    assert!(i.acoes.contains(&Acao::Vincular(id)));
+}
+
+#[test]
+fn mesma_corretora_soma_ticker_sem_diferenciar_maiusculas() {
+    let (_d, db) = abrir();
+    let p = posicao(vec![rv_b3("ITUB4", XP_B3, 100), rv_b3("itub4", XP_B3, 50)]);
+    let c = comparar(&db, &p, hoje()).unwrap();
+    assert_eq!(c.itens.len(), 1);
+    assert_eq!(c.itens[0].no_arquivo.as_deref(), Some("150 ações"));
+    assert_eq!(c.itens[0].sugestao.as_ref().unwrap().quantidade, Some(150));
+}
+
+#[test]
+fn mesma_corretora_soma_tesouro_na_sugestao() {
+    let (_d, db) = abrir();
+    let p = posicao(vec![tesouro_b3(XP_B3, 500_000), tesouro_b3(XP_B3, 300_000)]);
+    let c = comparar(&db, &p, hoje()).unwrap();
+    assert_eq!(c.itens.len(), 1);
+    let sug = c.itens[0].sugestao.as_ref().unwrap();
+    assert_eq!(sug.valor_aplicado_centavos, Some(800_000));
 }
 
 #[test]
@@ -520,12 +681,12 @@ fn mesmo_ticker_em_abas_diferentes_nao_depende_da_ordem() {
     assert!(
         c1.itens
             .iter()
-            .any(|i| i.na_b3.as_deref() == Some("1 cota"))
+            .any(|i| i.no_arquivo.as_deref() == Some("1 cota"))
     );
     assert!(
         c1.itens
             .iter()
-            .any(|i| i.na_b3.as_deref() == Some("2 ações"))
+            .any(|i| i.no_arquivo.as_deref() == Some("2 ações"))
     );
 }
 
@@ -668,7 +829,7 @@ fn adicionar_incompleto_nao_grava_nada() {
 }
 
 #[test]
-fn usar_b3_na_renda_variavel_muda_so_a_quantidade() {
+fn usar_arquivo_na_renda_variavel_muda_so_a_quantidade() {
     let (d, db) = abrir();
     let mut novo = rv("rv-acao", "ITUB4", 120);
     novo.preco_medio_centavos = Some(3_142);
@@ -676,7 +837,7 @@ fn usar_b3_na_renda_variavel_muda_so_a_quantidade() {
     marcar_importado(&d, id, "ITUB4");
     let c = comparar_completa(&db);
     let chave = item(&c, "ITUB4").chave.clone();
-    let r = aplicar(&db, &c, &[decisao(&chave, Acao::UsarB3)]);
+    let r = aplicar(&db, &c, &[decisao(&chave, Acao::UsarArquivo)]);
     assert_eq!((r.aplicadas, r.erros.len()), (1, 0));
     let inv = db.investimento(id, hoje()).unwrap();
     assert_eq!(inv.quantidade, Some(150));
@@ -685,7 +846,7 @@ fn usar_b3_na_renda_variavel_muda_so_a_quantidade() {
 }
 
 #[test]
-fn usar_b3_no_tesouro_muda_so_o_valor_aplicado() {
+fn usar_arquivo_no_tesouro_muda_so_o_valor_aplicado() {
     let (d, db) = abrir();
     let id = criar(&db, selic(500_000));
     marcar_importado(&d, id, "BRSTNCLF1RU6");
@@ -693,30 +854,10 @@ fn usar_b3_no_tesouro_muda_so_o_valor_aplicado() {
     let i = item(&c, "Tesouro Selic 2029");
     assert_eq!(i.estado, Estado::Atualizar);
     let chave = i.chave.clone();
-    aplicar(&db, &c, &[decisao(&chave, Acao::UsarB3)]);
+    aplicar(&db, &c, &[decisao(&chave, Acao::UsarArquivo)]);
     let inv = db.investimento(id, hoje()).unwrap();
     assert_eq!(inv.valor_aplicado_centavos, 800_000);
     assert_eq!(inv.taxa.as_deref(), Some("0.09"));
-}
-
-#[test]
-fn fora_da_b3_mantem_ou_remove() {
-    let (_d, db) = abrir();
-    let id = criar(&db, rv("rv-acao", "PETR4", 10));
-    let c = comparar_completa(&db);
-    let fora = c
-        .itens
-        .iter()
-        .find(|i| i.estado == Estado::ForaDaB3)
-        .unwrap();
-    assert_eq!(fora.acao_padrao, Acao::Manter);
-    let chave = fora.chave.clone();
-    let r = aplicar(&db, &c, &[decisao(&chave, Acao::Manter)]);
-    assert_eq!(r.aplicadas, 0);
-    assert!(db.investimento(id, hoje()).is_ok());
-    let r = aplicar(&db, &c, &[decisao(&chave, Acao::Remover)]);
-    assert_eq!(r.aplicadas, 1);
-    assert!(db.investimento(id, hoje()).is_err());
 }
 
 #[test]
@@ -776,8 +917,7 @@ fn acao_fora_da_lista_ou_chave_desconhecida_e_decisao_invalida() {
     let c = comparar_completa(&db);
     let chave = item(&c, "ITUB4").chave.clone();
     for d in [
-        decisao(&chave, Acao::Remover),
-        decisao(&chave, Acao::UsarB3),
+        decisao(&chave, Acao::UsarArquivo),
         decisao("b3:999", Acao::Manter),
     ] {
         let e = aplicar_importacao(&db, &c, &[d], "x.xlsx", hoje()).unwrap_err();
@@ -907,20 +1047,14 @@ fn valor_enorme_vira_aviso_e_nao_derruba_a_comparacao() {
         "{:?}",
         c.avisos
     );
-    // As linhas fora do limite não entram: o Tesouro cadastrado fica fora da B3.
+    // As linhas fora do limite não entram: o Tesouro cadastrado nem aparece.
     let ativos: Vec<(&str, Estado)> = c
         .itens
         .iter()
         .map(|i| (i.ativo.as_str(), i.estado))
         .collect();
-    assert_eq!(ativos.len(), 2, "{ativos:?}");
+    assert_eq!(ativos.len(), 1, "{ativos:?}");
     assert!(ativos.contains(&("ITUB4", Estado::Novo)), "{ativos:?}");
-    assert!(
-        c.itens
-            .iter()
-            .any(|i| i.estado == Estado::ForaDaB3 && i.ativo.contains("Selic")),
-        "{ativos:?}"
-    );
 }
 
 // ---- Renda fixa ambígua ----
@@ -960,14 +1094,6 @@ fn rf_ambigua_oferece_os_dois_candidatos_as_duas_linhas() {
             i.acoes
         );
     }
-    // Ninguém casou os dois de forma única: continuam em "fora da B3".
-    let fora: Vec<i64> = c
-        .itens
-        .iter()
-        .filter(|i| i.estado == Estado::ForaDaB3)
-        .flat_map(|i| i.investimentos.clone())
-        .collect();
-    assert_eq!(fora, vec![a, b]);
 
     // Vincular uma linha a cada um funciona e a próxima comparação casa pelo código.
     let r = aplicar(
@@ -1010,15 +1136,6 @@ fn rf_ambigua_vincular_o_mesmo_investimento_duas_vezes_e_decisao_invalida() {
         decisao("b3:1", Acao::Vincular(a)),
     ];
     let e = aplicar_importacao(&db, &c, &duas, "x.xlsx", hoje()).unwrap_err();
-    assert_eq!(e.code(), "DECISAO_INVALIDA");
-
-    // Vincular e remover o mesmo investimento também não vale.
-    let fora = format!("app:{a}");
-    let conflito = [
-        decisao("b3:0", Acao::Vincular(a)),
-        decisao(&fora, Acao::Remover),
-    ];
-    let e = aplicar_importacao(&db, &c, &conflito, "x.xlsx", hoje()).unwrap_err();
     assert_eq!(e.code(), "DECISAO_INVALIDA");
     assert_eq!(db.investimento(a, hoje()).unwrap().codigo_b3, None);
 }
@@ -1066,8 +1183,8 @@ fn vincular_o_que_outra_linha_casou_de_forma_unica_e_decisao_invalida() {
 // ---- Itens menores ----
 
 #[test]
-fn tesouro_sem_valor_aplicado_nao_oferece_usar_b3() {
-    let sem_valor = || match tesouro_b3("Rico", 0) {
+fn tesouro_sem_valor_aplicado_nao_oferece_usar_arquivo() {
+    let sem_valor = || match tesouro_b3("Corretora Fictícia", 0) {
         LinhaB3::Tesouro {
             produto,
             tipo,
@@ -1095,16 +1212,16 @@ fn tesouro_sem_valor_aplicado_nao_oferece_usar_b3() {
         (i.acoes.clone(), i.acao_padrao),
         (vec![Acao::Manter], Acao::Manter)
     );
-    // Já importado: também não vira Atualizar com UsarB3 como padrão.
+    // Já importado: também não vira Atualizar com UsarArquivo como padrão.
     marcar_importado(&d, id, "td-selic:2029-03-01");
     let c = comparar(&db, &posicao(vec![sem_valor()]), hoje()).unwrap();
     let i = &c.itens[0];
-    assert!(!i.acoes.contains(&Acao::UsarB3), "{:?}", i.acoes);
+    assert!(!i.acoes.contains(&Acao::UsarArquivo), "{:?}", i.acoes);
     assert_eq!(i.acao_padrao, Acao::Manter);
 }
 
 #[test]
-fn usar_b3_sem_preco_medio_ou_sem_quantidade_pede_o_campo() {
+fn usar_arquivo_sem_preco_medio_ou_sem_quantidade_pede_o_campo() {
     let (d, db) = abrir();
     let id = criar(&db, rv("rv-acao", "ITUB4", 120));
     marcar_importado(&d, id, "ITUB4");
@@ -1113,7 +1230,7 @@ fn usar_b3_sem_preco_medio_ou_sem_quantidade_pede_o_campo() {
         conn.execute(sql, rusqlite::params![id]).unwrap();
         let c = comparar_completa(&db);
         let chave = item(&c, "ITUB4").chave.clone();
-        let r = aplicar(&db, &c, &[decisao(&chave, Acao::UsarB3)]);
+        let r = aplicar(&db, &c, &[decisao(&chave, Acao::UsarArquivo)]);
         assert_eq!(r.aplicadas, 0);
         r.erros[0].1.clone()
     };
@@ -1152,7 +1269,13 @@ fn aplicar_espera_a_escrita_concorrente_em_vez_de_falhar() {
             .unwrap();
     });
     esperar.recv().unwrap();
-    let r = aplicar_importacao(&db, &c, &[decisao(&chave, Acao::UsarB3)], "p.xlsx", hoje());
+    let r = aplicar_importacao(
+        &db,
+        &c,
+        &[decisao(&chave, Acao::UsarArquivo)],
+        "p.xlsx",
+        hoje(),
+    );
     outra.join().unwrap();
     let r = r.expect("a aplicação deve esperar a outra escrita terminar");
     assert_eq!((r.aplicadas, r.erros.len()), (1, 0));

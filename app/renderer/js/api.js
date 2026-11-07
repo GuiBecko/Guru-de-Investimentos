@@ -54,7 +54,7 @@ export const api = {
     status: () => desembrulhar(window.guru.mercado.status()),
   },
   importacao: {
-    escolher: () => desembrulhar(window.guru.importacao.escolher()),
+    escolher: (fonte) => desembrulhar(window.guru.importacao.escolher(fonte)),
     aplicar: (token, decisoes) => desembrulhar(window.guru.importacao.aplicar(token, decisoes)),
     ultima: () => desembrulhar(window.guru.importacao.ultima()),
   },

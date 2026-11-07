@@ -11,6 +11,6 @@ pub use catalogo::{
 };
 pub use modelo::{ErroCampo, InvestimentoValido, NovoInvestimento};
 pub use repositorio::{Gravacao, Investimento, Resumo, ResumoClasse};
-pub(crate) use repositorio::{apagar_em, decimos, inserir_validado, validar_com_meta};
+pub(crate) use repositorio::{decimos, inserir_validado, validar_com_meta};
 pub use texto::{nome, rendimento};
 pub use validacao::{MAX_CENTAVOS, validar};

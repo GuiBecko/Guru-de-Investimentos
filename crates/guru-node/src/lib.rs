@@ -353,6 +353,28 @@ impl Core {
         })
     }
 
+    /// Compara o extrato em PDF da BTG com a carteira e guarda o resultado (descartando o anterior).
+    #[napi]
+    pub fn comparar_importacao_btg(
+        &self,
+        bytes: Buffer,
+        arquivo: String,
+    ) -> napi::Result<ComparacaoJs, String> {
+        *self.importacao()? = None;
+        self.blindar(|| {
+            let extrato = guru_core::ler_extrato(&bytes).map_err(to_js)?;
+            let c = guru_core::comparar_btg(&*self.db()?, &extrato, hoje_real()).map_err(to_js)?;
+            let token = importacao::novo_token();
+            let js = importacao::comparacao(&token, &arquivo, &c);
+            *self.importacao()? = Some(ComparacaoGuardada {
+                token,
+                arquivo,
+                comparacao: c,
+            });
+            Ok(js)
+        })
+    }
+
     #[napi]
     pub fn aplicar_importacao(
         &self,

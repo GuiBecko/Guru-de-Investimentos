@@ -44,6 +44,10 @@ pub struct Investimento {
     pub codigo_b3: Option<String>,
     pub meta_id: Option<i64>,
     pub meta_nome: Option<String>,
+    /// Saldo bruto informado pelo extrato da corretora (fundos, cripto, previdência).
+    pub saldo_centavos: Option<i64>,
+    /// Data do saldo (`AAAA-MM-DD`).
+    pub saldo_data: Option<String>,
     /// Valor bruto (antes do IR e de taxas) na data da consulta.
     pub valor_atual_centavos: i64,
     /// Décimos de ponto percentual sobre o valor aplicado.
@@ -75,7 +79,7 @@ pub struct Resumo {
 const SELECT: &str = "SELECT i.id, i.tipo, i.instituicao, i.emissor, i.ticker, i.indexador, \
     i.taxa, i.benchmark, i.data_aplicacao, i.vencimento, i.valor_aplicado_centavos, \
     i.quantidade, i.preco_medio_centavos, i.liquidez, i.data_carencia, i.ir, i.observacao, \
-    i.codigo_b3, i.meta_id, m.nome AS meta_nome \
+    i.codigo_b3, i.meta_id, m.nome AS meta_nome, i.saldo_centavos, i.saldo_data \
     FROM investimentos i LEFT JOIN metas m ON m.id = i.meta_id";
 
 fn agora() -> String {
@@ -126,6 +130,8 @@ struct Linha {
     codigo_b3: Option<String>,
     meta_id: Option<i64>,
     meta_nome: Option<String>,
+    saldo_centavos: Option<i64>,
+    saldo_data: Option<String>,
 }
 
 fn linha(r: &Row) -> rusqlite::Result<Linha> {
@@ -150,6 +156,8 @@ fn linha(r: &Row) -> rusqlite::Result<Linha> {
         codigo_b3: r.get("codigo_b3")?,
         meta_id: r.get("meta_id")?,
         meta_nome: r.get("meta_nome")?,
+        saldo_centavos: r.get("saldo_centavos")?,
+        saldo_data: r.get("saldo_data")?,
     })
 }
 
@@ -211,6 +219,8 @@ fn montar(l: Linha) -> Result<Investimento, CoreError> {
         codigo_b3: l.codigo_b3,
         meta_id: l.meta_id,
         meta_nome: l.meta_nome,
+        saldo_centavos: l.saldo_centavos,
+        saldo_data: l.saldo_data,
         valor_atual_centavos: l.valor_aplicado,
         rentabilidade_decimos: 0,
         origem_valor: Origem::SemDados,

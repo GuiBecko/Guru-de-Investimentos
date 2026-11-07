@@ -1,4 +1,4 @@
-// Tela "Importar da B3": escolhe a planilha, compara com a carteira, deixa completar os campos
+// Tela "Importar da B3" / "Importar da BTG": escolhe o arquivo, compara com a carteira, deixa completar os campos
 // que faltam nos itens novos e aplica tudo de uma vez.
 import { api } from "../api.js";
 import { atualizarMercado } from "../mercado.js";
@@ -8,10 +8,38 @@ import { campoDoTipo, montarDados } from "./formulario-investimento/dados.js";
 import { ROTULO_TAXA } from "./formulario-investimento.js";
 import { caixaTabela, cabecalho, el } from "./_tabela.js";
 
-const MENSAGEM_EXPIRADA = "A comparação expirou. Escolha a planilha de novo.";
-const COLUNAS = [["Situação"], ["Ativo"], ["Corretora"], ["No app hoje", "r"], ["Na planilha B3", "r"], ["O que fazer"]];
-const MUDAM = new Set(["adicionar", "usar_b3", "vincular", "remover"]);
-const CLASSE_ESTADO = { novo: "", atualizar: "ok", divergente: "wa", fora_da_b3: "no", igual: "mute" };
+const MENSAGEM_EXPIRADA = "A comparação expirou. Escolha o arquivo de novo.";
+const MUDAM = new Set(["adicionar", "usar_arquivo", "vincular"]);
+const CLASSE_ESTADO = { novo: "", atualizar: "ok", divergente: "wa", igual: "mute" };
+
+// Textos de cada fonte. A tela é a mesma; o que muda é o vocabulário.
+const FONTES = {
+  b3: {
+    titulo: "Importar da B3",
+    escolher: "Escolher planilha",
+    escolherOutro: "Escolher outra planilha",
+    dica: "Exporte a posição em investidor.b3.com.br → Extratos → Posição → Baixar Excel.",
+    colunaArquivo: "Na planilha B3",
+    usarArquivo: "Usar valor da B3",
+    origemPlanilha: "Da planilha",
+    cartao: (d) => `· Área do Investidor B3 · ${plural(d.linhasLidas, "linha lida", "linhas lidas")}`,
+    nota: "Fundos e previdência normalmente não aparecem na B3.",
+    falha: "Não foi possível ler a planilha.",
+  },
+  btg: {
+    titulo: "Importar da BTG",
+    escolher: "Escolher PDF",
+    escolherOutro: "Escolher outro PDF",
+    dica: "Gere o “Extrato da Conta Investimento” em PDF no app ou no site da BTG e escolha o arquivo aqui.",
+    colunaArquivo: "No extrato BTG",
+    usarArquivo: "Usar valor da BTG",
+    origemPlanilha: "Do extrato",
+    cartao: (d) => `· Extrato BTG${d.dataArquivo ? ` de ${formatarData(d.dataArquivo)}` : ""} · ${plural(d.linhasLidas, "ativo lido", "ativos lidos")}`,
+    nota: "Conta corrente e valores em trânsito não são importados.",
+    falha: "Não foi possível ler o extrato.",
+  },
+};
+const colunas = (f) => [["Situação"], ["Ativo"], ["Corretora"], ["No app hoje", "r"], [f.colunaArquivo, "r"], ["O que fazer"]];
 
 // Aviso de sucesso que a lista de investimentos mostra ao receber o usuário. Some quando ele sai
 // da lista; os redesenhos da própria lista (atualização de mercado) mantêm o aviso.
@@ -85,18 +113,18 @@ function textosDaSugestao(s) {
   };
 }
 
-function resumoDaPlanilha(s, tipo) {
+function resumoDaPlanilha(s, tipo, f) {
   const partes = [tipo?.rotulo ?? "tipo a escolher"];
   const nome = s.ticker ?? s.emissor;
   if (nome) partes.push(nome);
   if (s.quantidade !== undefined && s.quantidade !== null) partes.push(`quantidade ${s.quantidade}`);
   if (s.vencimento) partes.push(`vence em ${formatarData(s.vencimento)}`);
   if (s.valorAplicadoCentavos !== undefined && s.valorAplicadoCentavos !== null) partes.push(`valor ${formatarReais(s.valorAplicadoCentavos)}`);
-  return `Da planilha: ${partes.join(" · ")}.`;
+  return `${f.origemPlanilha}: ${partes.join(" · ")}.`;
 }
 
 // Uma linha de item: `tbody.item` com a linha da tabela e, embaixo, os campos a completar.
-function criarItem(item, n, catalogo, nomes) {
+function criarItem(item, n, catalogo, nomes, f) {
   const tipos = new Map(catalogo.tipos.map((t) => [t.codigo, t]));
   const sugestao = item.sugestao;
   const faltam = new Set(item.faltando.map((f) => f.campo));
@@ -109,9 +137,8 @@ function criarItem(item, n, catalogo, nomes) {
   const rotuloAcao = (codigo) => {
     if (codigo === "adicionar") return "Adicionar";
     if (codigo === "ignorar") return "Ignorar";
-    if (codigo === "usar_b3") return item.estado === "atualizar" ? "Atualizar" : "Usar valor da B3";
-    if (codigo === "manter") return item.estado === "fora_da_b3" ? "Manter" : "Manter o meu";
-    if (codigo === "remover") return "Remover";
+    if (codigo === "usar_arquivo") return item.estado === "atualizar" ? "Atualizar" : f.usarArquivo;
+    if (codigo === "manter") return "Manter o meu";
     return codigo;
   };
   const acao = el("select");
@@ -138,14 +165,14 @@ function criarItem(item, n, catalogo, nomes) {
     el("td", item.ativo),
     el("td", item.instituicao),
     el("td", item.noApp ?? "—", "r mono"),
-    el("td", item.naB3 ?? (item.estado === "fora_da_b3" ? "não consta" : "—"), "r mono"),
+    el("td", item.noArquivo ?? "—", "r mono"),
     tdAcao,
   );
 
   // --- campos do Adicionar ---
   const detalhe = el("tr", undefined, "detalhe");
   const celula = el("td");
-  celula.colSpan = COLUNAS.length;
+  celula.colSpan = colunas(f).length;
   detalhe.append(celula);
   const campos = {}; // nome -> { wrap, controle, erro, label }
   const geral = el("span", undefined, "erro");
@@ -159,7 +186,7 @@ function criarItem(item, n, catalogo, nomes) {
   const fixos = new Set();
 
   if (sugestao) {
-    const resumo = el("small", resumoDaPlanilha(sugestao, tipoAtual()));
+    const resumo = el("small", resumoDaPlanilha(sugestao, tipoAtual(), f));
     const grade = el("div", undefined, "grid4");
     // Só a renda fixa traz data na sugestão: é a data de emissão, que o usuário deve conferir.
     const daEmissao = !vazio(sugestao.dataAplicacao);
@@ -258,7 +285,7 @@ function criarItem(item, n, catalogo, nomes) {
         if (vazio(sugestao.ir)) campos.ir.controle.value = t?.irPadrao ?? "";
         anterior = t;
       }
-      resumo.textContent = resumoDaPlanilha(sugestao, t);
+      resumo.textContent = resumoDaPlanilha(sugestao, t, f);
       const indexador = t?.indexadorForcado ?? campos.indexador.controle.value ?? "pos";
       const [rotulo, sufixo] = ROTULO_TAXA[indexador] ?? ROTULO_TAXA.pos;
       campos.taxa.label.textContent = rotulo;
@@ -374,9 +401,10 @@ function criarItem(item, n, catalogo, nomes) {
 // --- Tela ---
 
 // Nome do investimento no "Vincular a …": candidatos do mesmo emissor e vencimento têm o mesmo
-// nome, então vão junto o rendimento e o valor aplicado.
+// nome, então vão junto a corretora (o candidato pode ser de outra), o rendimento e o valor aplicado.
 function descreverVinculo(i) {
   const partes = [i.nome];
+  if (i.instituicao) partes.push(i.instituicao);
   if (i.rendimento) partes.push(i.rendimento);
   partes.push(`aplicado ${formatarReais(i.valorAplicadoCentavos)}`);
   return partes.join(" · ");
@@ -389,24 +417,25 @@ function marcas(itens) {
     novo: (c) => plural(c, "novo", "novos"),
     atualizar: (c) => `${c} atualizar`,
     divergente: (c) => plural(c, "divergente", "divergentes"),
-    fora_da_b3: (c) => `${c} fora da B3`,
     igual: (c) => plural(c, "igual", "iguais"),
   };
   const caixa = el("span", undefined, "marcas");
-  for (const estado of ["novo", "atualizar", "divergente", "fora_da_b3", "igual"]) {
+  for (const estado of ["novo", "atualizar", "divergente", "igual"]) {
     if (contagem[estado]) caixa.append(el("span", texto[estado](contagem[estado]), `pill ${CLASSE_ESTADO[estado]}`.trim()));
   }
   return caixa;
 }
 
-export async function render(raiz, _parametros = [], vigente = () => true) {
+export async function render(raiz, parametros = [], vigente = () => true) {
+  const fonte = parametros[1] === "btg" ? "btg" : "b3";
+  const f = FONTES[fonte];
   aviso = null;
   let comparacao = null;
   let linhas = [];
   let ocupado = false;
 
-  const titulo = el("h1", "Importar da B3");
-  const botaoEscolher = el("button", "Escolher planilha", "btn");
+  const titulo = el("h1", f.titulo);
+  const botaoEscolher = el("button", f.escolher, "btn");
   botaoEscolher.type = "button";
   const topo = el("div", undefined, "row");
   topo.append(titulo, botaoEscolher);
@@ -424,19 +453,19 @@ export async function render(raiz, _parametros = [], vigente = () => true) {
   function inicial() {
     comparacao = null;
     linhas = [];
-    botaoEscolher.textContent = "Escolher planilha";
-    corpo.replaceChildren(el("p", "Exporte a posição em investidor.b3.com.br → Extratos → Posição → Baixar Excel.", "hint"));
+    botaoEscolher.textContent = f.escolher;
+    corpo.replaceChildren(el("p", f.dica, "hint"));
   }
 
   function desenhar(dados, catalogo, nomes) {
     comparacao = dados;
-    botaoEscolher.textContent = "Escolher outra planilha";
-    linhas = dados.itens.map((item, n) => criarItem(item, n, catalogo, nomes));
+    botaoEscolher.textContent = f.escolherOutro;
+    linhas = dados.itens.map((item, n) => criarItem(item, n, catalogo, nomes, f));
     const itens = dados.itens;
 
     const cartao = el("div", undefined, "card row cartao-arquivo");
     const nome = el("span");
-    nome.append(el("b", dados.arquivo), " ", el("small", `· Área do Investidor B3 · ${plural(dados.linhasLidas, "linha lida", "linhas lidas")}`));
+    nome.append(el("b", dados.arquivo), " ", el("small", f.cartao(dados)));
     cartao.append(nome, marcas(itens));
     const partes = [cartao];
 
@@ -461,7 +490,7 @@ export async function render(raiz, _parametros = [], vigente = () => true) {
         for (const l of iguais) l.tbody.hidden = !abrir;
       });
       const td = el("td");
-      td.colSpan = COLUNAS.length;
+      td.colSpan = colunas(f).length;
       td.append(alternar);
       const tr = el("tr");
       tr.append(td);
@@ -469,13 +498,13 @@ export async function render(raiz, _parametros = [], vigente = () => true) {
       rodape.append(tr);
       tabelaCorpo.push(rodape);
     }
-    const caixa = caixaTabela(cabecalho(COLUNAS), el("tbody"));
+    const caixa = caixaTabela(cabecalho(colunas(f)), el("tbody"));
     const tabela = caixa.querySelector("table");
     tabela.querySelector(":scope > tbody").remove();
     tabela.append(...tabelaCorpo);
     partes.push(caixa);
 
-    const nota = el("small", "Fundos e previdência normalmente não aparecem na B3. Por padrão, ficam como estão.");
+    const nota = el("small", f.nota);
     const cancelar = el("a", "Cancelar", "btn ghost");
     cancelar.href = "#/investimentos";
     const aplicar = el("button", undefined, "btn");
@@ -572,7 +601,7 @@ export async function render(raiz, _parametros = [], vigente = () => true) {
     ocupado = true;
     botaoEscolher.disabled = true;
     try {
-      const r = await api.importacao.escolher();
+      const r = await api.importacao.escolher(fonte);
       if (!vigente()) return;
       if (r.cancelado) return;
       const precisaNomes = r.itens.some((i) => i.acoes.includes("vincular"));
@@ -587,8 +616,8 @@ export async function render(raiz, _parametros = [], vigente = () => true) {
       if (e.code === "ARQUIVO_INVALIDO") {
         dizer(e.message);
       } else {
-        console.error("Falha ao ler a planilha:", e);
-        dizer("Não foi possível ler a planilha.");
+        console.error("Falha ao ler o arquivo:", e);
+        dizer(f.falha);
       }
     } finally {
       ocupado = false;

@@ -138,21 +138,44 @@ function nucleo() {
   return core;
 }
 
-const LIMITE_ARQUIVO_B3 = 20 * 1024 * 1024;
+const LIMITE_ARQUIVO = 20 * 1024 * 1024;
 
-// Escolhe a planilha da B3 (diálogo, ou o caminho de teste fora do app empacotado), confere o
+// Cada fonte de importação: filtro do diálogo, variável do caminho de teste, mensagem de tamanho e
+// a função do núcleo que compara o arquivo.
+const FONTES = {
+  b3: {
+    filtro: { name: "Planilha do Excel", extensions: ["xlsx"] },
+    variavelTeste: "GURU_TESTE_ARQUIVO_B3",
+    mensagemGrande: "O arquivo é grande demais para uma planilha de posição.",
+    comparar: (bytes, nome) => nucleo().compararImportacao(bytes, nome),
+  },
+  btg: {
+    filtro: { name: "Extrato em PDF", extensions: ["pdf"] },
+    variavelTeste: "GURU_TESTE_ARQUIVO_BTG",
+    mensagemGrande: "O arquivo é grande demais para um extrato da BTG.",
+    comparar: (bytes, nome) => nucleo().compararImportacaoBtg(bytes, nome),
+  },
+};
+
+// Escolhe o arquivo da fonte (diálogo, ou o caminho de teste fora do app empacotado), confere o
 // tamanho ANTES de ler e devolve a comparação ou `{ cancelado: true }`. O núcleo recebe só o nome
 // do arquivo, nunca o caminho.
-async function escolherPlanilhaB3() {
+async function escolherArquivo(fonte) {
+  const cfg = typeof fonte === "string" && Object.hasOwn(FONTES, fonte) ? FONTES[fonte] : null;
+  if (!cfg) {
+    const erro = new Error("Fonte de importação desconhecida.");
+    erro.code = "FONTE_DESCONHECIDA";
+    throw erro;
+  }
   let arquivo;
-  const teste = !app.isPackaged ? process.env.GURU_TESTE_ARQUIVO_B3 : undefined;
+  const teste = !app.isPackaged ? process.env[cfg.variavelTeste] : undefined;
   if (teste) {
     if (teste === "cancelar") return { cancelado: true };
     arquivo = teste;
   } else {
     const r = await dialog.showOpenDialog(janela, {
       properties: ["openFile"],
-      filters: [{ name: "Planilha do Excel", extensions: ["xlsx"] }],
+      filters: [cfg.filtro],
     });
     if (r.canceled || r.filePaths.length === 0) return { cancelado: true };
     arquivo = r.filePaths[0];
@@ -164,7 +187,7 @@ async function escolherPlanilhaB3() {
     return erro;
   };
   const grande = () => {
-    const erro = new Error("O arquivo é grande demais para uma planilha de posição.");
+    const erro = new Error(cfg.mensagemGrande);
     erro.code = "ARQUIVO_INVALIDO";
     return erro;
   };
@@ -172,13 +195,13 @@ async function escolherPlanilhaB3() {
   try {
     const info = await fs.promises.stat(arquivo);
     if (!info.isFile()) throw ilegivel();
-    if (info.size > LIMITE_ARQUIVO_B3) throw grande();
+    if (info.size > LIMITE_ARQUIVO) throw grande();
     bytes = await fs.promises.readFile(arquivo);
   } catch (e) {
     throw e && e.code === "ARQUIVO_INVALIDO" ? e : ilegivel();
   }
-  if (bytes.length > LIMITE_ARQUIVO_B3) throw grande();
-  return nucleo().compararImportacao(bytes, path.basename(arquivo));
+  if (bytes.length > LIMITE_ARQUIVO) throw grande();
+  return cfg.comparar(bytes, path.basename(arquivo));
 }
 
 const canais = {
@@ -205,7 +228,7 @@ const canais = {
   "aporte:dividir": (valorCentavos) => nucleo().proximoAporte(valorCentavos),
   "mercado:atualizar": () => nucleo().atualizarMercado(),
   "mercado:status": () => nucleo().statusMercado(),
-  "importacao:escolher": () => escolherPlanilhaB3(),
+  "importacao:escolher": (fonte) => escolherArquivo(fonte),
   "importacao:aplicar": (token, decisoes) => nucleo().aplicarImportacao(token, decisoes),
   "importacao:ultima": () => nucleo().ultimaImportacao(),
   "ia:config": () => nucleo().configIa(),

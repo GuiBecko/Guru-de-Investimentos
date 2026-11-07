@@ -8,7 +8,7 @@ Escopo combinado durante a fase de protótipo. O protótipo das telas está em [
 |---|------|-----------|
 | 1 | Perfil de investidor | Questionário pelo método ANBIMA. Nenhum sinal do resultado durante o teste. Perguntas de consistência e resultado só no fim, com alocação-alvo ajustável. |
 | 2 | Objetivo e metas | Objetivo em texto livre ("por que você investe, o que é sucesso"), lido pela IA em toda análise. Metas com valor, prazo, aporte mensal necessário e alerta de atraso. |
-| 3 | Importar da B3 | Lê a planilha da Área do Investidor e compara com o que já está cadastrado: novo, atualizar, divergente, fora da B3, igual. O usuário escolhe o que fazer em cada linha. O que não veio na planilha nunca é apagado sozinho. |
+| 3 | Importar da B3 | Lê a planilha da Área do Investidor e compara com o que já está cadastrado: novo, atualizar, divergente, igual. O usuário escolhe o que fazer em cada linha. O que não veio na planilha nunca é apagado sozinho. |
 | 4 | Lançar manualmente | Campos fechados: tipo em lista, indexador, rendimento em dois campos (% + benchmark), datas por calendário, valor em reais. Preenche IR e garantia conforme o tipo. |
 | 5 | Carteira | Painel principal: saudação diferente a cada abertura, KPIs, evolução do patrimônio × total aportado, pizza por classe × alvo, rentabilidade × CDI/IPCA/BOVA11, mês a mês, instituições, vencimentos, altas e quedas. Insights da IA e notícias com link. |
 | 6 | Detalhe da classe | Investimentos da classe e gráfico contra um benchmark à escolha (CDI, Selic, IPCA, BOVA11, XFIX11). |

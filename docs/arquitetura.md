@@ -126,7 +126,7 @@ O atualizador roda no addon, em uma thread de fundo com a própria conexão ao b
 - Uma nova tentativa depois de 5 s. Na B3 só erro de rede é repetido, porque arquivo que não existe significa dia sem pregão.
 - Resposta HTML ou XML de erro do SGS, com status 200, conta como falha da fonte.
 
-O app atualiza ao abrir, se alguma fonte não foi atualizada hoje, e de novo depois de salvar um investimento ou de aplicar uma importação da B3. O botão "Atualizar" da barra lateral faz a mesma coisa sob demanda.
+O app atualiza ao abrir, se alguma fonte não foi atualizada hoje, e de novo depois de salvar um investimento ou de aplicar uma importação (da B3 ou da BTG). O botão "Atualizar" da barra lateral faz a mesma coisa sob demanda.
 
 ## Importação da B3
 
@@ -136,14 +136,25 @@ A planilha de posição é lida e comparada com a carteira no `guru-core`. Ela n
 - O addon recebe só os bytes e o nome do arquivo, lê o XLSX (`importacao/xlsx.rs`, sobre `zip` e `quick-xml`) e guarda a última comparação sob um token. O token é consumido ao aplicar, então a mesma comparação não é gravada duas vezes.
 - Uma comparação nova descarta a anterior logo no início: se ela falhar, o token antigo também deixa de valer (`IMPORTACAO_EXPIRADA`).
 - `codigo_b3` decide o casamento. Na renda fixa, a linha casa primeiro pelo código e só depois por emissor, vencimento e tipo; com dois ou mais candidatos, nenhum é consumido e cada linha oferece "Vincular" para todos. Na renda variável e no Tesouro, ele decide entre Atualizar (o investimento já veio de uma importação, então o valor da B3 é a atualização padrão) e Divergente (cadastrado à mão, então o padrão é manter o do usuário).
-- Aplicar roda em uma única transação `IMMEDIATE`: tudo ou nada, e espera a atualização de mercado terminar de gravar em vez de falhar com o banco ocupado. O mesmo investimento vinculado a duas linhas, ou vinculado e também confirmado ou removido por outro item, é `DECISAO_INVALIDA`.
+- Aplicar roda em uma única transação `IMMEDIATE`: tudo ou nada, e espera a atualização de mercado terminar de gravar em vez de falhar com o banco ocupado. O mesmo investimento vinculado a duas linhas, ou vinculado e também confirmado por outro item, é `DECISAO_INVALIDA`.
 - Limites contra arquivo malicioso: 20 MB no arquivo; 50 MB descompactados por parte do ZIP; 50 abas; 100 mil linhas; 256 colunas; 2 milhões de células; 32.767 caracteres de texto por célula; 64 caracteres por número; 1 milhão de textos compartilhados; 200 relações entre partes; 100 MB de texto. Acima disso, ou se não for XLSX, o erro é `ARQUIVO_INVALIDO`.
 - Valor em reais que não cabe em centavos vira o aviso "Valor fora do limite em <produto>." e a linha fica fora da comparação. Um pânico no núcleo durante a comparação ou a aplicação vira o erro `ERRO_INTERNO` em vez de derrubar o app.
-- Na barra lateral, o rodapé mostra "Última importação B3: dd/mm/aaaa".
+- Na barra lateral, o rodapé mostra "Última importação: dd/mm/aaaa".
+
+## Importação da BTG
+
+O extrato da Conta Investimento da BTG (PDF) segue o mesmo caminho da B3: diálogo no `main.js`, bytes para o addon, comparação guardada sob um token e aplicação na mesma transação. O PDF também não sai do computador.
+
+- O texto vem do `pdf-extract` (Rust puro, sem programa instalado na máquina). `importacao/pdf.rs` agrupa os caracteres posicionados em linhas e células; `importacao/btg/` reconhece as seções e lê as tabelas.
+- O PDF da BTG perde glifos dos rótulos: as fontes dos títulos e cabeçalhos mapeiam uma variante do `a` e as ligaduras `fi`/`fl` para U+0000, e o `pdf-extract` as entrega como `\0`; o emissor tirado de um título troca o `\0` por `a`. Por isso os rótulos são comparados pelo "esqueleto" (`esqueleto`: sem `\0`, sem `a`, sem `fi`/`fl`, sem maiúsculas, espaços nem pontuação), aplicado aos dois lados da comparação; funciona com o PDF defeituoso e com um corrigido.
+- Limites: 20 MB no arquivo (conferido no `main.js`) e 200 páginas. Acima disso, ou se não for PDF, ou se for PDF que não é um extrato da BTG, o erro é `ARQUIVO_INVALIDO`. Seção que o leitor não reconhece, e saldo fora do limite ou de fundo sem data de referência, viram aviso, não importação.
+- A migração `0008` acrescenta `investimentos.saldo_centavos` e `saldo_data`: o saldo bruto de fundos e cripto, com a data a que ele se refere. A valorização usa esse saldo quando existe (origem `Origem::Extrato`, com a data visível) e cai no valor aplicado quando não há. A importação seguinte substitui o saldo.
+- Um investimento por ativo e por corretora, nas duas importações. A corretora é comparada por `chave_instituicao`: o nome normalizado, ligado ao nome do catálogo quando contém a marca dele (`BTG PACTUAL CTVM S/A` e `BTG Pactual` são a mesma). Tudo o que vem do extrato é da `BTG Pactual`.
+- Sem par na mesma corretora, o mesmo ativo em outra corretora vira candidato ("divergente", com `Vincular` e o padrão Ignorar) só quando a corretora dele foi digitada à mão (fora do catálogo) ou quando o código gravado é o mesmo; numa corretora do catálogo, sem código, a linha é nova. Um investimento de corretora digitada à mão com o código gravado igual ao da linha (depois de um `Vincular`) conta como par da mesma corretora: igual ou atualizar, sem mudar a corretora dele. Fundo ou cripto da BTG lançado à mão com nome parecido (um nome contém o outro em palavras inteiras) também vira candidato a `Vincular`.
 
 ### Modo de teste da importação
 
-Nos e2e, `GURU_TESTE_ARQUIVO_B3=<caminho>` faz o diálogo devolver esse arquivo, e `GURU_TESTE_ARQUIVO_B3=cancelar` simula o cancelamento. As duas valem só fora do app empacotado.
+Nos e2e, `GURU_TESTE_ARQUIVO_B3=<caminho>` (ou `GURU_TESTE_ARQUIVO_BTG=<caminho>`, para o PDF) faz o diálogo devolver esse arquivo, e `=cancelar` simula o cancelamento. Valem só fora do app empacotado.
 
 ## Repositório
 

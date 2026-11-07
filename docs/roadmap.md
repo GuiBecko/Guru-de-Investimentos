@@ -14,6 +14,7 @@ Ordem de construção do MVP descrito em [`mvp.md`](mvp.md). Cada fase termina c
 | 6a. IA e Assistente | Chave no cofre do sistema, modelo, privacidade, instruções próprias, editor de contexto e o Assistente com fontes numeradas. | 8, 9 |
 | 6b. IA no resto do app | Chat por classe no Próximo aporte, insights e notícias no painel. | 5, 7 |
 | 7. Distribuição | Instaladores para Windows, macOS e Linux, atualização automática e revisão jurídica dos textos. | — |
+| 8. Importação da BTG | Ler o extrato em PDF da BTG e comparar com o cadastrado; um investimento por corretora nas duas importações; valor atual de fundos e cripto pelo extrato. | 3 |
 
 A revisão jurídica dos textos por um advogado é pendente e condição para a versão 1.0. A fase 7 consolidou os avisos em [`avisos.md`](avisos.md).
 
@@ -29,3 +30,4 @@ Os planos detalhados:
 - Fase 6a: [`superpowers/plans/2026-10-30-fase-6a-ia-assistente.md`](superpowers/plans/2026-10-30-fase-6a-ia-assistente.md)
 - Fase 6b: [`superpowers/plans/2026-11-03-fase-6b-ia-no-app.md`](superpowers/plans/2026-11-03-fase-6b-ia-no-app.md)
 - Fase 7: [`superpowers/plans/2026-11-03-fase-7-distribuicao.md`](superpowers/plans/2026-11-03-fase-7-distribuicao.md)
+- Fase 8: [`superpowers/plans/2026-11-06-fase-8-importacao-btg.md`](superpowers/plans/2026-11-06-fase-8-importacao-btg.md)

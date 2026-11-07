@@ -25,6 +25,7 @@ pub enum Origem {
     Calculo,
     Tesouro,
     Cotacao,
+    Extrato,
     SemFonte,
     SemDados,
 }
@@ -35,6 +36,7 @@ impl Origem {
             Origem::Calculo => "calculo",
             Origem::Tesouro => "tesouro",
             Origem::Cotacao => "cotacao",
+            Origem::Extrato => "extrato",
             Origem::SemFonte => "sem_fonte",
             Origem::SemDados => "sem_dados",
         }
@@ -45,6 +47,7 @@ impl Origem {
             Origem::Calculo => "calculado pelo índice",
             Origem::Tesouro => "preço do Tesouro",
             Origem::Cotacao => "cotação da B3",
+            Origem::Extrato => "saldo do extrato da corretora",
             Origem::SemFonte => "sem fonte de preço",
             Origem::SemDados => "sem dados ainda",
         }
@@ -110,6 +113,12 @@ pub(crate) fn valorizar_com(
 ) -> Result<Valor, CoreError> {
     let aplicado = inv.valor_aplicado_centavos;
     if inv.tipo == "fundo" || inv.tipo == "prev" || inv.tipo == "cripto" {
+        if let (Some(saldo), Some(saldo_data)) = (inv.saldo_centavos, inv.saldo_data.as_deref())
+            && let Ok(ref_) = NaiveDate::parse_from_str(saldo_data, "%Y-%m-%d")
+            && ref_ <= data
+        {
+            return Ok(com_atual(aplicado, saldo, Origem::Extrato, Some(ref_)));
+        }
         return Ok(valor(aplicado, Origem::SemFonte, None));
     }
     let aplicacao = NaiveDate::parse_from_str(&inv.data_aplicacao, "%Y-%m-%d")

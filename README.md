@@ -6,7 +6,7 @@ Um app para computador que conhece a sua carteira, o seu perfil de investidor e 
 
 ## Ideia
 
-- **Sabe o que você tem.** A carteira é montada pela planilha da Área do Investidor da B3 ou por lançamento manual, com gráficos que mostram para onde o dinheiro está indo.
+- **Sabe o que você tem.** A carteira é montada pela planilha da Área do Investidor da B3, pelo extrato em PDF da BTG ou por lançamento manual, com gráficos que mostram para onde o dinheiro está indo.
 - **Sabe por que você investe.** O perfil segue o método da ANBIMA, e o objetivo em texto livre e as metas com prazo viram contexto para cada análise.
 - **Mostra de onde tirou cada coisa.** A IA cita as fontes de mercado com link, e você vê e edita o contexto que ela recebe.
 - **Traga a sua IA.** Você conecta a sua própria chave (Claude primeiro, depois OpenAI, Gemini e modelos locais). O app só integra a IA ao seu contexto de investimentos e não cobra pelo uso dela.

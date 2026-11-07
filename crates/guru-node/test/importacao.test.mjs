@@ -16,6 +16,8 @@ test("comparar a posição completa numa carteira vazia dá só Novos, com falta
   const r = c.compararImportacao(fixture("posicao-completa.xlsx"), "posicao.xlsx");
   assert.equal(typeof r.token, "string");
   assert.equal(r.arquivo, "posicao.xlsx");
+  assert.equal(r.fonte, "b3");
+  assert.equal(r.dataArquivo, null);
   assert.ok(r.linhasLidas > 0);
   assert.ok(r.itens.length > 0);
   for (const i of r.itens) {
@@ -23,6 +25,8 @@ test("comparar a posição completa numa carteira vazia dá só Novos, com falta
     assert.equal(i.estadoRotulo, "novo");
     assert.ok(i.acoes.includes("adicionar"));
     assert.equal(i.acaoPadrao, "adicionar");
+    assert.equal(i.noArquivo !== undefined, true);
+    assert.equal("naB3" in i, false);
     assert.ok(i.sugestao.tipo);
     assert.ok(Array.isArray(i.faltando));
     assert.ok(i.chave);
@@ -178,4 +182,63 @@ test("comparação que falha descarta a anterior: o token antigo expira", () => 
     code: "ARQUIVO_INVALIDO",
   });
   assert.throws(() => c.aplicarImportacao(a.token, []), { code: "IMPORTACAO_EXPIRADA" });
+});
+
+const btg = (nome) =>
+  readFileSync(new URL(`../../guru-core/tests/fixtures/btg/${nome}`, import.meta.url));
+
+test("comparar o extrato da BTG numa carteira vazia", () => {
+  const c = abrir();
+  const r = c.compararImportacaoBtg(btg("extrato-completo.pdf"), "extrato.pdf");
+  assert.equal(r.fonte, "btg");
+  assert.equal(r.dataArquivo, "2026-10-31");
+  assert.equal(r.arquivo, "extrato.pdf");
+  assert.equal(r.itens.length, 7);
+  assert.ok(r.itens.every((i) => i.estado === "novo" && i.instituicao === "BTG Pactual"));
+});
+
+test("aplicar o extrato grava e a última importação é a de hoje", () => {
+  const c = abrir();
+  const r = c.compararImportacaoBtg(btg("extrato-completo.pdf"), "extrato.pdf");
+  const decisoes = r.itens.map((i) => {
+    const s = { ...i.sugestao };
+    for (const f of i.faltando) {
+      if (f.campo === "valorAplicadoCentavos") s.valorAplicadoCentavos = 100000;
+      if (f.campo === "precoMedioCentavos") s.precoMedioCentavos = 1000;
+      if (f.campo === "taxa") s.taxa = "10";
+      if (f.campo === "dataAplicacao") s.dataAplicacao = "2024-01-10";
+      if (f.campo === "emissor") s.emissor = "BTG Pactual";
+    }
+    return { chave: i.chave, acao: "adicionar", dados: s };
+  });
+  const res = c.aplicarImportacao(r.token, decisoes);
+  assert.deepEqual(res.erros, []);
+  assert.equal(res.aplicadas, 7);
+  assert.equal(c.listarInvestimentos().length, 7);
+  assert.match(c.ultimaImportacao(), /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test("PDF de outro banco dá ARQUIVO_INVALIDO", () => {
+  assert.throws(() => abrir().compararImportacaoBtg(btg("outro-banco.pdf"), "x.pdf"), {
+    code: "ARQUIVO_INVALIDO",
+  });
+});
+
+test("comparar a B3 depois da BTG invalida o token da BTG", () => {
+  const c = abrir();
+  const a = c.compararImportacaoBtg(btg("extrato-completo.pdf"), "e.pdf");
+  const b = c.compararImportacao(fixture("posicao-bdr-rf.xlsx"), "b.xlsx");
+  assert.equal(b.fonte, "b3");
+  assert.throws(() => c.aplicarImportacao(a.token, []), { code: "IMPORTACAO_EXPIRADA" });
+});
+
+test("ações antigas usar_b3 e remover são desconhecidas", () => {
+  const c = abrir();
+  const r = c.compararImportacaoBtg(btg("extrato-completo.pdf"), "e.pdf");
+  for (const acao of ["usar_b3", "remover"]) {
+    assert.throws(() => c.aplicarImportacao(r.token, [{ chave: r.itens[0].chave, acao }]), {
+      code: "DECISAO_INVALIDA",
+      message: /Ação desconhecida/,
+    });
+  }
 });
