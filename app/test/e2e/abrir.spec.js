@@ -25,7 +25,7 @@ test("abre com título e mostra a versão do esquema", async () => {
   try {
     const page = await app.firstWindow();
     expect(await page.title()).toBe("Guru de Investimentos");
-    await expect(page.getByTestId("schema-version")).toHaveText("7");
+    await expect(page.getByTestId("schema-version")).toHaveText("8");
     await expect(page.getByTestId("core-version")).not.toBeEmpty();
     await expect(page.getByTestId("app-version")).toHaveText("0.9.0");
     expect(fs.existsSync(path.join(dataDir, "guru.db"))).toBe(true);
@@ -51,7 +51,7 @@ test("--guru-smoke abre o núcleo numa pasta temporária, não cria janela e sai
       resolve(c);
     });
   });
-  expect(saida).toMatch(/GURU_SMOKE_OK app=0\.9\.0 nucleo=0\.9\.0 esquema=7/);
+  expect(saida).toMatch(/GURU_SMOKE_OK app=0\.9\.0 nucleo=0\.9\.0 esquema=8/);
   expect(codigo).toBe(0);
 });
 
@@ -265,7 +265,7 @@ test("importação pelo api: cancelar o diálogo devolve cancelado e ultima é n
   try {
     const page = await app.firstWindow();
     const r = await page.evaluate(() =>
-      import("./js/api.js").then(({ api }) => api.importacao.escolher()),
+      import("./js/api.js").then(({ api }) => api.importacao.escolher("b3")),
     );
     expect(r).toEqual({ cancelado: true });
     const u = await page.evaluate(() =>
@@ -283,7 +283,7 @@ test("importação pelo api: caminho de teste compara a planilha e só leva o no
   try {
     const page = await app.firstWindow();
     const r = await page.evaluate(() =>
-      import("./js/api.js").then(({ api }) => api.importacao.escolher()),
+      import("./js/api.js").then(({ api }) => api.importacao.escolher("b3")),
     );
     expect(r.arquivo).toBe("posicao-bdr-rf.xlsx");
     expect(r.itens.length).toBeGreaterThan(0);
@@ -300,7 +300,7 @@ test("importação pelo api: arquivo inexistente dá ARQUIVO_INVALIDO sem vazar 
     const page = await app.firstWindow();
     const erro = await page.evaluate(() =>
       import("./js/api.js").then(({ api }) =>
-        api.importacao.escolher().then(
+        api.importacao.escolher("b3").then(
           () => null,
           (e) => ({ code: e.code, message: e.message }),
         ),
@@ -309,6 +309,24 @@ test("importação pelo api: arquivo inexistente dá ARQUIVO_INVALIDO sem vazar 
     expect(erro.code).toBe("ARQUIVO_INVALIDO");
     expect(erro.message).toBe("Não foi possível ler o arquivo.");
     expect(erro.message).not.toContain("guru-segredo");
+  } finally {
+    await app.close();
+  }
+});
+
+test("importação pelo api: fonte desconhecida dá FONTE_DESCONHECIDA", async () => {
+  const app = await lancar(novoDataDir());
+  try {
+    const page = await app.firstWindow();
+    const erro = await page.evaluate(() =>
+      import("./js/api.js").then(({ api }) =>
+        api.importacao.escolher("xyz").then(
+          () => null,
+          (e) => ({ code: e.code }),
+        ),
+      ),
+    );
+    expect(erro).toEqual({ code: "FONTE_DESCONHECIDA" });
   } finally {
     await app.close();
   }

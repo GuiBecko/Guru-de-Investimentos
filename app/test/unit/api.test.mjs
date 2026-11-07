@@ -91,7 +91,8 @@ test("api.investimentos e api.carteira repassam à ponte e desembrulham", async 
     assert.deepEqual(chamadas.at(-1), ["dividir", 100000]);
     assert.equal(await api.mercado.atualizar(), "atualizar");
     assert.equal(await api.mercado.status(), "status");
-    assert.equal(await api.importacao.escolher(), "escolher");
+    assert.equal(await api.importacao.escolher("btg"), "escolher");
+    assert.deepEqual(chamadas.at(-1), ["escolher", "btg"]);
     assert.equal(await api.importacao.aplicar("tk", [{ chave: "a" }]), "aplicar");
     assert.deepEqual(chamadas.at(-1), ["aplicar", "tk", [{ chave: "a" }]]);
     assert.equal(await api.importacao.ultima(), "ultima");

@@ -1,4 +1,4 @@
-//! Tipos da ponte para a importação da planilha de posição da B3.
+//! Tipos da ponte para a importação (planilha da B3 e extrato da BTG).
 
 use guru_core::{Acao, Comparacao, CoreError, Decisao, Item, NovoInvestimento};
 use napi_derive::napi;
@@ -13,7 +13,7 @@ pub struct ItemImportacaoJs {
     pub ativo: String,
     pub instituicao: String,
     pub no_app: Option<String>,
-    pub na_b3: Option<String>,
+    pub no_arquivo: Option<String>,
     pub investimentos: Vec<i64>,
     pub acoes: Vec<String>,
     pub acao_padrao: String,
@@ -25,6 +25,10 @@ pub struct ItemImportacaoJs {
 pub struct ComparacaoJs {
     pub token: String,
     pub arquivo: String,
+    /// `"b3"` ou `"btg"`.
+    pub fonte: String,
+    /// Data do extrato (`AAAA-MM-DD`); a planilha da B3 não tem.
+    pub data_arquivo: Option<String>,
     pub linhas_lidas: u32,
     pub avisos: Vec<String>,
     pub itens: Vec<ItemImportacaoJs>,
@@ -95,7 +99,7 @@ fn item(i: &Item) -> ItemImportacaoJs {
         ativo: i.ativo.clone(),
         instituicao: i.instituicao.clone(),
         no_app: i.no_app.clone(),
-        na_b3: i.na_b3.clone(),
+        no_arquivo: i.no_arquivo.clone(),
         investimentos: i.investimentos.clone(),
         acoes: i.acoes.iter().map(|a| a.codigo().to_string()).collect(),
         acao_padrao: i.acao_padrao.codigo().to_string(),
@@ -108,6 +112,8 @@ pub fn comparacao(token: &str, arquivo: &str, c: &Comparacao) -> ComparacaoJs {
     ComparacaoJs {
         token: token.to_string(),
         arquivo: arquivo.to_string(),
+        fonte: c.fonte.codigo().to_string(),
+        data_arquivo: c.data_arquivo.map(|d| d.format("%Y-%m-%d").to_string()),
         linhas_lidas: u32::try_from(c.linhas_lidas).unwrap_or(u32::MAX),
         avisos: c.avisos.clone(),
         itens: c.itens.iter().map(item).collect(),
@@ -119,9 +125,8 @@ pub fn decisao(d: DecisaoJs) -> Result<Decisao, CoreError> {
     let acao = match d.acao.as_str() {
         "adicionar" => Acao::Adicionar,
         "ignorar" => Acao::Ignorar,
-        "usar_b3" => Acao::UsarB3,
+        "usar_arquivo" => Acao::UsarArquivo,
         "manter" => Acao::Manter,
-        "remover" => Acao::Remover,
         "vincular" => Acao::Vincular(d.id_vinculo.ok_or_else(|| {
             invalida(format!(
                 "Vincular exige o investimento (idVinculo) em {}.",

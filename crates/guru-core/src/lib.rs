@@ -17,10 +17,12 @@ pub use investimento::{
     TipoInfo, nome, rendimento, tipo, tipos, validar,
 };
 
+pub use importacao::pdf;
 pub use importacao::{
-    Aba, AbaRv, Acao, Celula, Comparacao, Decisao, Estado, Item, LinhaB3, Posicao,
-    ResultadoImportacao, aplicar_importacao, comparar, ler_posicao, ler_posicao_abas, ler_xlsx,
-    ultima_importacao,
+    Aba, AbaRv, Acao, AtivoBtg, Celula, Comparacao, Decisao, Estado, ExtratoBtg,
+    Fonte as FonteImportacao, Item, LinhaB3, Posicao, ResultadoImportacao, aplicar_importacao,
+    comparar, comparar_btg, ler_extrato, ler_extrato_linhas, ler_posicao, ler_posicao_abas,
+    ler_xlsx, ultima_importacao,
 };
 
 pub use perfil::{

@@ -76,7 +76,7 @@ test("carteira vazia: 9 novos, completa o ITUB4, ignora o resto e aplica", async
       await expect(page.getByRole("columnheader", { name: t })).toBeVisible();
     }
     await expect(page.getByRole("button", { name: "Aplicar 9 alterações", exact: true })).toBeVisible();
-    await expect(page.getByText("Fundos e previdência normalmente não aparecem na B3. Por padrão, ficam como estão.")).toBeVisible();
+    await expect(page.getByText("Fundos e previdência normalmente não aparecem na B3.")).toBeVisible();
 
     await ignorarTodosExceto(page, "ITUB4");
     const itub = item(page, "ITUB4");
@@ -89,7 +89,7 @@ test("carteira vazia: 9 novos, completa o ITUB4, ignora o resto e aplica", async
     await expect(page.getByText("1 alteração aplicada.")).toBeVisible();
     await expect(page.locator("main tbody tr")).toHaveCount(1);
     await expect(page.locator("main tbody tr").first()).toContainText("ITUB4");
-    await expect(page.getByTestId("importacao-ultima")).toHaveText(/^Última importação B3: \d\d\/\d\d\/\d{4}$/);
+    await expect(page.getByTestId("importacao-ultima")).toHaveText(/^Última importação: \d\d\/\d\d\/\d{4}$/);
   } finally {
     await app.close();
   }
@@ -134,7 +134,7 @@ test("novo incompleto mostra o erro no campo e não grava nada", async () => {
   }
 });
 
-test("o fundo cadastrado aparece como fora da B3 com Manter", async () => {
+test("investimento lançado à mão não aparece na revisão da B3", async () => {
   const app = await abrir(COMPLETA);
   try {
     const page = await app.firstWindow();
@@ -152,10 +152,9 @@ test("o fundo cadastrado aparece como fora da B3 com Manter", async () => {
     );
     await irParaImportar(page);
     await escolher(page);
-    const fundo = item(page, "Fundo Verde");
-    await expect(fundo).toContainText("fora da B3");
-    await expect(fundo.getByRole("combobox", { name: "O que fazer" }).locator("option:checked")).toHaveText("Manter");
-    await expect(page.locator(".marcas").getByText("1 fora da B3")).toBeVisible();
+    await expect(page.locator(".cartao-arquivo")).toBeVisible();
+    await expect(page.locator("tbody.item", { hasText: "Fundo Verde" })).toHaveCount(0);
+    await expect(page.locator(".marcas")).not.toContainText("fora da B3");
   } finally {
     await app.close();
   }
@@ -222,7 +221,7 @@ async function criarCdb(page, taxa) {
       import("./js/api.js").then(({ api }) =>
         api.investimentos.criar({
           tipo: "rf-cdb",
-          instituicao: "Banco Inter",
+          instituicao: "Corretora Fictícia S.A.",
           emissor: "Banco Fictício S/A",
           indexador: "pos",
           taxa: t,
@@ -251,18 +250,15 @@ test("dois CDBs do mesmo banco e vencimento: vincular um à linha da B3 grava o 
     await expect(cdb).toContainText("divergente");
     const acao = cdb.getByRole("combobox", { name: "O que fazer" });
     await expect(acao.locator("option", { hasText: "Vincular a" })).toHaveCount(2);
-    // Os dois candidatos ainda não foram casados: continuam em "fora da B3".
-    await expect(page.locator(".marcas").getByText("2 fora da B3")).toBeVisible();
     await ignorarTodosExceto(page, "Banco Fictício S/A");
-    await acao.selectOption({ label: "Vincular a CDB Banco Fictício S/A · 110% do CDI · aplicado R$ 20.000,00" });
+    await acao.selectOption({ label: "Vincular a CDB Banco Fictício S/A · Corretora Fictícia S.A. · 110% do CDI · aplicado R$ 20.000,00" });
     await page.getByRole("button", { name: "Aplicar 1 alteração", exact: true }).click();
     await expect(page.getByText("1 alteração aplicada.")).toBeVisible();
 
-    // Na próxima importação a linha casa pelo código com o CDB de 110%; o de 102% fica fora da B3.
+    // Na próxima importação a linha casa pelo código com o CDB de 110%.
     await irParaImportar(page);
     await escolher(page);
     await expect(page.locator(".marcas").getByText("1 igual")).toBeVisible();
-    await expect(page.locator(".marcas").getByText("1 fora da B3")).toBeVisible();
     await page.getByRole("button", { name: "1 igual" }).click();
     await expect(item(page, "CDB BANCO FICTICIO S/A")).toContainText("igual");
   } finally {
@@ -361,7 +357,7 @@ test("só com itens iguais o botão vira Concluir importação e grava a data", 
       import("./js/api.js").then(({ api }) =>
         api.investimentos.criar({
           tipo: "rv-acao",
-          instituicao: "Rico",
+          instituicao: "Corretora Fictícia S.A.",
           ticker: "ITUB4",
           dataAplicacao: "2025-01-10",
           quantidade: 150,
@@ -380,7 +376,7 @@ test("só com itens iguais o botão vira Concluir importação e grava a data", 
     await concluir.click();
     await expect(page.getByRole("heading", { name: "Investimentos" })).toBeVisible();
     await expect(page.getByText("Importação concluída, sem alterações na carteira.")).toBeVisible();
-    await expect(page.getByTestId("importacao-ultima")).toHaveText(/^Última importação B3: \d\d\/\d\d\/\d{4}$/);
+    await expect(page.getByTestId("importacao-ultima")).toHaveText(/^Última importação: \d\d\/\d\d\/\d{4}$/);
   } finally {
     await app.close();
   }

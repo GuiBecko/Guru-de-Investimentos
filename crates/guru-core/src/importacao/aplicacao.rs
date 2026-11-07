@@ -1,24 +1,32 @@
 //! Aplica as decisões do usuário sobre a comparação, tudo numa transação só.
 //!
 //! Regras:
-//! - Nada é apagado a não ser por um `Remover` explícito.
-//! - `UsarB3` na renda variável muda só a quantidade e recalcula o aplicado (quantidade × preço
+//! - Nada é apagado por importação.
+//! - `UsarArquivo` na renda variável muda só a quantidade e recalcula o aplicado (quantidade × preço
 //!   médio, sem tocar no preço médio); no Tesouro muda só o valor aplicado.
 //! - Quando o item casa com um único investimento sem `codigo_b3` e o casamento foi confirmado
-//!   (estado `Igual`, ou o usuário escolheu `UsarB3`), o código da B3 é gravado nele, qualquer que
+//!   (estado `Igual`, ou o usuário escolheu `UsarArquivo`), o código da fonte é gravado nele, qualquer que
 //!   seja a ação escolhida. Isso não conta como alteração em `aplicadas`. Um item divergente
 //!   mantido não ganha código: o usuário não confirmou que é o mesmo ativo.
+//! - Item **confirmado** = `Igual` com um par, `UsarArquivo`, `Vincular(id)` ou `Adicionar` (no
+//!   investimento recém-inserido). Nele se grava também o saldo do extrato (substitui o anterior:
+//!   o extrato mais recente vale) e se completam os campos vazios (emissor; indexador, taxa e
+//!   benchmark juntos quando a taxa está vazia; preço médio). Nada disso conta em `aplicadas`, e
+//!   campo já preenchido nunca é sobrescrito.
+//! - `UsarArquivo` na renda variável sem preço médio gravado usa o preço médio do arquivo.
 
 use std::collections::HashSet;
+use std::str::FromStr;
 
 use chrono::NaiveDate;
 use rusqlite::{Connection, Transaction, TransactionBehavior, named_params};
+use rust_decimal::Decimal;
 
-use super::comparacao::{Acao, Comparacao, Estado, Item};
+use super::comparacao::{Acao, Comparacao, Completar, DadosArquivo, Estado, Item};
 use crate::db::{Db, classifica};
 use crate::error::CoreError;
 use crate::investimento::{
-    ErroCampo, InvestimentoValido, MAX_CENTAVOS, NovoInvestimento, apagar_em, inserir_validado,
+    ErroCampo, InvestimentoValido, MAX_CENTAVOS, NovoInvestimento, inserir_validado,
     validar_com_meta,
 };
 
@@ -41,7 +49,8 @@ enum Operacao {
     Inserir {
         valido: Box<InvestimentoValido>,
         meta_id: Option<i64>,
-        codigo: Option<String>,
+        /// Código, saldo e campos a completar do arquivo, gravados no investimento inserido.
+        dados: Box<DadosArquivo>,
     },
     Quantidade {
         id: i64,
@@ -56,7 +65,16 @@ enum Operacao {
         id: i64,
         codigo: String,
     },
-    Apagar(i64),
+    Saldo {
+        id: i64,
+        centavos: i64,
+        data: NaiveDate,
+    },
+    Completar {
+        id: i64,
+        completar: Option<Completar>,
+        preco_medio: Option<i64>,
+    },
 }
 
 fn invalida(msg: impl Into<String>) -> CoreError {
@@ -116,21 +134,22 @@ fn planejar(
                     Operacao::Inserir {
                         valido: Box::new(valido),
                         meta_id: dados.meta_id,
-                        codigo: item.b3.codigo.clone(),
+                        dados: Box::new(item.dados.clone()),
                     },
                     true,
                 )),
                 Err(erros) => return Ok(Err(erros)),
             }
         }
-        Some(Acao::UsarB3) => {
+        Some(Acao::UsarArquivo) => {
             let id = so_um(item)?;
             let (quantidade, preco) = quantidade_e_preco(conn, id)?;
-            if let Some(q) = item.b3.quantidade {
+            if let Some(q) = item.dados.quantidade {
                 if q <= 0 {
                     return Ok(Err(erro("quantidade", "Informe a quantidade.")));
                 }
-                let Some(preco) = preco else {
+                // Preço médio vazio no app: vale o do arquivo (a operação `Completar` o grava).
+                let Some(preco) = preco.or(item.dados.preco_medio_centavos) else {
                     return Ok(Err(erro("precoMedioCentavos", "Informe o preço médio.")));
                 };
                 if quantidade.is_none() {
@@ -153,14 +172,14 @@ fn planejar(
                     }
                 }
             } else {
-                match item.b3.aplicado_centavos {
+                match item.dados.aplicado_centavos {
                     Some(a) if (1..=MAX_CENTAVOS).contains(&a) => {
                         ops.push((Operacao::Valor { id, aplicado: a }, true));
                     }
                     _ => {
                         return Ok(Err(erro(
                             "valorAplicadoCentavos",
-                            "A planilha não traz um valor aplicado válido.",
+                            "O arquivo não traz um valor aplicado válido.",
                         )));
                     }
                 }
@@ -168,26 +187,52 @@ fn planejar(
         }
         Some(Acao::Vincular(id)) => {
             let codigo = item
-                .b3
+                .dados
                 .codigo
                 .clone()
                 .ok_or_else(|| invalida(format!("A linha {} não tem código.", item.chave)))?;
             ops.push((Operacao::Vincular { id, codigo }, true));
         }
-        Some(Acao::Remover) => ops.push((Operacao::Apagar(so_um(item)?), true)),
         Some(Acao::Manter | Acao::Ignorar) | None => {}
     }
-    let confirmado = item.estado == Estado::Igual || acao == Some(Acao::UsarB3);
-    if confirmado && let ([id], Some(codigo)) = (item.investimentos.as_slice(), &item.b3.codigo) {
-        ops.push((
-            Operacao::Vincular {
-                id: *id,
-                codigo: codigo.clone(),
-            },
-            false,
-        ));
+    let confirmado = item.estado == Estado::Igual || acao == Some(Acao::UsarArquivo);
+    let mut alvo = None;
+    if confirmado && let [id] = item.investimentos.as_slice() {
+        alvo = Some(*id);
+        if let Some(codigo) = &item.dados.codigo {
+            ops.push((
+                Operacao::Vincular {
+                    id: *id,
+                    codigo: codigo.clone(),
+                },
+                false,
+            ));
+        }
+    }
+    if let Some(Acao::Vincular(id)) = acao {
+        alvo = Some(id);
+    }
+    // O `Adicionar` grava saldo e campos no investimento inserido (ver `executar`).
+    if let Some(id) = alvo {
+        ops.extend(extras(id, &item.dados).into_iter().map(|op| (op, false)));
     }
     Ok(Ok(ops))
+}
+
+/// Saldo e campos a completar do arquivo para o investimento `id` (item confirmado).
+fn extras(id: i64, dados: &DadosArquivo) -> Vec<Operacao> {
+    let mut ops = Vec::new();
+    if let Some((centavos, data)) = dados.saldo {
+        ops.push(Operacao::Saldo { id, centavos, data });
+    }
+    if dados.completar.is_some() || dados.preco_medio_centavos.is_some() {
+        ops.push(Operacao::Completar {
+            id,
+            completar: dados.completar.clone(),
+            preco_medio: dados.preco_medio_centavos,
+        });
+    }
+    ops
 }
 
 fn executar(conn: &Connection, op: &Operacao, contar: bool) -> Result<bool, CoreError> {
@@ -196,12 +241,60 @@ fn executar(conn: &Connection, op: &Operacao, contar: bool) -> Result<bool, Core
         Operacao::Inserir {
             valido,
             meta_id,
-            codigo,
+            dados,
         } => {
             let id = inserir_validado(conn, (**valido).clone(), *meta_id)?;
             conn.execute(
                 "UPDATE investimentos SET codigo_b3 = :codigo WHERE id = :id",
-                named_params! {":codigo": codigo, ":id": id},
+                named_params! {":codigo": dados.codigo, ":id": id},
+            )
+            .map_err(classifica)?;
+            for op in extras(id, dados) {
+                executar(conn, &op, false)?;
+            }
+            true
+        }
+        Operacao::Saldo { id, centavos, data } => {
+            conn.execute(
+                "UPDATE investimentos SET saldo_centavos = :c, saldo_data = :d WHERE id = :id",
+                named_params! {":c": centavos, ":d": data.to_string(), ":id": id},
+            )
+            .map_err(classifica)?;
+            true
+        }
+        Operacao::Completar {
+            id,
+            completar,
+            preco_medio,
+        } => {
+            // Só o que está vazio. Indexador, taxa e benchmark andam juntos: entram só quando a
+            // taxa está vazia e o arquivo traz uma.
+            let c = completar.clone().unwrap_or_default();
+            // Gravada como o cadastro grava (decimal normalizado); texto inválido não entra.
+            let taxa = c
+                .taxa
+                .as_deref()
+                .and_then(|t| Decimal::from_str(t).ok())
+                .map(|t| t.normalize().to_string());
+            conn.execute(
+                "UPDATE investimentos SET \
+                 emissor = COALESCE(NULLIF(emissor, ''), :e), \
+                 indexador = CASE WHEN (taxa IS NULL OR taxa = '') AND :t IS NOT NULL \
+                     THEN :i ELSE indexador END, \
+                 benchmark = CASE WHEN (taxa IS NULL OR taxa = '') AND :t IS NOT NULL \
+                     THEN :b ELSE benchmark END, \
+                 taxa = CASE WHEN (taxa IS NULL OR taxa = '') AND :t IS NOT NULL \
+                     THEN :t ELSE taxa END, \
+                 preco_medio_centavos = COALESCE(preco_medio_centavos, :p) \
+                 WHERE id = :id",
+                named_params! {
+                    ":e": c.emissor,
+                    ":i": c.indexador,
+                    ":t": taxa,
+                    ":b": c.benchmark,
+                    ":p": preco_medio,
+                    ":id": id,
+                },
             )
             .map_err(classifica)?;
             true
@@ -250,17 +343,13 @@ fn executar(conn: &Connection, op: &Operacao, contar: bool) -> Result<bool, Core
             }
             true
         }
-        Operacao::Apagar(id) => {
-            apagar_em(conn, *id)?;
-            true
-        }
     };
     Ok(alterou && contar)
 }
 
 /// Um investimento só pode ser ligado a uma linha: dois `Vincular` para o mesmo id, ou um
-/// `Vincular` para um id que outro item já confirma (igual ou `UsarB3`) ou que vai ser removido,
-/// é `DECISAO_INVALIDA`.
+/// `Vincular` para um id que outro item já confirma (igual ou `UsarArquivo`), é
+/// `DECISAO_INVALIDA`.
 fn conferir_vinculos(comparacao: &Comparacao, decisoes: &[Decisao]) -> Result<(), CoreError> {
     let acao_de = |item: &Item| {
         decisoes
@@ -271,8 +360,7 @@ fn conferir_vinculos(comparacao: &Comparacao, decisoes: &[Decisao]) -> Result<()
     let mut ocupados = HashSet::new();
     for item in &comparacao.itens {
         let acao = acao_de(item);
-        let ocupa =
-            item.estado == Estado::Igual || matches!(acao, Some(Acao::UsarB3 | Acao::Remover));
+        let ocupa = item.estado == Estado::Igual || acao == Some(Acao::UsarArquivo);
         if let ([id], true) = (item.investimentos.as_slice(), ocupa) {
             ocupados.insert(*id);
         }
@@ -283,8 +371,7 @@ fn conferir_vinculos(comparacao: &Comparacao, decisoes: &[Decisao]) -> Result<()
             && (ocupados.contains(&id) || !vinculados.insert(id))
         {
             return Err(invalida(
-                "Cada investimento só pode ser vinculado a uma linha da planilha, e não pode ser \
-                 vinculado e removido ao mesmo tempo.",
+                "Cada investimento só pode ser vinculado a uma linha do arquivo.",
             ));
         }
     }
@@ -294,7 +381,8 @@ fn conferir_vinculos(comparacao: &Comparacao, decisoes: &[Decisao]) -> Result<()
 /// Aplica as decisões de uma vez: ou grava tudo, ou nada. `hoje` é a data da importação.
 ///
 /// Decisão para chave desconhecida, ação fora de `item.acoes` ou repetida é `DECISAO_INVALIDA`.
-/// Item sem decisão fica como está (só recebe o código da B3 quando o casamento é seguro).
+/// Item sem decisão não muda o que já estava gravado: quando o casamento é seguro (igual), só
+/// recebe o código do arquivo, o saldo e os campos vazios.
 pub fn aplicar_importacao(
     db: &Db,
     comparacao: &Comparacao,
@@ -350,12 +438,14 @@ pub fn aplicar_importacao(
         }
     }
     tx.execute(
-        "INSERT INTO importacao (data, arquivo, linhas, aplicadas) VALUES (:d, :a, :l, :n)",
+        "INSERT INTO importacao (data, arquivo, linhas, aplicadas, fonte) \
+         VALUES (:d, :a, :l, :n, :f)",
         named_params! {
             ":d": hoje.to_string(),
             ":a": arquivo,
             ":l": i64::try_from(comparacao.linhas_lidas).unwrap_or(i64::MAX),
             ":n": i64::try_from(aplicadas).unwrap_or(i64::MAX),
+            ":f": comparacao.fonte.codigo(),
         },
     )
     .map_err(classifica)?;

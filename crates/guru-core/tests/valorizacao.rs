@@ -511,3 +511,46 @@ fn ipca_recente_sem_mes_publicado_ainda_calcula_so_com_a_taxa() {
         (1_000_000.0 * 1.06_f64.powf(du / 252.0)).floor() as i64,
     );
 }
+
+fn fundo_com_saldo(dir: &tempfile::TempDir, db: &Db) -> i64 {
+    let id = criar(
+        db,
+        NovoInvestimento {
+            tipo: "fundo".into(),
+            instituicao: "BTG Pactual".into(),
+            emissor: s("Fundo X"),
+            data_aplicacao: s("2026-01-10"),
+            valor_aplicado_centavos: Some(100_000),
+            liquidez: s("diaria"),
+            ..Default::default()
+        },
+    );
+    let conn = rusqlite::Connection::open(dir.path().join("guru.db")).unwrap();
+    conn.execute(
+        "UPDATE investimentos SET saldo_centavos = 105000, saldo_data = '2026-10-30' WHERE id = ?1",
+        [id],
+    )
+    .unwrap();
+    id
+}
+
+#[test]
+fn fundo_com_saldo_do_extrato() {
+    let (d, db) = vazio();
+    let id = fundo_com_saldo(&d, &db);
+    let i = db.investimento(id, data(2026, 11, 1)).unwrap();
+    assert_eq!(i.valor_atual_centavos, 105_000);
+    assert_eq!(i.origem_valor, Origem::Extrato);
+    assert_eq!(i.origem_valor.codigo(), "extrato");
+    assert_eq!(i.data_valor, Some(data(2026, 10, 30)));
+    assert_eq!(i.rentabilidade_decimos, 50);
+}
+
+#[test]
+fn saldo_futuro_nao_vale_para_datas_anteriores() {
+    let (d, db) = vazio();
+    let id = fundo_com_saldo(&d, &db);
+    let i = db.investimento(id, data(2026, 10, 1)).unwrap();
+    assert_eq!(i.valor_atual_centavos, 100_000);
+    assert_eq!(i.origem_valor, Origem::SemFonte);
+}
